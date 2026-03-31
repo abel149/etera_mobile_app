@@ -1,0 +1,4 @@
+{{-- React 18 + Babel Standalone CDN (for JSX in-page compilation) --}}
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
