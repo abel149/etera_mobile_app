@@ -13,14 +13,20 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $request->validate([
-            'phone_number' => ['required', 'string', 'regex:/^\d{10}$/'],
+            'phone_number' => ['required', 'string'],
             'password'     => ['required', 'string'],
-        ], [
-            'phone_number.regex' => 'Phone number must be exactly 10 digits.',
+            
+        
         ]);
-
-        $user = User::where('phone_number', $request->phone_number)->first();
-
+         
+        $username = $request->phone_number;
+        // Check if it's phone (10 digits)
+        if (preg_match('/^\d{10}$/', $username)) {
+            $user = User::where('phone_number', $username)->first();
+        } else {
+            // Otherwise treat as store_id
+            $user = User::where('store_id', $username)->first();
+        }
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
