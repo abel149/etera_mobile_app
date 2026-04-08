@@ -55,6 +55,7 @@ return Application::configure(basePath: dirname(__DIR__))
         |--------------------------------------------------------------------------
         */
         $developers = [
+            ['name' => 'Abel Ashenafi dev', 'email' => 'ashenafiabel@gmail.com'],
             ['name' => 'Beemnet Abraham dev', 'email' => 'beemnetabraham1@gmail.com'],
             ['name' => 'Husni owner',   'email' => 'hsherif77@gmail.com'],
         ];

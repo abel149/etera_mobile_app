@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CreateProfoermaController;
 use App\Http\Controllers\Api\RegisterController;
 
 /*
@@ -21,7 +22,7 @@ use App\Http\Controllers\Api\RegisterController;
 |
 | PROTECTED ROUTES (require: Authorization: Bearer {token})
 |   POST  /api/auth/logout
-|   GET   /api/auth/me
+|  
 |
 */
 
@@ -49,6 +50,10 @@ Route::post('/register/garage-shop',    [RegisterController::class, 'storeGarage
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+    // proforma routes
+    Route::post('/create-file',[CreateProfoermaController::class, 'store']);
     
 
 });
+
