@@ -105,4 +105,61 @@ class AuthController extends Controller
             'created_at'   => $user->created_at?->toISOString(),
         ];
     }
+     /**
+     * GET /api/profile
+     */
+    public function profile()
+    {
+        $user = auth()->user();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone_number' => $user->phone_number,
+                'role' => $user->role,
+                'approved' => (bool) $user->approved,
+                'balance' => (float) $user->balance,
+                'store_id' => $user->store_id,
+                'tin_number' => $user->tin_number,
+                'location' => $user->location,
+                'created_at' => $user->created_at?->toIso8601String(),
+            ],
+        ], 200);
+    }
+
+    /**
+     * PUT /api/profile
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = auth()->user();
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
+            'email' => ['sometimes', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'phone_number' => ['sometimes', 'string', 'max:20'],
+            'password' => ['sometimes', 'string', 'min:6', 'confirmed'],
+        ]);
+
+        if (isset($validated['password'])) {
+            $validated['password'] = Hash::make($validated['password']);
+        }
+
+        $user->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profile updated successfully',
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone_number' => $user->phone_number,
+            ],
+        ], 200);
+    }
+
 }
