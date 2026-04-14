@@ -22,7 +22,7 @@ class User extends Authenticatable
     public const ROLE_ADMIN          = 'admin';
     public const ROLE_MANAGER        = 'manager';
     public const ROLE_OPERATOR       = 'operator';
-    public const ROLE_BUSINESS_OWNER = 'others';
+    public const ROLE_BUSINESS_OWNER = 'business_owner';
     public const ROLE_INSURANCE      = 'insurance';
     public const ROLE_SHOP           = 'shop';
     public const ROLE_GARAGE         = 'garage';
@@ -218,17 +218,12 @@ class User extends Authenticatable
         return \App\Models\Proforma::where('poster_id', $this->id)
             ->where('status', 'completed')
             ->where('verified', true)
-            ->where('is_new', true)
             ->count();
     }
 
     public function markReceivedProformasAsViewed()
     {
-        \App\Models\Proforma::where('poster_id', $this->id)
-            ->where('status', 'completed')
-            ->where('verified', true)
-            ->where('is_new', true)
-            ->update(['is_new' => false]);
+        // No-op: is_new column does not exist on proformas table
     }
     
     public function reviews()

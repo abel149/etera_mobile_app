@@ -220,23 +220,22 @@ class CreateProfoermaController extends Controller {
             }
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $user = auth()->user();
 
-        // Mark received proformas as viewed
-        Proforma::where('poster_id', $user->id)
-            ->where('status', 'completed')
-            ->where('verified', true)
-            ->where('is_new', true)
-            ->update(['is_new' => false]);
+        $query = Proforma::with('brand')
+            ->where('poster_id', $user->id);
 
-        $proformas = Proforma::with('brand')
-            ->where('poster_id', $user->id)
-            ->where('status', 'completed')
-            ->where('verified', true)
-            ->orderBy('updated_at', 'desc')
-            ->paginate(10);
+        // Optional filters: ?status=pending  or  ?status=completed&verified=1
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('verified')) {
+            $query->where('verified', (bool) $request->verified);
+        }
+
+        $proformas = $query->orderBy('updated_at', 'desc')->paginate(10);
 
         return response()->json([
             'success' => true,
