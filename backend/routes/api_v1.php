@@ -65,8 +65,6 @@ Route::get('/parts', function () {
 // Public: Registration (rate-limited)
 // -----------------------------------------------------------------------
 Route::middleware('throttle:10,1')->group(function () {
-    Route::post('/register',                [RegisterController::class, 'store']);
-    Route::post('/register/individual',     [RegisterController::class, 'storeIndividual']);
     Route::post('/register/business-owner', [RegisterController::class, 'storeBusinessOwner']);
     Route::post('/register/garage-shop',    [RegisterController::class, 'storeGarageSparepart']);
 });
@@ -78,8 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Auth
     Route::post('/auth/logout', [AuthController::class, 'logout']);
-    Route::get('/auth/me',      [AuthController::class, 'me']);
-
+   
     // Dashboard
     Route::get('/dashboard', [CreateProfoermaController::class, 'dashboard']);
 

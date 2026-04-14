@@ -71,14 +71,7 @@ class AuthController extends Controller
         ]);
     }
 
-    // GET /api/v1/auth/me
-    public function me(Request $request)
-    {
-        return response()->json([
-            'success' => true,
-            'data'    => new UserResource($request->user()),
-        ]);
-    }
+   
     /**
      * GET /api/v1/profile
      */
@@ -100,7 +93,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'name'         => ['sometimes', 'string', 'max:255'],
             'email'        => ['sometimes', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'phone_number' => ['sometimes', 'string', 'max:20'],
+            'phone_number' => ['sometimes', 'string', 'max:20', 'unique:users,phone_number,' . $user->id],
             'password'     => ['sometimes', 'string', 'min:6', 'confirmed'],
         ]);
 

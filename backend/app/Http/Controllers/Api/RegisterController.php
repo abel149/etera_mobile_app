@@ -121,71 +121,7 @@ class RegisterController extends Controller
         }
     }
 
-    // =====================================================================
-    // Individual registration
-    // POST /api/register/individual
-    // =====================================================================
-    public function storeIndividual(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'name'         => 'required|string|max:255',
-            'phone_number' => ['required', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
-            'location'     => 'required|string|max:255',
-            'email'        => 'nullable|email|unique:users,email',
-            'password'     => 'required|string|min:6|max:6|confirmed',
-            'terms'        => 'required|accepted',
-        ], [
-            'phone_number.unique' => 'You already have an account with this phone number.',
-            'phone_number.regex'  => 'Phone number must be exactly 10 digits.',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation error',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
-        DB::beginTransaction();
-
-        try {
-            $user = User::create([
-                'name'         => $request->name,
-                'phone_number' => $request->phone_number,
-                'location'     => $request->location,
-                'email'        => $request->filled('email') ? $request->email : null,
-                'password'     => Hash::make($request->password),
-                'role'         => 'individual',
-                'approved'     => false,
-                'balance'      => 0,
-            ]);
-
-            Log::info('Individual registration submitted (API)', [
-                'user_id' => $user->id,
-                'ip'      => $request->ip(),
-            ]);
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Registration successful. Awaiting admin approval.',
-                'data'    => new UserResource($user),
-            ], 201);
-
-        } catch (\Exception $e) {
-            DB::rollback();
-
-            Log::error('Individual API registration failed', ['error' => $e->getMessage()]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Registration failed. Please try again.',
-            ], 500);
-        }
-    }
-
+ 
     // =====================================================================
     // Business owner registration
     // POST /api/register/business-owner
