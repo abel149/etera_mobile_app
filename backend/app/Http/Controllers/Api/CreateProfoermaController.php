@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Events\ProformaCreated;
+use App\Http\Resources\ApplicationResource;
+use App\Http\Resources\ProformaResource;
+use App\Http\Resources\WithdrawalResource;
 use App\Jobs\AutoSelectProformaOffers;
 use App\Models\Proforma;
 use App\Models\WithdrawalRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -222,18 +224,15 @@ class CreateProfoermaController extends Controller {
     {
         $user = auth()->user();
 
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized'
-            ], 401);
-        }
+        // Mark received proformas as viewed
         Proforma::where('poster_id', $user->id)
-        ->where('status', 'completed')
-        ->where('verified', true)
-        ->where('is_new', true)
-        ->update(['is_new' => false]);
-        $proformas = Proforma::where('poster_id', $user->id)
+            ->where('status', 'completed')
+            ->where('verified', true)
+            ->where('is_new', true)
+            ->update(['is_new' => false]);
+
+        $proformas = Proforma::with('brand')
+            ->where('poster_id', $user->id)
             ->where('status', 'completed')
             ->where('verified', true)
             ->orderBy('updated_at', 'desc')
@@ -241,69 +240,30 @@ class CreateProfoermaController extends Controller {
 
         return response()->json([
             'success' => true,
-            'data' => $proformas->items(),
+            'data' => ProformaResource::collection($proformas),
             'pagination' => [
                 'current_page' => $proformas->currentPage(),
-                'last_page' => $proformas->lastPage(),
-                'per_page' => $proformas->perPage(),
-                'total' => $proformas->total(),
+                'last_page'    => $proformas->lastPage(),
+                'per_page'     => $proformas->perPage(),
+                'total'        => $proformas->total(),
             ],
-        ], 200);
+        ]);
     }
     public function dashboard()
-        {
-            $user = auth()->user();
+    {
+        $user = auth()->user();
 
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthorized'
-                ], 401);
-            }
+        $proformas = $user->proformas()
+            ->with(['brand', 'applications'])
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-            // Load proformas with relationships (IMPORTANT)
-            $proformas = $user->proformas()
-                ->with(['brand', 'applications'])
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            $data = $proformas->map(function ($proforma) {
-
-                $applicationsCount = $proforma->applications->count();
-
-                return [
-                    'id' => $proforma->id,
-                    'file_number' => $proforma->file_number,
-                    'customer_name' => $proforma->customer_name,
-                    'brand' => $proforma->brand?->name,
-                    'model' => $proforma->model,
-                    'year' => $proforma->year,
-                    'license_plate' => $proforma->license_plate_number,
-                    'phone' => $proforma->customer_phone_number,
-
-                    'applications_count' => $applicationsCount,
-                    'required_shops' => $proforma->required_number_of_shops == 0
-                        ? '∞'
-                        : $proforma->required_number_of_shops,
-
-                    // 👇 This replaces your Blade logic
-                    'can_request_close' => (
-                        $proforma->status === 'published' &&
-                        !$proforma->close_request &&
-                        $applicationsCount > 0
-                    ),
-
-                    'close_requested' => $proforma->close_request,
-                    'status' => $proforma->status,
-                ];
-            });
-
-            return response()->json([
-                'success' => true,
-                'total_proformas' => $proformas->count(),
-                'data' => $data
-            ]);
-        }
+        return response()->json([
+            'success' => true,
+            'total_proformas' => $proformas->count(),
+            'data' => ProformaResource::collection($proformas),
+        ]);
+    }
     public function requestClose($id)
     {
         $user = auth()->user();
@@ -340,7 +300,7 @@ class CreateProfoermaController extends Controller {
     }
 
     /**
-     * GET /api/proformas/{id}
+     * GET /api/v1/proformas/{id}
      * Proforma details with applications, prices, parts, invoice
      */
     public function show($id)
@@ -376,154 +336,73 @@ class CreateProfoermaController extends Controller {
         $shops = $allApplications->where('from', 'shop')->sortBy('final_price')->values();
         $garages = $allApplications->where('from', 'garage')->sortBy('final_price')->values();
 
-        if ($requiredShops > 0) {
-            $shops = $shops->take($requiredShops);
-        }
-        if ($requiredGarages > 0) {
-            $garages = $garages->take($requiredGarages);
-        }
-        // Etera Chereta mode: show top 5
+        if ($requiredShops > 0) $shops = $shops->take($requiredShops);
+        if ($requiredGarages > 0) $garages = $garages->take($requiredGarages);
         if ($requiredShops === 0 && $requiredGarages === 0) {
             $shops = $shops->take(5);
             $garages = $garages->take(5);
         }
 
-        // Format applications for mobile
-        $formatApplication = function ($app) use ($proforma) {
-            $subtotal = $app->prices->sum('part_total');
-            $discount = (float) ($app->discount ?? 0);
-            $discountAmt = $subtotal > 0 ? ($subtotal * $discount / 100) : 0;
-            $netTotal = $subtotal > 0 ? ($subtotal - $discountAmt) : (float) ($app->amount ?? 0);
-
-            return [
-                'id' => $app->id,
-                'from' => $app->from,
-                'applicant' => [
-                    'name' => $app->applicationBy->name ?? null,
-                    'phone' => $app->applicationBy->phone_number ?? null,
-                    'store_id' => $app->applicationBy->store_id ?? null,
-                    'tin_number' => $app->applicationBy->tin_number ?? null,
-                    'location' => $app->applicationBy->location ?? null,
-                ],
-                'parts_pricing' => $app->prices->map(function ($price) {
-                    return [
-                        'car_part_id' => $price->car_part_id,
-                        'unit_price' => (float) $price->unit_price,
-                        'part_total' => (float) $price->part_total,
-                    ];
-                }),
-                'subtotal' => round($subtotal, 2),
-                'discount_pct' => $discount,
-                'discount_amount' => round($discountAmt, 2),
-                'net_total' => round($netTotal, 2),
-                'final_price' => round($app->final_price, 2),
-            ];
-        };
-
         return response()->json([
             'success' => true,
             'data' => [
-                'proforma' => [
-                    'id' => $proforma->id,
-                    'file_number' => $proforma->file_number,
-                    'brand' => $proforma->brand?->name,
-                    'model' => $proforma->model,
-                    'year' => $proforma->year,
-                    'car_type' => $proforma->car_type,
-                    'customer_name' => $proforma->customer_name,
-                    'customer_phone' => $proforma->customer_phone_number,
-                    'license_plate' => $proforma->license_plate_number,
-                    'chassis_number' => $proforma->chassis_number,
-                    'status' => $proforma->status,
-                    'close_request' => (bool) $proforma->close_request,
-                    'voice_note_url' => $proforma->voice_note_path
-                        ? asset('storage/' . $proforma->voice_note_path)
-                        : null,
-                    'timer_duration' => $proforma->timer_duration,
-                    'timer_expires_at' => $proforma->timer_expires_at,
-                    'created_at' => $proforma->created_at?->toIso8601String(),
-                ],
-                'parts' => $proforma->parts->map(function ($part) {
-                    return [
-                        'id' => $part->id,
-                        'number' => $part->number,
-                        'component' => $part->component,
-                        'condition' => $part->condition,
-                        'grade' => $part->grade,
-                        'country' => $part->country,
-                        'quantity' => $part->quantity,
-                    ];
-                }),
-                'invoice' => $proforma->proformaInvoice ? [
+                'proforma' => new ProformaResource($proforma),
+                'parts'    => \App\Http\Resources\PartResource::collection($proforma->parts),
+                'invoice'  => $proforma->proformaInvoice ? [
                     'sku' => $proforma->proformaInvoice->sku,
                     'url' => url('/transaction/' . $proforma->proformaInvoice->sku),
                 ] : null,
-                'shops' => $shops->map($formatApplication)->values(),
-                'garages' => $garages->map($formatApplication)->values(),
+                'shops'   => ApplicationResource::collection($shops),
+                'garages' => ApplicationResource::collection($garages),
             ],
-        ], 200);
+        ]);
     }
 
-   
     /**
-     * GET /api/balance
+     * GET /api/v1/balance
      */
     public function balance()
     {
         $user = auth()->user();
 
-        $withdrawalRequests = $user->withdrawalRequests()
+        $withdrawals = $user->withdrawalRequests()
             ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($req) {
-                return [
-                    'id' => $req->id,
-                    'amount' => (float) $req->amount,
-                    'bank_name' => $req->bank_name,
-                    'account_number' => $req->account_number,
-                    'status' => $req->status,
-                    'created_at' => $req->created_at?->toIso8601String(),
-                ];
-            });
+            ->get();
 
         return response()->json([
             'success' => true,
             'data' => [
-                'balance' => (float) $user->balance,
-                'withdrawal_requests' => $withdrawalRequests,
+                'balance'             => (float) $user->balance,
+                'withdrawal_requests' => WithdrawalResource::collection($withdrawals),
             ],
-        ], 200);
+        ]);
     }
 
     /**
-     * POST /api/withdraw
+     * POST /api/v1/withdraw
      */
     public function submitWithdrawal(Request $request)
     {
         $user = auth()->user();
 
         $validated = $request->validate([
-            'amount' => ['required', 'numeric', 'min:1', 'max:' . $user->balance],
-            'bank_name' => ['required', 'string', 'in:CBE,Abyssiniya,Awash,Dashen,Enat,Wegagen,Tsedey'],
+            'amount'         => ['required', 'numeric', 'min:1', 'max:' . $user->balance],
+            'bank_name'      => ['required', 'string', 'in:CBE,Abyssiniya,Awash,Dashen,Enat,Wegagen,Tsedey'],
             'account_number' => ['required', 'string'],
         ]);
 
         $withdrawal = WithdrawalRequest::create([
-            'from' => $user->id,
-            'amount' => $validated['amount'],
-            'bank_name' => $validated['bank_name'],
+            'from'           => $user->id,
+            'amount'         => $validated['amount'],
+            'bank_name'      => $validated['bank_name'],
             'account_number' => $validated['account_number'],
-            'status' => 'pending',
+            'status'         => 'pending',
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Withdrawal request submitted',
-            'data' => [
-                'id' => $withdrawal->id,
-                'amount' => (float) $withdrawal->amount,
-                'status' => $withdrawal->status,
-            ],
+            'data'    => new WithdrawalResource($withdrawal),
         ], 201);
     }
 }

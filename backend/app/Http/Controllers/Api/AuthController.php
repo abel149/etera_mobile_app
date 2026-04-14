@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -54,7 +55,7 @@ class AuthController extends Controller
             'data'    => [
                 'token'      => $token,
                 'token_type' => 'Bearer',
-                'user'       => $this->userPayload($user),
+                'user'       => new UserResource($user),
             ],
         ]);
     }
@@ -70,78 +71,37 @@ class AuthController extends Controller
         ]);
     }
 
-    // GET /api/auth/me
+    // GET /api/v1/auth/me
     public function me(Request $request)
     {
         return response()->json([
             'success' => true,
-            'data'    => $this->userPayload($request->user()),
+            'data'    => new UserResource($request->user()),
         ]);
     }
-
-    // GET /api/brands  — helper for registration (public)
-    public function brands()
-    {
-        $brands = \App\Models\Brand::select('id', 'name')->orderBy('name')->get();
-
-        return response()->json([
-            'success' => true,
-            'data'    => $brands,
-        ]);
-    }
-
-    private function userPayload(User $user): array
-    {
-        return [
-            'id'           => $user->id,
-            'name'         => $user->name,
-            'email'        => $user->email,
-            'phone_number' => $user->phone_number,
-            'role'         => $user->role,
-            'store_id'     => $user->store_id,
-            'approved'     => $user->approved,
-            'balance'      => $user->balance,
-            'location'     => $user->location,
-            'created_at'   => $user->created_at?->toISOString(),
-        ];
-    }
-     /**
-     * GET /api/profile
+    /**
+     * GET /api/v1/profile
      */
     public function profile()
     {
-        $user = auth()->user();
-
         return response()->json([
             'success' => true,
-            'data' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phone_number' => $user->phone_number,
-                'role' => $user->role,
-                'approved' => (bool) $user->approved,
-                'balance' => (float) $user->balance,
-                'store_id' => $user->store_id,
-                'tin_number' => $user->tin_number,
-                'location' => $user->location,
-                'created_at' => $user->created_at?->toIso8601String(),
-            ],
-        ], 200);
+            'data'    => new UserResource(auth()->user()),
+        ]);
     }
 
     /**
-     * PUT /api/profile
+     * PUT /api/v1/profile
      */
     public function updateProfile(Request $request)
     {
         $user = auth()->user();
 
         $validated = $request->validate([
-            'name' => ['sometimes', 'string', 'max:255'],
-            'email' => ['sometimes', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'name'         => ['sometimes', 'string', 'max:255'],
+            'email'        => ['sometimes', 'email', 'max:255', 'unique:users,email,' . $user->id],
             'phone_number' => ['sometimes', 'string', 'max:20'],
-            'password' => ['sometimes', 'string', 'min:6', 'confirmed'],
+            'password'     => ['sometimes', 'string', 'min:6', 'confirmed'],
         ]);
 
         if (isset($validated['password'])) {
@@ -153,13 +113,8 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Profile updated successfully',
-            'data' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phone_number' => $user->phone_number,
-            ],
-        ], 200);
+            'data'    => new UserResource($user->fresh()),
+        ]);
     }
 
 }

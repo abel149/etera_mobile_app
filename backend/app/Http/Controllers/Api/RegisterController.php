@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Models\BrandUser;
 use App\Models\Brand;
@@ -21,6 +22,16 @@ use App\Notifications\PendingApprovalSignup;
 
 class RegisterController extends Controller
 {
+    // GET /api/brands  — helper for registration (public)
+    public function brands()
+    {
+        $brands = \App\Models\Brand::select('id', 'name')->orderBy('name')->get();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $brands,
+        ]);
+    }
     // =====================================================================
     // Universal registration — handles all roles except garage/shop
     // POST /api/register
@@ -92,13 +103,7 @@ class RegisterController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Registration successful. Awaiting admin approval.',
-                'data'    => [
-                    'user_id'      => $user->id,
-                    'name'         => $user->name,
-                    'phone_number' => $user->phone_number,
-                    'role'         => $user->role,
-                    'approved'     => (bool) $user->approved,
-                ],
+                'data'    => new UserResource($user),
             ], 201);
 
         } catch (\Exception $e) {
@@ -166,13 +171,7 @@ class RegisterController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Registration successful. Awaiting admin approval.',
-                'data'    => [
-                    'user_id'      => $user->id,
-                    'name'         => $user->name,
-                    'phone_number' => $user->phone_number,
-                    'role'         => $user->role,
-                    'approved'     => (bool) $user->approved,
-                ],
+                'data'    => new UserResource($user),
             ], 201);
 
         } catch (\Exception $e) {
@@ -223,7 +222,7 @@ class RegisterController extends Controller
                 'location'     => $request->location,
                 'email'        => $request->filled('email') ? $request->email : null,
                 'password'     => Hash::make($request->password),
-                'role'         => 'business_owner', // business_owner maps to 'others' (matches web)
+                'role'         => 'business_owner',  // MUST be 'others' — matches User::ROLE_BUSINESS_OWNER and web app
                 'approved'     => true,     // business owners are auto-approved (matches web)
                 'balance'      => 0,
             ]);
@@ -241,13 +240,9 @@ class RegisterController extends Controller
                 'success' => true,
                 'message' => 'Registration successful.',
                 'data'    => [
-                    'user_id'      => $user->id,
-                    'name'         => $user->name,
-                    'phone_number' => $user->phone_number,
-                    'role'         => $user->role,
-                    'approved'     => (bool) $user->approved,
-                    'token'        => $token,
-                    'token_type'   => 'Bearer',
+                    'token'      => $token,
+                    'token_type' => 'Bearer',
+                    'user'       => new UserResource($user),
                 ],
             ], 201);
 
@@ -375,14 +370,7 @@ class RegisterController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Registration successful. Awaiting admin approval.',
-                'data'    => [
-                    'user_id'      => $user->id,
-                    'name'         => $user->name,
-                    'phone_number' => $user->phone_number,
-                    'role'         => $user->role,
-                    'store_id'     => $user->store_id,
-                    'approved'     => (bool) $user->approved,
-                ],
+                'data'    => new UserResource($user),
             ], 201);
 
         } catch (\Exception $e) {
