@@ -76,46 +76,68 @@ Route::middleware('throttle:10,1')->group(function () {
 });
 
 // -----------------------------------------------------------------------
-// Protected: requires valid Sanctum token 
-// buissness owner routes
+// Protected: Shared — all authenticated users (any role)
 // -----------------------------------------------------------------------
 Route::middleware('auth:sanctum')->group(function () {
 
     // Auth
-    Route::post('/auth/logout', [AuthController::class, 'logout']);
-   
-    // Dashboard
-    Route::get('/dashboard', [CreateProfoermaController::class, 'dashboard']);
+    Route::post('/auth/logout',  [AuthController::class, 'logout']);
 
+    // Profile
+    Route::get('/profile',       [AuthController::class, 'profile']);
+    Route::put('/profile',       [AuthController::class, 'updateProfile']);
+
+});
+
+// -----------------------------------------------------------------------
+// Protected: Business Owner routes  (role: business_owner / others)
+// -----------------------------------------------------------------------
+Route::middleware('auth:sanctum')->group(function () {
+
+    //Profile 
+    Route::post('/auth/logout',                       [AuthController::class, 'logout']);
+    Route::get('/profile',                            [AuthController::class, 'profile']);
+    Route::put('/profile',                            [AuthController::class, 'updateProfile']);
+
+    // Dashboard
+    Route::get('/dashboard',                      [CreateProfoermaController::class, 'dashboard']);
     // Proformas
     Route::post('/create-file',                   [CreateProfoermaController::class, 'store']);
     Route::get('/proformas',                      [CreateProfoermaController::class, 'index']);
     Route::get('/proformas/{id}',                 [CreateProfoermaController::class, 'show']);
     Route::post('/proformas/{id}/request-close',  [CreateProfoermaController::class, 'requestClose']);
 
-    // Profile
-    Route::get('/profile', [AuthController::class, 'profile']);
-    Route::put('/profile', [AuthController::class, 'updateProfile']);
-
-
+   
 });
 
-
 // -----------------------------------------------------------------------
-// Protected: requires valid Sanctum token 
-// garage routes
+// Protected: Garage routes  (role: garage)
+// All prefixed /api/v1/garage/...
 // -----------------------------------------------------------------------
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:sanctum')->prefix('garage')->group(function () {
 
-    Route::get('/garage', [GarageController::class, 'index']);
-    Route::get('/garage', [GarageController::class, 'show']);
-    Route::post('/proformas/{id}/request-close',  [GarageController::class, 'requestClose']);
-    Route::get('/my-files', [GarageController::class, 'myFiles']);
-    Route::post('/create-file',[GarageController::class, 'store']);
-    Route::get('proforma-details',[GarageController::class, 'proformaDetails']);
-    Route::post('apply/{proforma}', [GarageController::class, 'applyProforma']);
-    Route::get('/received-proformas',[GarageController::class, 'receivedProformas']);
-    
+    // Auth (shared — same AuthController)
+    Route::post('/auth/logout',                       [AuthController::class, 'logout']);
+    Route::get('/profile',                            [AuthController::class, 'profile']);
+    Route::put('/profile',                            [AuthController::class, 'updateProfile']);
 
+    // Dashboard & Inbox
+    Route::get('/dashboard',                          [GarageController::class, 'dashboard']);
+    Route::get('/inbox',                              [GarageController::class, 'inbox']);
+
+    // Applications (proformas garage bids on)
+    Route::get('/my-applications',                    [GarageController::class, 'myApplications']);
+    Route::get('/proformas/{id}',                     [GarageController::class, 'proformaDetail']);
+    Route::post('/proformas/{id}/apply',              [GarageController::class, 'applyProforma']);
+
+    // Files (proformas garage created)
+    Route::get('/my-files',                           [GarageController::class, 'myFiles']);
+    Route::post('/create-file',                       [GarageController::class, 'createProforma']);
+    Route::post('/proformas/{id}/request-close',      [GarageController::class, 'requestClose']);
+    Route::get('/received-proformas',                 [GarageController::class, 'receivedProformas']);
+
+    // Balance & Withdrawals
+    Route::get('/balance',                            [GarageController::class, 'balance']);
+    Route::post('/withdraw',                          [GarageController::class, 'submitWithdrawal']);
 
 });

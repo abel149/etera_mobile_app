@@ -2,348 +2,447 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\ProformaCreated;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\ProformaResource;
+use App\Http\Resources\WithdrawalResource;
+use App\Jobs\AutoSelectProformaOffers;
+use App\Models\Inbox;
 use App\Models\Proforma;
 use App\Models\ProformaApplication;
 use App\Models\WithdrawalRequest;
+use App\Notifications\ProformaApplicationReceived;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
-class GarageController extends Controller{
+class GarageController extends Controller
+{
+    // -----------------------------------------------------------------------
+    // GET /api/v1/garage/dashboard
+    // Summary stats for the mobile home screen
+    // -----------------------------------------------------------------------
+    public function dashboard()
+    {
+        $user = auth()->user();
 
-    public function index(){
+        $applications = ProformaApplication::with('proforma')
+            ->where('application_by', $user->id)
+            ->get();
 
-         $user = auth()->user();
-            if (!$user || $user->role !== 'garage') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'unauthenticated'
-                ], 400);
-            }
+        $inboxCount = Inbox::where('user_id', $user->id)->count();
 
-            $applications = ProformaApplication::with(['proforma.brand', 'proforma.parts', 'prices'])
-                ->where('application_by', $user->id)
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            $pendingCount = $applications->filter(fn($app) => in_array(optional($app->proforma)->status, ['pending', 'opened', 'published']))->count();
-            $closedCount = $applications->filter(fn($app) => optional($app->proforma)->status === 'closed')->count();
-            $completedCount = $applications->filter(fn($app) => optional($app->proforma)->status === 'completed')->count();
-            $totalCount = $applications->count();
-
-            return response()->json([
+        return response()->json([
             'success' => true,
-            'data' => [
-                'applications' => $applications,
-                'pendingCount' => $pendingCount,
-                'closedCount'  => $closedCount,
-                'completedCount' => $completedCount,
-                'totalCount'    => $totalCount,
-
+            'data'    => [
+                'balance'        => (float) $user->balance,
+                'inbox_count'    => $inboxCount,
+                'total'          => $applications->count(),
+                'pending_count'  => $applications->filter(
+                    fn($a) => in_array(optional($a->proforma)->status, ['pending', 'opened', 'published'])
+                )->count(),
+                'closed_count'   => $applications->filter(
+                    fn($a) => optional($a->proforma)->status === 'closed'
+                )->count(),
+                'completed_count' => $applications->filter(
+                    fn($a) => optional($a->proforma)->status === 'completed'
+                )->count(),
             ],
         ]);
     }
 
-    public function createProforma(){
-        Log::info('📝 POST request to garage/create-file received', [
-                'user_id' => auth()->id(),
-                'has_files' => $request->hasFile('parts.photo'),
-                'all_input_keys' => array_keys($request->all()),
-                'files_count' => $request->hasFile('parts.photo') ? count($request->file('parts.photo')) : 0,
-            ]);
+    // -----------------------------------------------------------------------
+    // GET /api/v1/garage/my-applications
+    // All proformas this garage has applied to
+    // -----------------------------------------------------------------------
+    public function myApplications()
+    {
+        $user = auth()->user();
 
-            Log::debug('📥 Full Request Data Snapshot', [
-                'raw_input' => $request->except(['voice_note']),
-                'voice_note_present' => $request->filled('voice_note'),
-            ]);
+        $applications = ProformaApplication::with(['proforma.brand', 'proforma.parts'])
+            ->where('application_by', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-            // 🔹 Step 1 — Validate input
-            try {
-                $validatedData = $request->validate([
-                    'number_of_proformas' => ['required', 'integer', 'min:-1', 'max:4'],
-                    'etera_chereta_hours' => ['nullable', 'integer', 'in:4,8,12,24,48,72'],
-                    'brand_id' => ['required', 'integer', 'exists:brands,id'],
-                    'car_type' => 'required|in:ICE,EV,Hybrid,Others',
-                    'model' => ['required', 'string', 'max:255'],
-                    'year' => ['required', 'regex:/^(#N\/A|19\d{2}|20\d{2})$/'],
-                    'customer_phone_number' => ['required', 'string'],
-                    'chassis_number' => ['nullable', 'string'],
-                    'parts.condition' => ['required', 'array', 'min:1'],
-                    'parts.condition.*' => ['required', 'string', 'in:New'],
-                    'parts.number' => ['required', 'array', 'min:1'],
-                    'parts.number.*' => ['required', 'string'],
-                    'parts.grade' => ['required', 'array', 'min:1'],
-                    'parts.grade.*' => ['required', 'string'],
-                    'parts.country' => ['required', 'array'],
-                    'parts.country.*' => ['required', 'string'],
-                    'parts.quantity' => ['required', 'array'],
-                    'parts.quantity.*' => ['required', 'integer'],
-                    'parts.component' => ['required', 'array', 'min:1'],
-                    'parts.component.*' => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
-                    // ⚠️ FilePond now sends uploaded paths, not actual image files
-                    'parts.photo' => ['nullable', 'array'],
-                    'parts.photo.*' => ['nullable', 'array'],
-                    'parts.photo.*.*' => ['nullable', 'string'],
-                    'voice_note' => ['nullable', 'string'],
-                ]);
+        return response()->json([
+            'success' => true,
+            'data'    => $applications->map(fn($app) => [
+                'application_id' => $app->id,
+                'amount'         => (float) $app->amount,
+                'discount'       => (float) ($app->discount ?? 0),
+                'submitted_at'   => $app->created_at?->toIso8601String(),
+                'proforma'       => $app->proforma ? new ProformaResource($app->proforma) : null,
+            ]),
+        ]);
+    }
 
-                Log::info('✅ Validation passed successfully');
-            } catch (\Illuminate\Validation\ValidationException $e) {
-                Log::error('❌ Validation failed', [
-                    'errors' => $e->errors(),
-                    'input_data' => $request->except(['parts.photo', 'voice_note'])
-                ]);
-                return redirect()->back()->withErrors($e->errors())->withInput();
-            }
+    // -----------------------------------------------------------------------
+    // GET /api/v1/garage/inbox
+    // Proformas waiting in the garage's inbox (available to bid on)
+    // -----------------------------------------------------------------------
+    public function inbox()
+    {
+        $user = auth()->user();
 
-            // 🔹 Step 2 — Process transaction
-            try {
-                DB::beginTransaction();
+        $inboxItems = Inbox::where('user_id', $user->id)
+            ->with(['proforma.brand', 'proforma.parts'])
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-                $isEteraChereta = $request->input('number_of_proformas') === '-1';
-                $eteraHours = (int) $request->input('etera_chereta_hours', 24);
-                $requiredShops = $isEteraChereta ? 0 : (int) $request->input('number_of_proformas', 3);
-                $timerMinutes = $isEteraChereta ? $eteraHours * 60 : null;
-                $timerExpiresAt = $isEteraChereta ? now()->addMinutes($timerMinutes) : null;
+        return response()->json([
+            'success' => true,
+            'count'   => $inboxItems->count(),
+            'data'    => $inboxItems->map(fn($item) => [
+                'inbox_id'   => $item->proforma_id,
+                'proforma'   => $item->proforma ? new ProformaResource($item->proforma) : null,
+                'received_at' => $item->created_at?->toIso8601String(),
+            ]),
+        ]);
+    }
 
-                $proforma = Proforma::create([
-                    'poster_id' => auth()->id(),
-                    'file_number' => '#' . auth()->id() . '-' . substr(time(), -4),
-                    'car_brand_id' => $request->brand_id,
-                    'car_type' => $request->input('car_type', 'ICE'),
-                    'customer_name' => auth()->user()->name,
-                    'customer_phone_number' => $request->customer_phone_number,
-                   
-                    'chassis_number' => $request->chassis_number,
-                    'year' => $request->year,
-                    'model' => $request->model,
-                    'required_number_of_shops' => $requiredShops,
-                    'required_number_of_garages' => 0,
-                    'timer_duration' => $timerMinutes,
-                    'timer_expires_at' => $timerExpiresAt,
-                ]);
+    // -----------------------------------------------------------------------
+    // GET /api/v1/garage/proformas/{id}
+    // Details of one available proforma (clears inbox entry on view)
+    // -----------------------------------------------------------------------
+    public function proformaDetail($id)
+    {
+        $user = auth()->user();
 
-                // 🔹 Step 3 — Handle spare parts
-                // 🔹 Attach FilePond async-uploaded images (using PartsImage model)
-    // 🔹 Step 3 — Handle spare parts
-    $partsData = $request->input('parts');
+        $proforma = Proforma::with(['brand', 'parts'])
+            ->whereIn('status', ['pending', 'opened', 'published'])
+            ->find($id);
 
-    foreach ($partsData['condition'] as $index => $condition) {
-        $part = $proforma->parts()->create([
-            'number'    => $partsData['number'][$index] ?? null,
-            'grade'     => $partsData['grade'][$index] ?? null,
-            'country'   => $partsData['country'][$index] ?? null,
-            'quantity'  => $partsData['quantity'][$index] ?? 1,
-            'condition' => $condition,
-            'component' => $partsData['component'][$index] ?? null,
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
+        }
+
+        // Clear inbox entry when garage views the proforma
+        Inbox::where('user_id', $user->id)
+            ->where('proforma_id', $proforma->id)
+            ->delete();
+
+        $alreadyApplied = ProformaApplication::where('application_by', $user->id)
+            ->where('proforma_id', $proforma->id)
+            ->exists();
+
+        return response()->json([
+            'success'         => true,
+            'already_applied' => $alreadyApplied,
+            'data'            => [
+                'proforma' => new ProformaResource($proforma),
+                'parts'    => \App\Http\Resources\PartResource::collection($proforma->parts),
+            ],
+        ]);
+    }
+
+    // -----------------------------------------------------------------------
+    // POST /api/v1/garage/proformas/{id}/apply
+    // Submit a price quote for a proforma
+    // -----------------------------------------------------------------------
+    public function applyProforma(Request $request, $id)
+    {
+        $user = auth()->user();
+
+        $proforma = Proforma::whereIn('status', ['pending', 'opened', 'published'])->find($id);
+
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found or no longer accepting applications'], 404);
+        }
+
+        $alreadyApplied = ProformaApplication::where('application_by', $user->id)
+            ->where('proforma_id', $proforma->id)
+            ->exists();
+
+        if ($alreadyApplied) {
+            return response()->json(['success' => false, 'message' => 'You have already applied to this proforma'], 422);
+        }
+
+        $validated = $request->validate([
+            'amount'   => 'required|numeric|min:1',
+            'discount' => 'nullable|numeric|min:0|max:100',
         ]);
 
-        Log::info('✅ Proforma part created', ['part_id' => $part->id, 'index' => $index]);
+        $discount    = $validated['discount'] ?? 0;
+        $finalAmount = max($validated['amount'] - ($validated['amount'] * $discount / 100), 1);
 
-        // 🔹 Move temp images and attach them
-        if (isset($partsData['photo'][$index]) && is_array($partsData['photo'][$index])) {
-            foreach ($partsData['photo'][$index] as $photoPath) {
-                if (!empty($photoPath) && str_contains($photoPath, 'uploads/temp/')) {
-                $tempPath = $photoPath;
-                $filename = basename($tempPath);
-                $finalPath = 'uploads/part-images/' . $filename;
-
-                // Move the file
-                if (Storage::disk('public')->exists($tempPath)) {
-                    Storage::disk('public')->move($tempPath, $finalPath);
-
-                    \App\Models\PartsImage::create([
-                        'proforma_part_id' => $part->id,
-                        'image_path' => $finalPath,
-                    ]);
-
-                    Log::info('✅ Temp image moved and saved', [
-                        'from' => $tempPath,
-                        'to' => $finalPath,
-                        'proforma_part_id' => $part->id,
-                    ]);
-                } else {
-                    Log::warning('⚠️ Temp image not found', ['path' => $tempPath]);
-                }
-            }
-                    }
-                } else {
-                    Log::warning('⚠️ No images found for part', ['index' => $index]);
-                }
-            }
-
-
-                // 🔹 Step 4 — Voice note (optional)
-                if ($request->filled('voice_note')) {
-                    $base64 = $request->voice_note;
-                    
-                    // Extract the extension from the MIME type (handles codecs like audio/webm;codecs=opus)
-                    if (preg_match('#^data:audio/([^;,]+)#i', $base64, $matches)) {
-                        $extension = $matches[1]; // e.g. webm, mp3, wav
-                    } else {
-                        $extension = 'webm'; // default
-                    }
-                    
-                    // Remove the entire data URI prefix including any codec specifications
-                    // Pattern matches: data:audio/webm;codecs=opus;base64, OR data:audio/webm;base64,
-                    $audioData = base64_decode(preg_replace('#^data:audio/[^;]+[^,]*,#i', '', $base64));
-                    
-                    if ($audioData === false) {
-                        Log::error('❌ Voice note base64 decoding failed');
-                    } else {
-                        $filename = 'voice_note_' . time() . '_' . uniqid() . '.' . $extension;
-                        Storage::disk('public')->put('voice_notes/' . $filename, $audioData);
-                        $proforma->update(['voice_note_path' => 'voice_notes/' . $filename]);
-                        Log::info('🎤 Voice note saved', ['filename' => $filename, 'size' => strlen($audioData)]);
-                    }
-                }
-
-                DB::commit();
-
-                // 🔔 Broadcast to admin dashboard in real-time
-                event(new ProformaCreated($proforma));
-
-                // 🔹 Step 5 — Schedule Etera-Chereta AutoSelect
-                if ($isEteraChereta) {
-                    AutoSelectProformaOffers::dispatch($proforma->id)->delay(now()->addMinutes($timerMinutes));
-                }
-
-                return redirect()->back()->with('success', 'Proforma created successfully!');
-            } catch (\Exception $e) {
-                DB::rollBack();
-                Log::error('❌ Proforma creation failed', [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
-                return redirect()->back()->withErrors(['general' => 'An unexpected error occurred.'])->withInput();
-            }
-        
-   
-    }
-     public function requestClose($id)
-   
-     {
-                Log::info("🔵 Route hit: Start request-close", [
-                'proforma_id' => $proformaId,
+        DB::beginTransaction();
+        try {
+            $application = ProformaApplication::create([
+                'proforma_id'    => $proforma->id,
+                'application_by' => $user->id,
+                'from'           => 'garage',
+                'amount'         => $finalAmount,
+                'discount'       => $discount,
             ]);
 
-            // Try to fetch the model normally
-            $proforma = \App\Models\Proforma::find($proformaId);
+            // Clear inbox entry
+            Inbox::where('user_id', $user->id)->where('proforma_id', $proforma->id)->delete();
 
-            if (!$proforma) {
-                Log::error("❌ Proforma not found!", [
-                    'proforma_id' => $proformaId,
-                ]);
-
-                return back()->with('error', 'Proforma not found.');
+            // Notify poster
+            if ($proforma->poster && $proforma->poster->id !== $user->id) {
+                $proforma->poster->notify(new ProformaApplicationReceived($proforma, $application, $user));
             }
 
-            Log::info("🟡 Proforma loaded", [
-                'id' => $proforma->id,
-                'current_close_request' => $proforma->close_request,
-            ]);
-
-            // Try updating
-            $updated = $proforma->update([
-                'close_request' => true,
-            ]);
-
-            Log::info("🟢 Update executed", [
-                'result' => $updated,
-                'new_close_request' => $proforma->fresh()->close_request,
-            ]);
-
-            return back()->with('success', 'Close request submitted.');
-
-    }
-    public function myFiles(){
-         $proformas = auth()->user()
-        ->proformas()
-        ->orderBy('created_at', 'desc')
-        ->get();
-
-    return view('spare-part.files', compact('proformas'));
-    }
-
-    public function proformaDetails(){
-         $proforma = \App\Models\Proforma::find($request->query('proforma'));
-            if (! $proforma) {
-                return redirect()->back();
-            }
-
-            // Reset inbox count when user opens proforma details
-            if (auth()->check()) {
-                // Remove the proforma from user's inbox to reset the ticker
-                \App\Models\Inbox::where('user_id', auth()->id())
-                    ->where('proforma_id', $proforma->id)
-                    ->delete();
-            }
-
-            return view('spare-part.details', compact('proforma'));
-    }
-    public function applyProforma(Request $request){
-        $request->validate([
-                'amount' => 'required|numeric|min:1',
-                'discount' => 'nullable|numeric|min:0|max:100',
-            ]);
-
-            // Calculate final amount
-            $initialPrice = $request->amount;
-            $discount = $request->discount ?? 0;
-            $finalAmount = $request->input('final-amount', $initialPrice);
-            
-            // Ensure minimum amount
-            $finalAmount = max($finalAmount, 1);
-
-            $application = $proforma->applications()->create([
-                'application_by' => auth()->id(),
-                'from' => 'garage',
-                'amount' => $finalAmount,
-                'discount' => $discount,
-            ]);
-
-            // Send notification to proforma poster
-            if ($proforma->poster && $proforma->poster->id !== auth()->id()) {
-                $proforma->poster->notify(new ProformaApplicationReceived($proforma, $application, auth()->user()));
-            }
-
-            // Remove inbox record if exists
-            $proforma->inboxes()->where('user_id', auth()->id())->delete();
-
-            // Check if proforma should be closed (both garage and shop requirements met)
-            $garageApplicationsCount = $proforma->applications()->where('from', 'garage')->count();
-            $shopApplicationsCount = $proforma->applications()->where('from', 'shop')->count();
+            // Auto-close if requirements met
             $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
-            $requiredShops = (int) ($proforma->required_number_of_shops ?? 0);
-            
-            // Check if BOTH garage and shop requirements are met and not an Etera-Chereta (0,0) proforma
-            $isEteraChereta = ($requiredGarages + $requiredShops) === 0;
-            $garageRequirementMet = $requiredGarages === 0 || $garageApplicationsCount >= $requiredGarages;
-            $shopRequirementMet = $requiredShops === 0 || $shopApplicationsCount >= $requiredShops;
-            
-            if (!$isEteraChereta && $garageRequirementMet && $shopRequirementMet && ($requiredGarages > 0 || $requiredShops > 0)) {
-                $proforma->update(['status' => 'closed']);
-                $proforma->inboxes()->delete();
+            $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
+            $isEteraChereta  = ($requiredGarages + $requiredShops) === 0;
+
+            if (!$isEteraChereta) {
+                $garageCount = $proforma->applications()->where('from', 'garage')->count();
+                $shopCount   = $proforma->applications()->where('from', 'shop')->count();
+                $garageMet   = $requiredGarages === 0 || $garageCount >= $requiredGarages;
+                $shopMet     = $requiredShops === 0 || $shopCount >= $requiredShops;
+
+                if ($garageMet && $shopMet && ($requiredGarages > 0 || $requiredShops > 0)) {
+                    $proforma->update(['status' => 'closed']);
+                    $proforma->inboxes()->delete();
+                }
             }
 
-            return redirect('/role/proformas')
-                ->with('success', 'Price quote submitted successfully!');
-      
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Price quote submitted successfully',
+                'data'    => [
+                    'application_id' => $application->id,
+                    'amount'         => (float) $application->amount,
+                    'discount'       => (float) $application->discount,
+                    'proforma_status' => $proforma->fresh()->status,
+                ],
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Garage apply proforma failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Failed to submit quote. Please try again.'], 500);
+        }
     }
-    public function receivedProformas(){
-         $user = auth()->user();
 
-    // Mark all new proformas for this user as viewed
-    $user->markReceivedProformasAsViewed();
+    // -----------------------------------------------------------------------
+    // GET /api/v1/garage/my-files
+    // Proformas the garage created themselves
+    // -----------------------------------------------------------------------
+    public function myFiles()
+    {
+        $user = auth()->user();
 
-    // Fetch only completed proformas for the current user, newest first, paginated
-    $proformas = Proforma::where('poster_id', $user->id)
-        ->where('status', 'completed')       // ✅ only completed
-        ->orderBy('created_at', 'desc')      // ✅ newest first
-        ->paginate(10);
+        $proformas = Proforma::with('brand')
+            ->where('poster_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-    return view('spare-part.received', compact('proformas'));
+        return response()->json([
+            'success' => true,
+            'data'    => ProformaResource::collection($proformas),
+        ]);
+    }
+
+    // -----------------------------------------------------------------------
+    // POST /api/v1/garage/create-file
+    // Create a new proforma (garage posting their own)
+    // -----------------------------------------------------------------------
+    public function createProforma(Request $request)
+    {
+        Log::info('POST /api/v1/garage/create-file', ['user_id' => auth()->id()]);
+
+        $validated = $request->validate([
+            'number_of_proformas'  => ['required', 'integer', 'min:-1', 'max:4'],
+            'etera_chereta_hours'  => ['nullable', 'integer', 'in:4,8,12,24,48,72'],
+            'brand_id'             => ['required', 'integer', 'exists:brands,id'],
+            'car_type'             => ['required', 'in:ICE,EV,Hybrid,Others'],
+            'model'                => ['required', 'string', 'max:255'],
+            'year'                 => ['required', 'regex:/^(#N\/A|19\d{2}|20\d{2})$/'],
+            'customer_phone_number' => ['required', 'string'],
+            'chassis_number'       => ['nullable', 'string'],
+            'parts'                => ['required', 'array', 'min:1'],
+            'parts.*.number'       => ['required', 'string'],
+            'parts.*.component'    => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
+            'parts.*.condition'    => ['required', 'string', 'in:New,Used,Refurbished'],
+            'parts.*.grade'        => ['required', 'string'],
+            'parts.*.country'      => ['required', 'string'],
+            'parts.*.quantity'     => ['required', 'integer', 'min:1'],
+            'parts.*.photo_paths'  => ['nullable', 'array'],
+            'parts.*.photo_paths.*' => ['nullable', 'string'],
+            'voice_note'           => ['nullable', 'string'],
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $isEteraChereta = (int) $validated['number_of_proformas'] === -1;
+            $eteraHours     = (int) ($validated['etera_chereta_hours'] ?? 24);
+            $requiredShops  = $isEteraChereta ? 0 : (int) $validated['number_of_proformas'];
+            $timerMinutes   = $isEteraChereta ? $eteraHours * 60 : null;
+            $timerExpiresAt = $isEteraChereta ? now()->addMinutes($timerMinutes) : null;
+
+            $proforma = Proforma::create([
+                'poster_id'               => auth()->id(),
+                'file_number'             => '#' . auth()->id() . '-' . substr(time(), -4),
+                'car_brand_id'            => $validated['brand_id'],
+                'car_type'                => $validated['car_type'],
+                'customer_name'           => auth()->user()->name,
+                'customer_phone_number'   => $validated['customer_phone_number'],
+                'chassis_number'          => $validated['chassis_number'] ?? null,
+                'year'                    => $validated['year'],
+                'model'                   => $validated['model'],
+                'required_number_of_shops' => $requiredShops,
+                'required_number_of_garages' => 0,
+                'timer_duration'          => $timerMinutes,
+                'timer_expires_at'        => $timerExpiresAt,
+            ]);
+
+            foreach ($validated['parts'] as $partData) {
+                $part = $proforma->parts()->create([
+                    'number'    => $partData['number'],
+                    'grade'     => $partData['grade'],
+                    'country'   => $partData['country'],
+                    'quantity'  => $partData['quantity'],
+                    'condition' => $partData['condition'],
+                    'component' => $partData['component'],
+                ]);
+
+                foreach ($partData['photo_paths'] ?? [] as $photoPath) {
+                    if (!empty($photoPath) && str_contains($photoPath, 'uploads/temp/')) {
+                        $finalPath = 'uploads/part-images/' . basename($photoPath);
+                        if (Storage::disk('public')->exists($photoPath)) {
+                            Storage::disk('public')->move($photoPath, $finalPath);
+                            \App\Models\PartsImage::create([
+                                'proforma_part_id' => $part->id,
+                                'image_path'       => $finalPath,
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            // Voice note (base64 string)
+            if (!empty($validated['voice_note'])) {
+                $base64 = $validated['voice_note'];
+                preg_match('#^data:audio/([^;,]+)#i', $base64, $matches);
+                $extension = $matches[1] ?? 'webm';
+                $audioData = base64_decode(preg_replace('#^data:audio/[^;]+[^,]*,#i', '', $base64));
+
+                if ($audioData !== false) {
+                    $filename = 'voice_note_' . time() . '_' . uniqid() . '.' . $extension;
+                    Storage::disk('public')->put('voice_notes/' . $filename, $audioData);
+                    $proforma->update(['voice_note_path' => 'voice_notes/' . $filename]);
+                }
+            }
+
+            DB::commit();
+
+            event(new ProformaCreated($proforma));
+
+            if ($isEteraChereta) {
+                AutoSelectProformaOffers::dispatch($proforma->id)->delay(now()->addMinutes($timerMinutes));
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Proforma created successfully',
+                'data'    => new ProformaResource($proforma->load('brand')),
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Garage create proforma failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Failed to create proforma. Please try again.'], 500);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // POST /api/v1/garage/proformas/{id}/request-close
+    // Request to close a proforma the garage created
+    // -----------------------------------------------------------------------
+    public function requestClose($id)
+    {
+        $user     = auth()->user();
+        $proforma = Proforma::where('id', $id)->where('poster_id', $user->id)->first();
+
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
+        }
+
+        if ($proforma->close_request) {
+            return response()->json(['success' => false, 'message' => 'Close request already submitted'], 422);
+        }
+
+        $proforma->update(['close_request' => true]);
+
+        return response()->json(['success' => true, 'message' => 'Close request submitted successfully']);
+    }
+
+    // -----------------------------------------------------------------------
+    // GET /api/v1/garage/received-proformas
+    // Completed proformas the garage received (they applied and won)
+    // -----------------------------------------------------------------------
+    public function receivedProformas()
+    {
+        $user = auth()->user();
+
+        $proformas = Proforma::with('brand')
+            ->where('poster_id', $user->id)
+            ->where('status', 'completed')
+            ->orderBy('created_at', 'desc')
+            ->paginate(10);
+
+        return response()->json([
+            'success'    => true,
+            'data'       => ProformaResource::collection($proformas),
+            'pagination' => [
+                'current_page' => $proformas->currentPage(),
+                'last_page'    => $proformas->lastPage(),
+                'per_page'     => $proformas->perPage(),
+                'total'        => $proformas->total(),
+            ],
+        ]);
+    }
+
+    // -----------------------------------------------------------------------
+    // GET /api/v1/garage/balance
+    // -----------------------------------------------------------------------
+    public function balance()
+    {
+        $user = auth()->user();
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'balance'             => (float) $user->balance,
+                'withdrawal_requests' => WithdrawalResource::collection(
+                    $user->withdrawalRequests()->orderBy('created_at', 'desc')->get()
+                ),
+            ],
+        ]);
+    }
+
+    // -----------------------------------------------------------------------
+    // POST /api/v1/garage/withdraw
+    // -----------------------------------------------------------------------
+    public function submitWithdrawal(Request $request)
+    {
+        $user = auth()->user();
+
+        $validated = $request->validate([
+            'amount'         => ['required', 'numeric', 'min:1', 'max:' . $user->balance],
+            'bank_name'      => ['required', 'string', 'in:CBE,Abyssiniya,Awash,Dashen,Enat,Wegagen,Tsedey'],
+            'account_number' => ['required', 'string'],
+        ]);
+
+        $withdrawal = WithdrawalRequest::create([
+            'from'           => $user->id,
+            'amount'         => $validated['amount'],
+            'bank_name'      => $validated['bank_name'],
+            'account_number' => $validated['account_number'],
+            'status'         => 'pending',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Withdrawal request submitted',
+            'data'    => new WithdrawalResource($withdrawal),
+        ], 201);
     }
 }
