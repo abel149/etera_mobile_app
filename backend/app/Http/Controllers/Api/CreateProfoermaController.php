@@ -44,7 +44,6 @@ class CreateProfoermaController extends Controller {
                     'model' => ['required', 'string', 'max:255'],
                     'year' => ['required', 'regex:/^(#N\/A|19\d{2}|20\d{2})$/'],
                     'customer_phone_number' => ['required', 'string'],
-                    'license_plate_number' => ['required', 'string'],
                     'chassis_number' => ['nullable', 'string'],
                     'parts.condition' => ['required', 'array', 'min:1'],
                     'parts.condition.*' => ['required', 'string', 'in:New'],
@@ -96,7 +95,6 @@ class CreateProfoermaController extends Controller {
 
                     'customer_name' => auth()->user()->name,
                     'customer_phone_number' => $request->customer_phone_number,
-                    'license_plate_number' => $request->license_plate_number,
                     'chassis_number' => $request->chassis_number,
                     'year' => $request->year,
                     'model' => $request->model,
@@ -357,51 +355,5 @@ class CreateProfoermaController extends Controller {
         ]);
     }
 
-    /**
-     * GET /api/v1/balance
-     */
-    public function balance()
-    {
-        $user = auth()->user();
-
-        $withdrawals = $user->withdrawalRequests()
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'balance'             => (float) $user->balance,
-                'withdrawal_requests' => WithdrawalResource::collection($withdrawals),
-            ],
-        ]);
-    }
-
-    /**
-     * POST /api/v1/withdraw
-     */
-    public function submitWithdrawal(Request $request)
-    {
-        $user = auth()->user();
-
-        $validated = $request->validate([
-            'amount'         => ['required', 'numeric', 'min:1', 'max:' . $user->balance],
-            'bank_name'      => ['required', 'string', 'in:CBE,Abyssiniya,Awash,Dashen,Enat,Wegagen,Tsedey'],
-            'account_number' => ['required', 'string'],
-        ]);
-
-        $withdrawal = WithdrawalRequest::create([
-            'from'           => $user->id,
-            'amount'         => $validated['amount'],
-            'bank_name'      => $validated['bank_name'],
-            'account_number' => $validated['account_number'],
-            'status'         => 'pending',
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Withdrawal request submitted',
-            'data'    => new WithdrawalResource($withdrawal),
-        ], 201);
-    }
+   
 }
