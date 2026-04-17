@@ -5,44 +5,50 @@ namespace App\Http\Controllers\Api;
 use App\Events\ProformaCreated;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProformaResource;
+use App\Http\Resources\UserResource;
 use App\Http\Resources\WithdrawalResource;
 use App\Jobs\AutoSelectProformaOffers;
 use App\Models\Inbox;
 use App\Models\Proforma;
 use App\Models\ProformaApplication;
+use App\Models\User;
 use App\Models\WithdrawalRequest;
 use App\Notifications\ProformaApplicationReceived;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class GarageController extends Controller
 {
-    // -----------------------------------------------------------------------
-    // GET /api/v1/garage/dashboard
-    // Summary stats for the mobile home screen
-    // -----------------------------------------------------------------------
-    public function dashboard()
+    private function getOwnerId(): int
     {
         $user = auth()->user();
+        return $user->registered_by ?? $user->id;
+    }
+
+    public function dashboard()
+    {
+        $ownerId = $this->getOwnerId();
+        $owner   = User::find($ownerId);
 
         $applications = ProformaApplication::with('proforma')
-            ->where('application_by', $user->id)
+            ->where('application_by', $ownerId)
             ->get();
 
-        $inboxCount = Inbox::where('user_id', $user->id)->count();
+        $inboxCount = Inbox::where('user_id', $ownerId)->count();
 
         return response()->json([
             'success' => true,
             'data'    => [
-                'balance'        => (float) $user->balance,
-                'inbox_count'    => $inboxCount,
-                'total'          => $applications->count(),
-                'pending_count'  => $applications->filter(
+                'balance'         => (float) $owner->balance,
+                'inbox_count'     => $inboxCount,
+                'total'           => $applications->count(),
+                'pending_count'   => $applications->filter(
                     fn($a) => in_array(optional($a->proforma)->status, ['pending', 'opened', 'published'])
                 )->count(),
-                'closed_count'   => $applications->filter(
+                'closed_count'    => $applications->filter(
                     fn($a) => optional($a->proforma)->status === 'closed'
                 )->count(),
                 'completed_count' => $applications->filter(
@@ -52,16 +58,12 @@ class GarageController extends Controller
         ]);
     }
 
-    // -----------------------------------------------------------------------
-    // GET /api/v1/garage/my-applications
-    // All proformas this garage has applied to
-    // -----------------------------------------------------------------------
     public function myApplications()
     {
-        $user = auth()->user();
+        $ownerId = $this->getOwnerId();
 
         $applications = ProformaApplication::with(['proforma.brand', 'proforma.parts'])
-            ->where('application_by', $user->id)
+            ->where('application_by', $ownerId)
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -77,15 +79,11 @@ class GarageController extends Controller
         ]);
     }
 
-    // -----------------------------------------------------------------------
-    // GET /api/v1/garage/inbox
-    // Proformas waiting in the garage's inbox (available to bid on)
-    // -----------------------------------------------------------------------
     public function inbox()
     {
-        $user = auth()->user();
+        $ownerId = $this->getOwnerId();
 
-        $inboxItems = Inbox::where('user_id', $user->id)
+        $inboxItems = Inbox::where('user_id', $ownerId)
             ->with(['proforma.brand', 'proforma.parts'])
             ->orderBy('created_at', 'desc')
             ->get();
@@ -94,20 +92,16 @@ class GarageController extends Controller
             'success' => true,
             'count'   => $inboxItems->count(),
             'data'    => $inboxItems->map(fn($item) => [
-                'inbox_id'   => $item->proforma_id,
-                'proforma'   => $item->proforma ? new ProformaResource($item->proforma) : null,
+                'inbox_id'    => $item->proforma_id,
+                'proforma'    => $item->proforma ? new ProformaResource($item->proforma) : null,
                 'received_at' => $item->created_at?->toIso8601String(),
             ]),
         ]);
     }
 
-    // -----------------------------------------------------------------------
-    // GET /api/v1/garage/proformas/{id}
-    // Details of one available proforma (clears inbox entry on view)
-    // -----------------------------------------------------------------------
     public function proformaDetail($id)
     {
-        $user = auth()->user();
+        $ownerId = $this->getOwnerId();
 
         $proforma = Proforma::with(['brand', 'parts'])
             ->whereIn('status', ['pending', 'opened', 'published'])
@@ -117,12 +111,9 @@ class GarageController extends Controller
             return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
         }
 
-        // Clear inbox entry when garage views the proforma
-        Inbox::where('user_id', $user->id)
-            ->where('proforma_id', $proforma->id)
-            ->delete();
+        Inbox::where('user_id', $ownerId)->where('proforma_id', $proforma->id)->delete();
 
-        $alreadyApplied = ProformaApplication::where('application_by', $user->id)
+        $alreadyApplied = ProformaApplication::where('application_by', $ownerId)
             ->where('proforma_id', $proforma->id)
             ->exists();
 
@@ -136,13 +127,10 @@ class GarageController extends Controller
         ]);
     }
 
-    // -----------------------------------------------------------------------
-    // POST /api/v1/garage/proformas/{id}/apply
-    // Submit a price quote for a proforma
-    // -----------------------------------------------------------------------
     public function applyProforma(Request $request, $id)
     {
-        $user = auth()->user();
+        $user    = auth()->user();
+        $ownerId = $this->getOwnerId();
 
         $proforma = Proforma::whereIn('status', ['pending', 'opened', 'published'])->find($id);
 
@@ -150,7 +138,7 @@ class GarageController extends Controller
             return response()->json(['success' => false, 'message' => 'Proforma not found or no longer accepting applications'], 404);
         }
 
-        $alreadyApplied = ProformaApplication::where('application_by', $user->id)
+        $alreadyApplied = ProformaApplication::where('application_by', $ownerId)
             ->where('proforma_id', $proforma->id)
             ->exists();
 
@@ -170,21 +158,18 @@ class GarageController extends Controller
         try {
             $application = ProformaApplication::create([
                 'proforma_id'    => $proforma->id,
-                'application_by' => $user->id,
+                'application_by' => $ownerId,
                 'from'           => 'garage',
                 'amount'         => $finalAmount,
                 'discount'       => $discount,
             ]);
 
-            // Clear inbox entry
-            Inbox::where('user_id', $user->id)->where('proforma_id', $proforma->id)->delete();
+            Inbox::where('user_id', $ownerId)->where('proforma_id', $proforma->id)->delete();
 
-            // Notify poster
-            if ($proforma->poster && $proforma->poster->id !== $user->id) {
+            if ($proforma->poster && $proforma->poster->id !== $ownerId) {
                 $proforma->poster->notify(new ProformaApplicationReceived($proforma, $application, $user));
             }
 
-            // Auto-close if requirements met
             $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
             $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
             $isEteraChereta  = ($requiredGarages + $requiredShops) === 0;
@@ -207,9 +192,9 @@ class GarageController extends Controller
                 'success' => true,
                 'message' => 'Price quote submitted successfully',
                 'data'    => [
-                    'application_id' => $application->id,
-                    'amount'         => (float) $application->amount,
-                    'discount'       => (float) $application->discount,
+                    'application_id'  => $application->id,
+                    'amount'          => (float) $application->amount,
+                    'discount'        => (float) $application->discount,
                     'proforma_status' => $proforma->fresh()->status,
                 ],
             ], 201);
@@ -221,16 +206,12 @@ class GarageController extends Controller
         }
     }
 
-    // -----------------------------------------------------------------------
-    // GET /api/v1/garage/my-files
-    // Proformas the garage created themselves
-    // -----------------------------------------------------------------------
     public function myFiles()
     {
-        $user = auth()->user();
+        $ownerId = $this->getOwnerId();
 
         $proformas = Proforma::with('brand')
-            ->where('poster_id', $user->id)
+            ->where('poster_id', $ownerId)
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -240,34 +221,31 @@ class GarageController extends Controller
         ]);
     }
 
-    // -----------------------------------------------------------------------
-    // POST /api/v1/garage/create-file
-    // Create a new proforma (garage posting their own)
-    // -----------------------------------------------------------------------
     public function createProforma(Request $request)
     {
-        Log::info('POST /api/v1/garage/create-file', ['user_id' => auth()->id()]);
-
         $validated = $request->validate([
-            'number_of_proformas'  => ['required', 'integer', 'min:-1', 'max:4'],
-            'etera_chereta_hours'  => ['nullable', 'integer', 'in:4,8,12,24,48,72'],
-            'brand_id'             => ['required', 'integer', 'exists:brands,id'],
-            'car_type'             => ['required', 'in:ICE,EV,Hybrid,Others'],
-            'model'                => ['required', 'string', 'max:255'],
-            'year'                 => ['required', 'regex:/^(#N\/A|19\d{2}|20\d{2})$/'],
+            'number_of_proformas'   => ['required', 'integer', 'min:-1', 'max:4'],
+            'etera_chereta_hours'   => ['nullable', 'integer', 'in:4,8,12,24,48,72'],
+            'brand_id'              => ['required', 'integer', 'exists:brands,id'],
+            'car_type'              => ['required', 'in:ICE,EV,Hybrid,Others'],
+            'model'                 => ['required', 'string', 'max:255'],
+            'year'                  => ['required', 'regex:/^(#N\/A|19\d{2}|20\d{2})$/'],
             'customer_phone_number' => ['required', 'string'],
-            'chassis_number'       => ['nullable', 'string'],
-            'parts'                => ['required', 'array', 'min:1'],
-            'parts.*.number'       => ['required', 'string'],
-            'parts.*.component'    => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
-            'parts.*.condition'    => ['required', 'string', 'in:New,Used,Refurbished'],
-            'parts.*.grade'        => ['required', 'string'],
-            'parts.*.country'      => ['required', 'string'],
-            'parts.*.quantity'     => ['required', 'integer', 'min:1'],
-            'parts.*.photo_paths'  => ['nullable', 'array'],
+            'chassis_number'        => ['nullable', 'string'],
+            'parts'                 => ['required', 'array', 'min:1'],
+            'parts.*.number'        => ['required', 'string'],
+            'parts.*.component'     => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
+            'parts.*.condition'     => ['required', 'string', 'in:New,Used,Refurbished'],
+            'parts.*.grade'         => ['required', 'string'],
+            'parts.*.country'       => ['required', 'string'],
+            'parts.*.quantity'      => ['required', 'integer', 'min:1'],
+            'parts.*.photo_paths'   => ['nullable', 'array'],
             'parts.*.photo_paths.*' => ['nullable', 'string'],
-            'voice_note'           => ['nullable', 'string'],
+            'voice_note'            => ['nullable', 'string'],
         ]);
+
+        $ownerId = $this->getOwnerId();
+        $owner   = User::find($ownerId);
 
         DB::beginTransaction();
         try {
@@ -278,19 +256,19 @@ class GarageController extends Controller
             $timerExpiresAt = $isEteraChereta ? now()->addMinutes($timerMinutes) : null;
 
             $proforma = Proforma::create([
-                'poster_id'               => auth()->id(),
-                'file_number'             => '#' . auth()->id() . '-' . substr(time(), -4),
-                'car_brand_id'            => $validated['brand_id'],
-                'car_type'                => $validated['car_type'],
-                'customer_name'           => auth()->user()->name,
-                'customer_phone_number'   => $validated['customer_phone_number'],
-                'chassis_number'          => $validated['chassis_number'] ?? null,
-                'year'                    => $validated['year'],
-                'model'                   => $validated['model'],
-                'required_number_of_shops' => $requiredShops,
+                'poster_id'                  => $ownerId,
+                'file_number'                => '#' . $ownerId . '-' . substr(time(), -4),
+                'car_brand_id'               => $validated['brand_id'],
+                'car_type'                   => $validated['car_type'],
+                'customer_name'              => $owner->name,
+                'customer_phone_number'      => $validated['customer_phone_number'],
+                'chassis_number'             => $validated['chassis_number'] ?? null,
+                'year'                       => $validated['year'],
+                'model'                      => $validated['model'],
+                'required_number_of_shops'   => $requiredShops,
                 'required_number_of_garages' => 0,
-                'timer_duration'          => $timerMinutes,
-                'timer_expires_at'        => $timerExpiresAt,
+                'timer_duration'             => $timerMinutes,
+                'timer_expires_at'           => $timerExpiresAt,
             ]);
 
             foreach ($validated['parts'] as $partData) {
@@ -317,7 +295,6 @@ class GarageController extends Controller
                 }
             }
 
-            // Voice note (base64 string)
             if (!empty($validated['voice_note'])) {
                 $base64 = $validated['voice_note'];
                 preg_match('#^data:audio/([^;,]+)#i', $base64, $matches);
@@ -352,14 +329,10 @@ class GarageController extends Controller
         }
     }
 
-    // -----------------------------------------------------------------------
-    // POST /api/v1/garage/proformas/{id}/request-close
-    // Request to close a proforma the garage created
-    // -----------------------------------------------------------------------
     public function requestClose($id)
     {
-        $user     = auth()->user();
-        $proforma = Proforma::where('id', $id)->where('poster_id', $user->id)->first();
+        $ownerId  = $this->getOwnerId();
+        $proforma = Proforma::where('id', $id)->where('poster_id', $ownerId)->first();
 
         if (!$proforma) {
             return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
@@ -374,16 +347,12 @@ class GarageController extends Controller
         return response()->json(['success' => true, 'message' => 'Close request submitted successfully']);
     }
 
-    // -----------------------------------------------------------------------
-    // GET /api/v1/garage/received-proformas
-    // Completed proformas the garage received (they applied and won)
-    // -----------------------------------------------------------------------
     public function receivedProformas()
     {
-        $user = auth()->user();
+        $ownerId = $this->getOwnerId();
 
         $proformas = Proforma::with('brand')
-            ->where('poster_id', $user->id)
+            ->where('poster_id', $ownerId)
             ->where('status', 'completed')
             ->orderBy('created_at', 'desc')
             ->paginate(10);
@@ -400,39 +369,33 @@ class GarageController extends Controller
         ]);
     }
 
-    // -----------------------------------------------------------------------
-    // GET /api/v1/garage/balance
-    // -----------------------------------------------------------------------
     public function balance()
     {
-        $user = auth()->user();
+        $owner = User::find($this->getOwnerId());
 
         return response()->json([
             'success' => true,
             'data'    => [
-                'balance'             => (float) $user->balance,
+                'balance'             => (float) $owner->balance,
                 'withdrawal_requests' => WithdrawalResource::collection(
-                    $user->withdrawalRequests()->orderBy('created_at', 'desc')->get()
+                    $owner->withdrawalRequests()->orderBy('created_at', 'desc')->get()
                 ),
             ],
         ]);
     }
 
-    // -----------------------------------------------------------------------
-    // POST /api/v1/garage/withdraw
-    // -----------------------------------------------------------------------
     public function submitWithdrawal(Request $request)
     {
-        $user = auth()->user();
+        $owner = User::find($this->getOwnerId());
 
         $validated = $request->validate([
-            'amount'         => ['required', 'numeric', 'min:1', 'max:' . $user->balance],
+            'amount'         => ['required', 'numeric', 'min:1', 'max:' . $owner->balance],
             'bank_name'      => ['required', 'string', 'in:CBE,Abyssiniya,Awash,Dashen,Enat,Wegagen,Tsedey'],
             'account_number' => ['required', 'string'],
         ]);
 
         $withdrawal = WithdrawalRequest::create([
-            'from'           => $user->id,
+            'from'           => $owner->id,
             'amount'         => $validated['amount'],
             'bank_name'      => $validated['bank_name'],
             'account_number' => $validated['account_number'],
@@ -444,5 +407,48 @@ class GarageController extends Controller
             'message' => 'Withdrawal request submitted',
             'data'    => new WithdrawalResource($withdrawal),
         ], 201);
+    }
+
+    public function createEmployee(Request $request)
+    {
+        $ownerId = $this->getOwnerId();
+
+        $validated = $request->validate([
+            'name'         => ['required', 'string', 'max:255'],
+            'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
+            'password'     => ['required', 'string', 'min:6', 'confirmed'],
+            'email'        => ['nullable', 'email', 'unique:users,email'],
+        ]);
+
+        $employee = User::create([
+            'name'          => $validated['name'],
+            'phone_number'  => $validated['phone_number'],
+            'email'         => $validated['email'] ?? null,
+            'password'      => Hash::make($validated['password']),
+            'role'          => 'employee',
+            'approved'      => true,
+            'registered_by' => $ownerId,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee created successfully',
+            'data'    => new UserResource($employee),
+        ], 201);
+    }
+
+    public function listEmployees()
+    {
+        $ownerId = $this->getOwnerId();
+
+        $employees = User::where('registered_by', $ownerId)
+            ->where('role', 'employee')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data'    => UserResource::collection($employees),
+        ]);
     }
 }

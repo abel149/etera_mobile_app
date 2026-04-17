@@ -140,4 +140,8 @@ Route::middleware('auth:sanctum')->prefix('garage')->group(function () {
     Route::get('/balance',                            [GarageController::class, 'balance']);
     Route::post('/withdraw',                          [GarageController::class, 'submitWithdrawal']);
 
+    // Employee management
+    Route::get('/employees',                          [GarageController::class, 'listEmployees']);
+    Route::post('/employees',                         [GarageController::class, 'createEmployee']);
+
 });
