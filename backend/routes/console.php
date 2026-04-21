@@ -10,3 +10,9 @@ Artisan::command('inspire', function () {
 
 // Auto-close expired etera chereta proformas every minute
 Schedule::command('proformas:close-expired')->everyMinute();
+
+// Generate monthly billing statements on the 1st of each month at 00:05
+Schedule::command('billing:generate monthly')->monthlyOn(1, '00:05');
+
+// Generate weekly billing statements every Monday at 00:05
+Schedule::command('billing:generate weekly')->weeklyOn(1, '00:05');
