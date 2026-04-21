@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BillingController;
+use App\Http\Controllers\Api\BusinessOwnerController;
 use App\Http\Controllers\Api\CreateProfoermaController;
 use App\Http\Controllers\Api\RegisterController;
 use App\Http\Controllers\Api\GarageController;
@@ -71,6 +73,7 @@ Route::get('/parts', function () {
 // Public: Registration (rate-limited)
 // -----------------------------------------------------------------------
 Route::middleware('throttle:10,1')->group(function () {
+    Route::post('/register/others', [RegisterController::class, 'storeOthers']);
     Route::post('/register/business-owner', [RegisterController::class, 'storeBusinessOwner']);
     Route::post('/register/garage-shop',    [RegisterController::class, 'storeGarageSparepart']);
 });
@@ -80,34 +83,62 @@ Route::middleware('throttle:10,1')->group(function () {
 // -----------------------------------------------------------------------
 Route::middleware('auth:sanctum')->group(function () {
 
-    // Auth
     Route::post('/auth/logout',  [AuthController::class, 'logout']);
-
-    // Profile
     Route::get('/profile',       [AuthController::class, 'profile']);
     Route::put('/profile',       [AuthController::class, 'updateProfile']);
 
 });
 
 // -----------------------------------------------------------------------
-// Protected: Business Owner routes  (role: business_owner / others)
+// Protected: Others routes  (role: others)
+// All prefixed /api/v1/others/...
 // -----------------------------------------------------------------------
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:sanctum')->prefix('others')->group(function () {
 
-    //Profile 
-    Route::post('/auth/logout',                       [AuthController::class, 'logout']);
-    Route::get('/profile',                            [AuthController::class, 'profile']);
-    Route::put('/profile',                            [AuthController::class, 'updateProfile']);
+    // Dashboard & Proformas
+    Route::get('/dashboard',                          [CreateProfoermaController::class, 'dashboard']);
+    Route::post('/create-file',                       [CreateProfoermaController::class, 'store']);
+    Route::get('/proformas',                          [CreateProfoermaController::class, 'index']);
+    Route::get('/proformas/{id}',                     [CreateProfoermaController::class, 'show']);
+    Route::post('/proformas/{id}/request-close',      [CreateProfoermaController::class, 'requestClose']);
+
+    // Billing
+    Route::get('/billing',                            [BillingController::class, 'overview']);
+    Route::put('/billing/plan',                       [BillingController::class, 'updatePlan']);
+    Route::get('/billing/statements',                 [BillingController::class, 'statements']);
+    Route::get('/billing/statements/{sku}',           [BillingController::class, 'statementDetail']);
+
+});
+
+// -----------------------------------------------------------------------
+// Protected: Business Owner routes  (role: business_owner)
+// All prefixed /api/v1/business-owner/...
+// -----------------------------------------------------------------------
+Route::middleware('auth:sanctum')->prefix('business-owner')->group(function () {
 
     // Dashboard
-    Route::get('/dashboard',                      [CreateProfoermaController::class, 'dashboard']);
-    // Proformas
-    Route::post('/create-file',                   [CreateProfoermaController::class, 'store']);
-    Route::get('/proformas',                      [CreateProfoermaController::class, 'index']);
-    Route::get('/proformas/{id}',                 [CreateProfoermaController::class, 'show']);
-    Route::post('/proformas/{id}/request-close',  [CreateProfoermaController::class, 'requestClose']);
+    Route::get('/dashboard',                          [BusinessOwnerController::class, 'dashboard']);
 
-   
+    // Proformas
+    Route::post('/create-file',                       [BusinessOwnerController::class, 'createProforma']);
+    Route::get('/proformas',                          [BusinessOwnerController::class, 'index']);
+    Route::get('/proformas/{id}',                     [BusinessOwnerController::class, 'show']);
+    Route::post('/proformas/{id}/request-close',      [BusinessOwnerController::class, 'requestClose']);
+
+    // Balance & Withdrawals
+    Route::get('/balance',                            [BusinessOwnerController::class, 'balance']);
+    Route::post('/withdraw',                          [BusinessOwnerController::class, 'submitWithdrawal']);
+
+    // Employee management
+    Route::get('/employees',                          [BusinessOwnerController::class, 'listEmployees']);
+    Route::post('/employees',                         [BusinessOwnerController::class, 'createEmployee']);
+
+    // Billing
+    Route::get('/billing',                            [BillingController::class, 'overview']);
+    Route::put('/billing/plan',                       [BillingController::class, 'updatePlan']);
+    Route::get('/billing/statements',                 [BillingController::class, 'statements']);
+    Route::get('/billing/statements/{sku}',           [BillingController::class, 'statementDetail']);
+
 });
 
 // -----------------------------------------------------------------------
@@ -115,11 +146,6 @@ Route::middleware('auth:sanctum')->group(function () {
 // All prefixed /api/v1/garage/...
 // -----------------------------------------------------------------------
 Route::middleware('auth:sanctum')->prefix('garage')->group(function () {
-
-    // Auth (shared — same AuthController)
-    Route::post('/auth/logout',                       [AuthController::class, 'logout']);
-    Route::get('/profile',                            [AuthController::class, 'profile']);
-    Route::put('/profile',                            [AuthController::class, 'updateProfile']);
 
     // Dashboard & Inbox
     Route::get('/dashboard',                          [GarageController::class, 'dashboard']);
@@ -132,6 +158,7 @@ Route::middleware('auth:sanctum')->prefix('garage')->group(function () {
 
     // Files (proformas garage created)
     Route::get('/my-files',                           [GarageController::class, 'myFiles']);
+    Route::get('/my-files/{id}',                      [GarageController::class, 'showMyFile']);
     Route::post('/create-file',                       [GarageController::class, 'createProforma']);
     Route::post('/proformas/{id}/request-close',      [GarageController::class, 'requestClose']);
     Route::get('/received-proformas',                 [GarageController::class, 'receivedProformas']);
@@ -143,5 +170,11 @@ Route::middleware('auth:sanctum')->prefix('garage')->group(function () {
     // Employee management
     Route::get('/employees',                          [GarageController::class, 'listEmployees']);
     Route::post('/employees',                         [GarageController::class, 'createEmployee']);
+
+    // Billing
+    Route::get('/billing',                            [BillingController::class, 'overview']);
+    Route::put('/billing/plan',                       [BillingController::class, 'updatePlan']);
+    Route::get('/billing/statements',                 [BillingController::class, 'statements']);
+    Route::get('/billing/statements/{sku}',           [BillingController::class, 'statementDetail']);
 
 });
