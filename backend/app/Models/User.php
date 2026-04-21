@@ -29,7 +29,7 @@ class User extends Authenticatable
     public const ROLE_EMPLOYEE       = 'employee';
     public const ROLE_MARKETER       = 'marketer';
     public const ROLE_INDIVIDUAL     = 'individual';
-
+    public const ROLE_Others         = 'others';
     // =====================
     // Boot Method (Auto-Generate store_id for Shop & Garage)
     // =====================
@@ -85,6 +85,8 @@ class User extends Authenticatable
         'latitude',
         'longitude',
         'balance',
+        'billing_plan',
+        'billing_cycle_start',
         'file_quota',
         'commission_per_file',
         'employee_type',
@@ -106,7 +108,8 @@ class User extends Authenticatable
         'is_new'              => 'boolean',
         'approved'            => 'boolean', // ✅ CRITICAL: Ensures 0/1 becomes false/true
         'file_quota'          => 'integer',
-        'commission_per_file' => 'decimal:2',
+        'commission_per_file'  => 'decimal:2',
+        'billing_cycle_start'  => 'date',
     ];
 
     // =====================
@@ -124,6 +127,7 @@ class User extends Authenticatable
     public function isEmployee()           { return $this->role === self::ROLE_EMPLOYEE; }
     public function isMarketer()           { return $this->role === self::ROLE_MARKETER; }
     public function isIndividual()         { return $this->role === self::ROLE_INDIVIDUAL; }
+    public function isOthers()             { return $this->role === self::ROLE_Others; }
 
     // =====================
     // Permission Methods
@@ -143,6 +147,7 @@ class User extends Authenticatable
     public function withdrawalRequests() { return $this->hasMany(WithdrawalRequest::class, 'from'); }
     public function partners()           { return $this->hasMany(Partner::class, 'insurance_id'); }
     public function myRegistrations()    { return $this->hasMany(User::class, 'registered_by'); }
+    public function billingStatements()  { return $this->hasMany(BillingStatement::class, 'owner_id')->latest(); }
     public function inboxes()            { return $this->hasMany(ProformaInbox::class, 'user_id'); }
     public function myInbox()            { return $this->hasMany(Inbox::class, 'user_id')->latest(); }
     
