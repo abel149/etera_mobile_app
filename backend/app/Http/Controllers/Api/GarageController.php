@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\ProformaCreated;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\ApplicationResource;
+use App\Http\Resources\PartResource;
 use App\Http\Resources\ProformaResource;
 use App\Http\Resources\UserResource;
 use App\Http\Resources\WithdrawalResource;
@@ -234,6 +236,7 @@ class GarageController extends Controller
             'chassis_number'        => ['nullable', 'string'],
             'parts'                 => ['required', 'array', 'min:1'],
             'parts.*.number'        => ['required', 'string'],
+            'parts.name'            => ['required', 'string'],
             'parts.*.component'     => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
             'parts.*.condition'     => ['required', 'string', 'in:New,Used,Refurbished'],
             'parts.*.grade'         => ['required', 'string'],
@@ -273,6 +276,7 @@ class GarageController extends Controller
 
             foreach ($validated['parts'] as $partData) {
                 $part = $proforma->parts()->create([
+                    'name'      =>$partData['name'],
                     'number'    => $partData['number'],
                     'grade'     => $partData['grade'],
                     'country'   => $partData['country'],
@@ -435,6 +439,58 @@ class GarageController extends Controller
             'message' => 'Employee created successfully',
             'data'    => new UserResource($employee),
         ], 201);
+    }
+
+    public function showMyFile($id)
+    {
+        $ownerId  = $this->getOwnerId();
+        $proforma = Proforma::with([
+            'brand',
+            'parts',
+            'proformaInvoice',
+            'applications.prices',
+            'applications.applicationBy',
+        ])->where('poster_id', $ownerId)->find($id);
+
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
+        }
+
+        $allApplications = $proforma->applications->map(function ($app) {
+            $subtotal         = $app->prices->sum('part_total');
+            $discount         = (float) ($app->discount ?? 0);
+            $app->final_price = $subtotal > 0
+                ? $subtotal - ($subtotal * $discount / 100)
+                : (float) ($app->amount ?? 0);
+            return $app;
+        });
+
+        $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
+        $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
+
+        $shops   = $allApplications->where('from', 'shop')->sortBy('final_price')->values();
+        $garages = $allApplications->where('from', 'garage')->sortBy('final_price')->values();
+
+        if ($requiredShops > 0)   $shops   = $shops->take($requiredShops);
+        if ($requiredGarages > 0) $garages = $garages->take($requiredGarages);
+        if ($requiredShops === 0 && $requiredGarages === 0) {
+            $shops   = $shops->take(5);
+            $garages = $garages->take(5);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'proforma' => new ProformaResource($proforma),
+                'parts'    => PartResource::collection($proforma->parts),
+                'invoice'  => $proforma->proformaInvoice ? [
+                    'sku' => $proforma->proformaInvoice->sku,
+                    'url' => url('/transaction/' . $proforma->proformaInvoice->sku),
+                ] : null,
+                'shops'   => ApplicationResource::collection($shops),
+                'garages' => ApplicationResource::collection($garages),
+            ],
+        ]);
     }
 
     public function listEmployees()

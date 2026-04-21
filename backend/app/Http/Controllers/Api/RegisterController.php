@@ -127,7 +127,7 @@ class RegisterController extends Controller
     // POST /api/register/business-owner
     // NOTE: role is stored as 'others' and approved = true — matches web behaviour
     // =====================================================================
-    public function storeBusinessOwner(Request $request)
+    public function storeOthers(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'name'         => 'required|string|max:255',
@@ -322,8 +322,114 @@ class RegisterController extends Controller
                 'message' => 'Registration failed. Please try again.',
             ], 500);
         }
-    }
+    } 
+     // =====================================================================
+    // Business owner registration
+    // POST /api/register/business-owner
+    // =====================================================================
+  
+     public function storeBusinessOwner(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name'                 => 'required|string|max:255',
+            'phone_number'         => ['required', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
+            'role'                 => 'required|string|in:garage,shop',
+            'location'             => 'required|string|max:255',
+            'tin_number'           => 'required|string|max:255',
+            'license_expire_date'  => 'nullable|date',
+            'email'                => 'nullable|email|unique:users,email',
+            'password'             => 'required|string|min:6|max:6|confirmed',
+            'terms'                => 'required|accepted',
+            'license_image'        => 'required|image|mimes:jpg,jpeg,png|max:2048',
+            'stamp_image'          => 'required|image|mimes:jpg,jpeg,png|max:2048',
+            'brands'               => 'nullable|array',
+            'brands.*'             => 'exists:brands,id',
+            'bank_name'            => 'nullable|string|max:255',
+            'account_number'       => 'nullable|string|max:50',
+        ], [
+            'phone_number.unique'      => 'You already have an account with this phone number.',
+            'phone_number.regex'       => 'Phone number must be exactly 10 digits.',
+            'tin_number.required'      => 'TIN Number is required.',
+            'license_image.required'   => 'Please upload the business license image.',
+            'stamp_image.required'     => 'Please upload the stamp image.',
+        ]);
 
+       
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $licensePath = $this->handleFileUpload($request, 'license_image', 'uploads/licenses');
+            $stampPath   = $this->handleFileUpload($request, 'stamp_image', 'uploads/stamps');
+
+            $user = User::create([
+                'name'                => $request->name,
+                'phone_number'        => $request->phone_number,
+                'role'                => $request->role,
+                'location'            => $request->location,
+                'tin_number'          => $request->tin_number,
+                'license_expire_date' => $request->license_expire_date,
+                'email'               => $request->filled('email') ? $request->email : null,
+                'password'            => Hash::make($request->password),
+                'license_image'       => $licensePath,
+                'stamp_image'         => $stampPath,
+                'approved'            => false,
+                'balance'             => 0,
+                'store_id'            => null,
+                'registered_by'       => null,
+            ]);
+
+          
+          
+            // Create bank account if provided
+            if ($request->filled('bank_name') && $request->filled('account_number')) {
+                BankAccount::create([
+                    'user_id'        => $user->id,
+                    'bank_name'      => $request->bank_name,
+                    'account_number' => $request->account_number,
+                ]);
+            }
+
+            Log::info('Garage/Shop registration submitted (API)', [
+                'user_id'  => $user->id,
+                'role'     => $user->role,
+                'store_id' => $user->store_id,
+                'ip'       => $request->ip(),
+            ]);
+
+            DB::commit();
+
+            // Notify admins outside the transaction so a notification failure never rolls back registration
+            $this->notifyAdminsOfNewRegistration($user);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Registration successful. Awaiting admin approval.',
+                'data'    => new UserResource($user),
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollback();
+
+            if (isset($licensePath)) Storage::disk('public')->delete($licensePath);
+            if (isset($stampPath))   Storage::disk('public')->delete($stampPath);
+
+            Log::error('Garage/Shop API registration failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Registration failed. Please try again.',
+            ], 500);
+        }
+    }
     // =====================================================================
     // Private helpers
     // =====================================================================
