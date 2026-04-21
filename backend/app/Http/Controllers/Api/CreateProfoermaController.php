@@ -48,6 +48,7 @@ class CreateProfoermaController extends Controller {
                     'parts.condition' => ['required', 'array', 'min:1'],
                     'parts.condition.*' => ['required', 'string', 'in:New'],
                     'parts.number' => ['required', 'array', 'min:1'],
+                    'parts.name' => ['required', 'string'],
                     'parts.number.*' => ['required', 'string'],
                     'parts.grade' => ['required', 'array', 'min:1'],
                     'parts.grade.*' => ['required', 'string'],
@@ -111,6 +112,7 @@ class CreateProfoermaController extends Controller {
 
                 foreach ($partsData['condition'] as $index => $condition) {
                     $part = $proforma->parts()->create([
+                        'name'      => $partsData['name'][$index] ?? null,
                         'number'    => $partsData['number'][$index] ?? null,
                         'grade'     => $partsData['grade'][$index] ?? null,
                         'country'   => $partsData['country'][$index] ?? null,
