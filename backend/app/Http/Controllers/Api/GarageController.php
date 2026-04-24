@@ -156,12 +156,15 @@ class GarageController extends Controller
         $discount    = $validated['discount'] ?? 0;
         $finalAmount = max($validated['amount'] - ($validated['amount'] * $discount / 100), 1);
 
+        $owner = User::find($ownerId);
+        $fromRole = in_array($owner->role, ['shop']) ? 'shop' : 'garage';
+
         DB::beginTransaction();
         try {
             $application = ProformaApplication::create([
                 'proforma_id'    => $proforma->id,
                 'application_by' => $ownerId,
-                'from'           => 'garage',
+                'from'           => $fromRole,
                 'amount'         => $finalAmount,
                 'discount'       => $discount,
             ]);
@@ -236,7 +239,7 @@ class GarageController extends Controller
             'chassis_number'        => ['nullable', 'string'],
             'parts'                 => ['required', 'array', 'min:1'],
             'parts.*.number'        => ['required', 'string'],
-            'parts.name'            => ['required', 'string'],
+            'parts.*.name'          => ['required', 'string'],
             'parts.*.component'     => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
             'parts.*.condition'     => ['required', 'string', 'in:New,Used,Refurbished'],
             'parts.*.grade'         => ['required', 'string'],
@@ -416,7 +419,13 @@ class GarageController extends Controller
     public function createEmployee(Request $request)
     {
         $ownerId = $this->getOwnerId();
-
+        $numemployee = User::where('refistered_by',$ownerId)->count();
+        if($numemployee >= 10 ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only create 5 employees',
+            ], 400);
+        }
         $validated = $request->validate([
             'name'         => ['required', 'string', 'max:255'],
             'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],

@@ -43,7 +43,7 @@ class BusinessOwnerController extends Controller
             'chassis_number'        => ['nullable', 'string'],
             'parts'                 => ['required', 'array', 'min:1'],
             'parts.*.number'        => ['required', 'string'],
-            'parts.name'            => ['required', 'string'],
+            'parts.*.name'          => ['required', 'string'],
             'parts.*.component'     => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
             'parts.*.condition'     => ['required', 'string', 'in:New,Used,Refurbished'],
             'parts.*.grade'         => ['required', 'string'],
@@ -135,7 +135,7 @@ class BusinessOwnerController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Garage create proforma failed', ['error' => $e->getMessage()]);
+            Log::error('buissness owner create proforma failed', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Failed to create proforma. Please try again.'], 500);
         }
     }
@@ -301,7 +301,14 @@ class BusinessOwnerController extends Controller
     public function createEmployee(Request $request)
     {
         $ownerId = $this->getOwnerId();
-
+        $numemployee = User::where('refistered_by',$ownerId)->count();
+        if($numemployee >= 10 ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only create 10 employees per branch,
+                              if you have branch  can request for a brunch',
+            ], 400);
+        }
         $validated = $request->validate([
             'name'         => ['required', 'string', 'max:255'],
             'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
@@ -325,7 +332,7 @@ class BusinessOwnerController extends Controller
             'data'    => new UserResource($employee),
         ], 201);
     }
-
+    
     public function listEmployees()
     {
         $ownerId = $this->getOwnerId();
