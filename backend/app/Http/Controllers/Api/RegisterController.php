@@ -158,8 +158,8 @@ class RegisterController extends Controller
                 'location'     => $request->location,
                 'email'        => $request->filled('email') ? $request->email : null,
                 'password'     => Hash::make($request->password),
-                'role'         => 'business_owner',  // MUST be 'others' — matches User::ROLE_BUSINESS_OWNER and web app
-                'approved'     => true,     // business owners are auto-approved (matches web)
+                'role'         => 'others',
+                'approved'     => true,
                 'balance'      => 0,
             ]);
 
@@ -333,7 +333,6 @@ class RegisterController extends Controller
         $validator = Validator::make($request->all(), [
             'name'                 => 'required|string|max:255',
             'phone_number'         => ['required', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
-            'role'                 => 'required|string|in:garage,shop',
             'location'             => 'required|string|max:255',
             'tin_number'           => 'required|string|max:255',
             'license_expire_date'  => 'nullable|date',
@@ -342,8 +341,7 @@ class RegisterController extends Controller
             'terms'                => 'required|accepted',
             'license_image'        => 'required|image|mimes:jpg,jpeg,png|max:2048',
             'stamp_image'          => 'required|image|mimes:jpg,jpeg,png|max:2048',
-            'brands'               => 'nullable|array',
-            'brands.*'             => 'exists:brands,id',
+           
             'bank_name'            => 'nullable|string|max:255',
             'account_number'       => 'nullable|string|max:50',
         ], [
@@ -373,7 +371,7 @@ class RegisterController extends Controller
             $user = User::create([
                 'name'                => $request->name,
                 'phone_number'        => $request->phone_number,
-                'role'                => $request->role,
+                'role'                => 'business_owner',
                 'location'            => $request->location,
                 'tin_number'          => $request->tin_number,
                 'license_expire_date' => $request->license_expire_date,
@@ -387,8 +385,9 @@ class RegisterController extends Controller
                 'registered_by'       => null,
             ]);
 
-          
-          
+            // Generate BO- store_id
+            $user->update(['store_id' => 'BO-' . str_pad($user->id, 4, '0', STR_PAD_LEFT)]);
+
             // Create bank account if provided
             if ($request->filled('bank_name') && $request->filled('account_number')) {
                 BankAccount::create([
@@ -398,16 +397,14 @@ class RegisterController extends Controller
                 ]);
             }
 
-            Log::info('Garage/Shop registration submitted (API)', [
+            Log::info('Business owner registration submitted (API)', [
                 'user_id'  => $user->id,
-                'role'     => $user->role,
                 'store_id' => $user->store_id,
                 'ip'       => $request->ip(),
             ]);
 
             DB::commit();
 
-            // Notify admins outside the transaction so a notification failure never rolls back registration
             $this->notifyAdminsOfNewRegistration($user);
 
             return response()->json([
@@ -422,7 +419,7 @@ class RegisterController extends Controller
             if (isset($licensePath)) Storage::disk('public')->delete($licensePath);
             if (isset($stampPath))   Storage::disk('public')->delete($stampPath);
 
-            Log::error('Garage/Shop API registration failed', ['error' => $e->getMessage()]);
+            Log::error('Business owner API registration failed', ['error' => $e->getMessage()]);
 
             return response()->json([
                 'success' => false,
