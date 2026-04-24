@@ -60,6 +60,17 @@ class AuthController extends Controller
         ]);
     }
 
+    private function userPayload(User $user): array
+    {
+        return [
+            'id'           => $user->id,
+            'name'         => $user->name,
+            'phone_number' => $user->phone_number,
+            'role'         => $user->role,
+            'approved'     => (bool) $user->approved,
+        ];
+    }
+
     // POST /api/auth/logout
     public function logout(Request $request)
     {
