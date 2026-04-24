@@ -48,6 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.user' => \App\Http\Middleware\AuthenticateUser::class,
             'guest'     => \App\Http\Middleware\RedirectIfAuthenticated::class,
+            'role'      => \App\Http\Middleware\CheckRole::class,
         ]);
     })
 

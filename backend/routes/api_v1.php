@@ -50,11 +50,6 @@ Route::post('/auth/login', [AuthController::class, 'login'])
 // -----------------------------------------------------------------------
 // Public: Helpers (cacheable dropdowns)
 // -----------------------------------------------------------------------
-// Temp file upload (images)
-
-Route::post('/upload/temp',   [\App\Http\Controllers\File\TemporaryFileController::class, 'store']);
-Route::delete('/upload/temp', [\App\Http\Controllers\File\TemporaryFileController::class, 'destroy']);
-
 Route::get('/brands', function () {
     return response()->json([
         'success' => true,
@@ -87,13 +82,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/profile',       [AuthController::class, 'profile']);
     Route::put('/profile',       [AuthController::class, 'updateProfile']);
 
+    // Temp file upload (requires auth)
+    Route::post('/upload/temp',   [\App\Http\Controllers\File\TemporaryFileController::class, 'store']);
+    Route::delete('/upload/temp', [\App\Http\Controllers\File\TemporaryFileController::class, 'destroy']);
+
 });
 
 // -----------------------------------------------------------------------
 // Protected: Others routes  (role: others)
 // All prefixed /api/v1/others/...
 // -----------------------------------------------------------------------
-Route::middleware('auth:sanctum')->prefix('others')->group(function () {
+Route::middleware(['auth:sanctum', 'role:others'])->prefix('others')->group(function () {
 
     // Dashboard & Proformas
     Route::get('/dashboard',                          [CreateProfoermaController::class, 'dashboard']);
@@ -102,19 +101,13 @@ Route::middleware('auth:sanctum')->prefix('others')->group(function () {
     Route::get('/proformas/{id}',                     [CreateProfoermaController::class, 'show']);
     Route::post('/proformas/{id}/request-close',      [CreateProfoermaController::class, 'requestClose']);
 
-    // Billing
-    Route::get('/billing',                            [BillingController::class, 'overview']);
-    Route::put('/billing/plan',                       [BillingController::class, 'updatePlan']);
-    Route::get('/billing/statements',                 [BillingController::class, 'statements']);
-    Route::get('/billing/statements/{sku}',           [BillingController::class, 'statementDetail']);
-
 });
 
 // -----------------------------------------------------------------------
 // Protected: Business Owner routes  (role: business_owner)
 // All prefixed /api/v1/business-owner/...
 // -----------------------------------------------------------------------
-Route::middleware('auth:sanctum')->prefix('business-owner')->group(function () {
+Route::middleware(['auth:sanctum', 'role:business_owner,employee'])->prefix('business-owner')->group(function () {
 
     // Dashboard
     Route::get('/dashboard',                          [BusinessOwnerController::class, 'dashboard']);
@@ -145,7 +138,7 @@ Route::middleware('auth:sanctum')->prefix('business-owner')->group(function () {
 // Protected: Garage routes  (role: garage)
 // All prefixed /api/v1/garage/...
 // -----------------------------------------------------------------------
-Route::middleware('auth:sanctum')->prefix('garage')->group(function () {
+Route::middleware(['auth:sanctum', 'role:garage,employee'])->prefix('garage')->group(function () {
 
     // Dashboard & Inbox
     Route::get('/dashboard',                          [GarageController::class, 'dashboard']);
