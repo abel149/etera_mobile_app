@@ -46,9 +46,10 @@ class CreateProfoermaController extends Controller {
                     'customer_phone_number' => ['required', 'string'],
                     'chassis_number' => ['nullable', 'string'],
                     'parts.condition' => ['required', 'array', 'min:1'],
-                    'parts.condition.*' => ['required', 'string', 'in:New'],
+                    'parts.condition.*' => ['required', 'string', 'in:New,Used'],
                     'parts.number' => ['required', 'array', 'min:1'],
-                    'parts.name' => ['required', 'string'],
+                    'parts.name' => ['required', 'array', 'min:1'],
+                    'parts.name.*' => ['required', 'string'],
                     'parts.number.*' => ['required', 'string'],
                     'parts.grade' => ['required', 'array', 'min:1'],
                     'parts.grade.*' => ['required', 'string'],
@@ -82,7 +83,7 @@ class CreateProfoermaController extends Controller {
 
                 DB::beginTransaction();
 
-                $isEteraChereta = $request->input('number_of_proformas') === '-1';
+                $isEteraChereta = (int) $request->input('number_of_proformas') === -1;
                 $eteraHours = (int) $request->input('etera_chereta_hours', 24);
                 $requiredShops = $isEteraChereta ? 0 : (int) $request->input('number_of_proformas', 3);
                 $timerMinutes = $isEteraChereta ? $eteraHours * 60 : null;
@@ -205,7 +206,7 @@ class CreateProfoermaController extends Controller {
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Registration successful. Awaiting for application.',
+                    'message' => 'Proforma created successfully.',
                 ], 201);
             } catch (\Exception $e) {
                 DB::rollBack();
