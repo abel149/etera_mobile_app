@@ -16,7 +16,7 @@ class CheckRole
             return response()->json(['success' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
-        $userRole = $user->registered_by
+        $userRole = ($user->role === 'employee' && $user->registered_by)
             ? \App\Models\User::find($user->registered_by)?->role ?? $user->role
             : $user->role;
 
