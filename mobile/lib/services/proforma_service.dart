@@ -6,10 +6,10 @@ import '../models/proforma.dart';
 import 'api_service.dart';
 
 class ProformaService {
-  /// Create a proforma via POST /api/create-file (multipart).
-  static Future<Map<String, dynamic>> createProforma(ProformaRequest req) async {
+  /// Create a proforma via the role-based endpoint (multipart).
+  static Future<Map<String, dynamic>> createProforma(ProformaRequest req, String userRole) async {
     try {
-      final uri = Uri.parse(ApiConfig.createProforma);
+      final uri = Uri.parse(ApiConfig.createProformaUrl(userRole));
       final request = http.MultipartRequest('POST', uri);
 
       // Auth

@@ -1,8 +1,5 @@
 class ApiConfig {
-  // Change this to your backend URL
-  static const String baseUrl = 'https://etapp.usstandardgarage.com/api'; // Android emulator → host localhost
-  // For iOS simulator use: 'http://127.0.0.1:8000/api'
-  // For physical device use your machine's local IP: 'http://192.168.x.x:8000/api'
+  static const String baseUrl = 'https://etapp.usstandardgarage.com/api/v1';
 
   // Auth
   static const String login = '$baseUrl/auth/login';
@@ -10,11 +7,25 @@ class ApiConfig {
   static const String brands = '$baseUrl/brands';
 
   // Registration
-  static const String register = '$baseUrl/register';
-  static const String registerIndividual = '$baseUrl/register/individual';
+  static const String registerIndividual = '$baseUrl/register/others';
   static const String registerBusinessOwner = '$baseUrl/register/business-owner';
   static const String registerGarageShop = '$baseUrl/register/garage-shop';
 
-  // Proforma
-  static const String createProforma = '$baseUrl/create-file';
+  // Proforma (role-based endpoints)
+  static const String _createProformaOthers = '$baseUrl/others/create-file';
+  static const String _createProformaBusinessOwner = '$baseUrl/business-owner/create-file';
+  static const String _createProformaGarage = '$baseUrl/garage/create-file';
+
+  static String createProformaUrl(String role) {
+    switch (role) {
+      case 'business_owner':
+      case 'employee':
+        return _createProformaBusinessOwner;
+      case 'garage':
+      case 'shop':
+        return _createProformaGarage;
+      default:
+        return _createProformaOthers;
+    }
+  }
 }

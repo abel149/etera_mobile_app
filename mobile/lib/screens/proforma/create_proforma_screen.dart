@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/brand.dart';
 import '../../models/proforma.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/proforma_service.dart';
 import '../../widgets/etera_button.dart';
@@ -102,7 +104,8 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
           .toList(),
     );
 
-    final result = await ProformaService.createProforma(req);
+    final role = context.read<AuthProvider>().user?.role ?? 'others';
+    final result = await ProformaService.createProforma(req, role);
 
     if (!mounted) return;
     setState(() => _loading = false);
