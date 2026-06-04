@@ -1,6 +1,6 @@
 class ApiConfig {
   // Change this to your backend URL
-  static const String baseUrl = 'http://10.0.2.2:8000/api'; // Android emulator → host localhost
+  static const String baseUrl = 'https://etapp.usstandardgarage.com/api'; // Android emulator → host localhost
   // For iOS simulator use: 'http://127.0.0.1:8000/api'
   // For physical device use your machine's local IP: 'http://192.168.x.x:8000/api'
 
