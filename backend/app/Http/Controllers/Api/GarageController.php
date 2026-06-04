@@ -263,7 +263,7 @@ class GarageController extends Controller
 
             $proforma = Proforma::create([
                 'poster_id'                  => $ownerId,
-                'file_number'                => '#' . $ownerId . '-' . substr(time(), -4),
+                'file_number'                => 'GR' .'-'. $ownerId,
                 'car_brand_id'               => $validated['brand_id'],
                 'car_type'                   => $validated['car_type'],
                 'customer_name'              => $owner->name,
@@ -418,36 +418,63 @@ class GarageController extends Controller
 
     public function createEmployee(Request $request)
     {
-        $ownerId = $this->getOwnerId();
-        $numemployee = User::where('refistered_by',$ownerId)->count();
-        if($numemployee >= 10 ) {
+        $ownerId      = $this->getOwnerId();
+        $currentCount = User::where('registered_by', $ownerId)->where('role', 'employee')->count();
+        $isBulk       = $request->has('employees');
+
+        if ($isBulk) {
+            $validated = $request->validate([
+                'employees'                => ['required', 'array', 'min:1', 'max:10'],
+                'employees.*.name'         => ['required', 'string', 'max:255'],
+                'employees.*.phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'distinct', 'unique:users,phone_number'],
+                'employees.*.email'        => ['nullable', 'email', 'distinct', 'unique:users,email'],
+                'employees.*.password'     => ['required', 'string', 'min:6', 'confirmed'],
+            ]);
+            $newCount = count($validated['employees']);
+        } else {
+            $validated = $request->validate([
+                'name'         => ['required', 'string', 'max:255'],
+                'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
+                'email'        => ['nullable', 'email', 'unique:users,email'],
+                'password'     => ['required', 'string', 'min:6', 'confirmed'],
+            ]);
+            $newCount = 1;
+        }
+
+        if ($currentCount + $newCount > 10) {
             return response()->json([
                 'success' => false,
-                'message' => 'You can only create 5 employees',
-            ], 400);
+                'message' => "Cannot add {$newCount} employee(s). You have {$currentCount}/10 already. Limit is 10.",
+            ], 422);
         }
-        $validated = $request->validate([
-            'name'         => ['required', 'string', 'max:255'],
-            'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
-            'password'     => ['required', 'string', 'min:6', 'confirmed'],
-            'email'        => ['nullable', 'email', 'unique:users,email'],
-        ]);
 
-        $employee = User::create([
-            'name'          => $validated['name'],
-            'phone_number'  => $validated['phone_number'],
-            'email'         => $validated['email'] ?? null,
-            'password'      => Hash::make($validated['password']),
-            'role'          => 'employee',
-            'approved'      => true,
-            'registered_by' => $ownerId,
-        ]);
+        $created = [];
+        DB::beginTransaction();
+        try {
+            foreach ($isBulk ? $validated['employees'] : [$validated] as $data) {
+                $created[] = User::create([
+                    'name'          => $data['name'],
+                    'phone_number'  => $data['phone_number'],
+                    'email'         => $data['email'] ?? null,
+                    'password'      => Hash::make($data['password']),
+                    'role'          => 'employee',
+                    'approved'      => true,
+                    'registered_by' => $ownerId,
+                ]);
+            }
+            DB::commit();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Employee created successfully',
-            'data'    => new UserResource($employee),
-        ], 201);
+            return response()->json([
+                'success' => true,
+                'message' => count($created) . ' employee(s) created successfully.',
+                'data'    => UserResource::collection(collect($created)),
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Garage employee creation failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Employee creation failed. Please try again.'], 500);
+        }
     }
 
     public function showMyFile($id)
@@ -504,8 +531,7 @@ class GarageController extends Controller
 
     public function listEmployees()
     {
-        $ownerId = $this->getOwnerId();
-
+        $ownerId   = $this->getOwnerId();
         $employees = User::where('registered_by', $ownerId)
             ->where('role', 'employee')
             ->orderBy('created_at', 'desc')
@@ -516,4 +542,165 @@ class GarageController extends Controller
             'data'    => UserResource::collection($employees),
         ]);
     }
+
+
+
+    public function deleteEmployee($id)
+    {
+        $ownerId  = $this->getOwnerId();
+        $employee = User::where('id', $id)
+            ->where('registered_by', $ownerId)
+            ->where('role', 'employee')
+            ->first();
+
+        if (!$employee) {
+            return response()->json(['success' => false, 'message' => 'Employee not found.'], 404);
+        }
+
+        $employee->delete();
+
+        return response()->json(['success' => true, 'message' => 'Employee removed successfully.']);
+    }
+
+
+
+    // garage management from the admin side
+    /**
+     * Store a newly created resource in garage.
+     */
+  public function createGarage(Request $request)
+{
+    // Validate the input
+    $request->validate([
+        'name' => 'required',
+        'email' => 'nullable|email|unique:users,email',
+        'phone_number' => 'required|unique:users,phone_number',
+        'location' => 'required',
+        'password' => 'nullable|min:6|confirmed', // password can be null
+        'tin_number' => 'required|unique:users,tin_number',
+        'license_image' => 'required|file|image',
+        'stamp_image' => 'required|file|image',
+    ]);
+
+    // If password is null, default to 123456
+    $password = $request->password ?: '123456';
+
+    // Store the images
+    $licenseImagePath = $request->file('license_image')->store('public/licenses');
+    $stampImagePath = $request->file('stamp_image')->store('public/stamps');
+
+    // Create a new user with the additional fields
+    $user = User::create([
+        'name' => $request->name,
+        'email' => $request->email,
+        'phone_number' => $request->phone_number,
+        'password' => bcrypt($password),
+        'role' => 'garage',  // Set role to garage
+        'location' => $request->location,
+        'tin_number' => $request->tin_number,
+        'registered_by' => auth()->user()->id,
+        'license_image' => $licenseImagePath,
+        'stamp_image' => $stampImagePath,
+    ]);
+
+   return response()->json([
+    'success'=> true,
+    'message' => 'successfully created',
+    'data'=> [
+        'user' =>$user
+    ]
+   ]);
+}
+
+
+
+    
+
+    // Other methods remain unchanged (index, show, edit, etc.)
+    public function editGarage($id)
+    {
+        // Check if the authenticated user is an admin or marketer
+        if (!Auth::check() || !in_array(Auth::user()->role, ['admin', 'marketer'])) {
+            return redirect()->back()->with('error', 'Unauthorized access');
+        }
+    
+        // Find the garage by ID
+        $garage = User::findOrFail($id);
+    
+        // Return different views based on the user role
+        return response()->json([
+        'success'=> true,
+        'data'=> [
+            'garage' =>$garage
+        ]
+       ]);
+    }
+
+
+
+
+
+    public function update(Request $request, $id)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'phone_number' => 'required|string|max:255',
+        'tin_number' => 'required|string|max:255',
+        'location' => 'required|string|max:255',
+        'business_license_number' => 'nullable|string|max:255',
+        'license_expire_date' => 'nullable|date',
+        'email' => 'nullable|email|max:255',
+        'license_image' => 'nullable|file|image',
+        'stamp_image' => 'nullable|file|image',
+    ]);
+
+    $garage = User::findOrFail($id);
+
+    $data = $request->only([
+        'name', 'phone_number', 'tin_number', 'location',
+        'business_license_number', 'license_expire_date', 'email'
+    ]);
+
+    // Handle license image upload
+    if ($request->hasFile('license_image')) {
+        $licenseImagePath = $request->file('license_image')->store('public/licenses');
+        $data['license_image'] = $licenseImagePath;
+    }
+
+    // Handle stamp image upload
+    if ($request->hasFile('stamp_image')) {
+        $stampImagePath = $request->file('stamp_image')->store('public/stamps');
+        $data['stamp_image'] = $stampImagePath;
+    }
+
+    $garage->update($data);
+
+     return response()->json([
+    'success'=> true,
+    'message' => 'successfully updated',
+   
+   ]);
+}
+
+
+
+    public function destroy($id)
+    {
+        $garage = User::findOrFail($id); // Get the insurance by ID
+        $garage->delete(); // Delete the insurance record
+
+         return response()->json([
+        'success'=> true,
+        'message' => 'successfully deleted',
+        
+    ]);
+    }
+
+
+
+
+
+
+
+
 }

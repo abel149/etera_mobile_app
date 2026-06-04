@@ -91,7 +91,7 @@ class CreateProfoermaController extends Controller {
 
                 $proforma = Proforma::create([
                     'poster_id' => auth()->id(),
-                    'file_number' => '#' . auth()->id() . '-' . substr(time(), -4),
+                    'file_number' => 'ID' .'-'. auth()->id(),
                     'car_brand_id' => $request->brand_id,
                     'car_type' => $request->input('car_type', 'ICE'),
 
