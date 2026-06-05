@@ -5,6 +5,7 @@ namespace App\Http\Controllers\File;
 use Illuminate\Http\Request;
 use App\Services\TemporaryFileService;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\UploadedFile;
 
 class TemporaryFileController extends Controller
 {
@@ -15,9 +16,28 @@ class TemporaryFileController extends Controller
         $this->temporaryFileService = $temporaryFileService;
     }
 
-    public function store(Request $request, $type)
+    public function store(Request $request, ?string $type = null)
     {
-        $files = $request->file($type);
+        $resolvedType = $type ?? (string) $request->input('type', 'temp');
+        $files = $request->file($resolvedType);
+
+        if (is_null($files)) {
+            $files = $request->file('file') ?? $request->file('files');
+        }
+
+        if (is_null($files)) {
+            $allFiles = $request->allFiles();
+            if (count($allFiles) === 1) {
+                $files = reset($allFiles);
+            }
+        }
+
+        if (empty($files)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No file uploaded.',
+            ], 422);
+        }
 
         if (!is_array($files)) {
             $files = [$files];
@@ -26,10 +46,24 @@ class TemporaryFileController extends Controller
         $folders = [];
 
         foreach ($files as $file) {
-            $folders[] = $this->temporaryFileService->storeFile($file, $type);
+            if (!$file instanceof UploadedFile || !$file->isValid()) {
+                continue;
+            }
+
+            $folders[] = $this->temporaryFileService->storeFile($file, $resolvedType);
         }
 
-        return response()->json(['folders' => $folders], 200);
+        if (empty($folders)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid file uploaded.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'folders' => $folders,
+        ], 200);
     }
 
     public function destroy(Request $request)
