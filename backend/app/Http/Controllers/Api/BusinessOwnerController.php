@@ -67,7 +67,7 @@ class BusinessOwnerController extends Controller
 
             $proforma = Proforma::create([
                 'poster_id'                  => $ownerId,
-                'file_number'                => '#' . $ownerId . '-' . substr(time(), -4),
+                'file_number'                => 'BO' .'-'. $ownerId,
                 'car_brand_id'               => $validated['brand_id'],
                 'car_type'                   => $validated['car_type'],
                 'customer_name'              => $owner->name,
@@ -300,43 +300,68 @@ class BusinessOwnerController extends Controller
 
     public function createEmployee(Request $request)
     {
-        $ownerId = $this->getOwnerId();
-        $numemployee = User::where('refistered_by',$ownerId)->count();
-        if($numemployee >= 10 ) {
+        $ownerId      = $this->getOwnerId();
+        $currentCount = User::where('registered_by', $ownerId)->where('role', 'employee')->count();
+        $isBulk       = $request->has('employees');
+
+        if ($isBulk) {
+            $validated = $request->validate([
+                'employees'                => ['required', 'array', 'min:1', 'max:10'],
+                'employees.*.name'         => ['required', 'string', 'max:255'],
+                'employees.*.phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'distinct', 'unique:users,phone_number'],
+                'employees.*.email'        => ['nullable', 'email', 'distinct', 'unique:users,email'],
+                'employees.*.password'     => ['required', 'string', 'min:6', 'confirmed'],
+            ]);
+            $newCount = count($validated['employees']);
+        } else {
+            $validated = $request->validate([
+                'name'         => ['required', 'string', 'max:255'],
+                'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
+                'email'        => ['nullable', 'email', 'unique:users,email'],
+                'password'     => ['required', 'string', 'min:6', 'confirmed'],
+            ]);
+            $newCount = 1;
+        }
+
+        if ($currentCount + $newCount > 10) {
             return response()->json([
                 'success' => false,
-                'message' => 'You can only create 10 employees per branch,
-                              if you have branch  can request for a brunch',
-            ], 400);
+                'message' => "Cannot add {$newCount} employee(s). You have {$currentCount}/10 already. Limit is 10.",
+            ], 422);
         }
-        $validated = $request->validate([
-            'name'         => ['required', 'string', 'max:255'],
-            'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
-            'password'     => ['required', 'string', 'min:6', 'confirmed'],
-            'email'        => ['nullable', 'email', 'unique:users,email'],
-        ]);
 
-        $employee = User::create([
-            'name'          => $validated['name'],
-            'phone_number'  => $validated['phone_number'],
-            'email'         => $validated['email'] ?? null,
-            'password'      => Hash::make($validated['password']),
-            'role'          => 'employee',
-            'approved'      => true,
-            'registered_by' => $ownerId,
-        ]);
+        $created = [];
+        DB::beginTransaction();
+        try {
+            foreach ($isBulk ? $validated['employees'] : [$validated] as $data) {
+                $created[] = User::create([
+                    'name'          => $data['name'],
+                    'phone_number'  => $data['phone_number'],
+                    'email'         => $data['email'] ?? null,
+                    'password'      => Hash::make($data['password']),
+                    'role'          => 'employee',
+                    'approved'      => true,
+                    'registered_by' => $ownerId,
+                ]);
+            }
+            DB::commit();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Employee created successfully',
-            'data'    => new UserResource($employee),
-        ], 201);
+            return response()->json([
+                'success' => true,
+                'message' => count($created) . ' employee(s) created successfully.',
+                'data'    => UserResource::collection(collect($created)),
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('BusinessOwner employee creation failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Employee creation failed. Please try again.'], 500);
+        }
     }
     
     public function listEmployees()
     {
-        $ownerId = $this->getOwnerId();
-
+        $ownerId   = $this->getOwnerId();
         $employees = User::where('registered_by', $ownerId)
             ->where('role', 'employee')
             ->orderBy('created_at', 'desc')
@@ -346,6 +371,23 @@ class BusinessOwnerController extends Controller
             'success' => true,
             'data'    => UserResource::collection($employees),
         ]);
+    }
+
+    public function deleteEmployee($id)
+    {
+        $ownerId  = $this->getOwnerId();
+        $employee = User::where('id', $id)
+            ->where('registered_by', $ownerId)
+            ->where('role', 'employee')
+            ->first();
+
+        if (!$employee) {
+            return response()->json(['success' => false, 'message' => 'Employee not found.'], 404);
+        }
+
+        $employee->delete();
+
+        return response()->json(['success' => true, 'message' => 'Employee removed successfully.']);
     }
 }
 

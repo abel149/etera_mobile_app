@@ -42,7 +42,7 @@ class AuthController extends Controller
                 'code'    => 'PENDING_APPROVAL',
                 'data'    => [
                     'approved' => (bool) $user->approved,
-                    'user'     => $this->userPayload($user),
+                    'user'     => new UserResource($user),
                 ],
             ], 403);
         }
