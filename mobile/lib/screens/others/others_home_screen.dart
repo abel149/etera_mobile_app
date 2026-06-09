@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../shared/profile_tab.dart';
 import 'dashboard_tab.dart';
 import 'proformas_tab.dart';
+import '../../widgets/notification_bell.dart';
 
 class OthersHomeScreen extends StatefulWidget {
   const OthersHomeScreen({super.key});
@@ -47,14 +48,10 @@ class _OthersHomeScreenState extends State<OthersHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('E-Tera'),
+        title: const Text('etera'),
         automaticallyImplyLeading: false,
         actions: [
-          IconButton(
-            tooltip: 'Notifications',
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {},
-          ),
+          const NotificationBell(),
           PopupMenuButton<String>(
             tooltip: 'Menu',
             offset: const Offset(0, 48),

@@ -6,12 +6,14 @@ class EteraCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets? padding;
   final EdgeInsets? margin;
+  final VoidCallback? onTap;
 
   const EteraCard({
     super.key,
     required this.child,
     this.padding,
     this.margin,
+    this.onTap,
   });
 
   @override
@@ -31,9 +33,12 @@ class EteraCard extends StatelessWidget {
         borderRadius: radius,
         child: Material(
           type: MaterialType.transparency,
-          child: Padding(
-            padding: padding ?? const EdgeInsets.all(20),
-            child: child,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: padding ?? const EdgeInsets.all(20),
+              child: child,
+            ),
           ),
         ),
       ),
