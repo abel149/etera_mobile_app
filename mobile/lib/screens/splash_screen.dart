@@ -78,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   const SizedBox(height: 24),
                   const Text(
-                    'E-Tera',
+                    'etera',
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.w800,

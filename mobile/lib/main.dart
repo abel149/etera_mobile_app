@@ -1,6 +1,9 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:provider/provider.dart';
+import 'services/notification_service.dart';
 import 'config/theme.dart';
 import 'providers/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
@@ -12,21 +15,34 @@ import 'screens/auth/pending_approval_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/proforma/create_proforma_screen.dart';
 import 'screens/business_owner/bo_proforma_detail_screen.dart';
+import 'screens/garage/garage_my_file_detail_screen.dart';
 import 'screens/others/proforma_detail_screen.dart';
+import 'screens/shared/notifications_screen.dart';
 
 void main() async {
   final binding = WidgetsFlutterBinding.ensureInitialized();
-  // Keep native splash (icon screen) visible while we check auth
   FlutterNativeSplash.preserve(widgetsBinding: binding);
+
+  // Init Firebase (gracefully — requires google-services.json to activate push)
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    await NotificationService.init();
+  } catch (_) {
+    // Firebase not configured — in-app notifications still work via polling
+  }
 
   final auth = AuthProvider();
   final restored = await auth.tryRestoreSession();
   final startRoute =
       (restored && auth.user != null && auth.user!.approved) ? '/home' : '/login';
 
-  // Auth done — dismiss native splash, show app immediately
-  FlutterNativeSplash.remove();
+  // If restored, register FCM token for push notifications
+  if (restored && auth.user != null) {
+    NotificationService.registerToken();
+  }
 
+  FlutterNativeSplash.remove();
   runApp(EteraApp(auth: auth, startRoute: startRoute));
 }
 
@@ -56,6 +72,8 @@ class EteraApp extends StatelessWidget {
           '/create-proforma': (_) => const CreateProformaScreen(),
           '/proforma-detail': (_) => const ProformaDetailScreen(),
           '/bo-proforma-detail': (_) => const BOProformaDetailScreen(),
+          '/garage-file-detail': (_) => const GarageMyFileDetailScreen(),
+          '/notifications': (_) => const NotificationsScreen(),
         },
       ),
     );

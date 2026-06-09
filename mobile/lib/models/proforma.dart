@@ -93,12 +93,14 @@ class ProformaPartItem {
 
 class ProformaItem {
   final int id;
+  final String fileNumber;
   final String status;
   final int numberOfProformas;
   final String carType;
   final String brandName;
   final String model;
   final String year;
+  final String customerName;
   final String customerPhone;
   final String licensePlate;
   final String? chassisNumber;
@@ -109,12 +111,14 @@ class ProformaItem {
 
   ProformaItem({
     required this.id,
+    required this.fileNumber,
     required this.status,
     required this.numberOfProformas,
     required this.carType,
     required this.brandName,
     required this.model,
     required this.year,
+    required this.customerName,
     required this.customerPhone,
     required this.licensePlate,
     this.chassisNumber,
@@ -165,13 +169,14 @@ class ProformaItem {
 
     return ProformaItem(
       id: json['id'] ?? 0,
+      fileNumber: json['file_number'] ?? '',
       status: json['status'] ?? 'pending',
       numberOfProformas: numberOfProformas,
       carType: json['car_type'] ?? '',
       brandName: brandName,
       model: json['model'] ?? '',
       year: json['year'] ?? '',
-      // ProformaResource uses 'customer_phone' and 'license_plate'
+      customerName: json['customer_name'] ?? '',
       customerPhone: json['customer_phone'] ?? json['customer_phone_number'] ?? '',
       licensePlate: json['license_plate'] ?? json['license_plate_number'] ?? '',
       chassisNumber: json['chassis_number'],

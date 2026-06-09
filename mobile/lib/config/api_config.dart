@@ -35,6 +35,28 @@ class ApiConfig {
   static const String businessOwnerBillingStatements = '$baseUrl/business-owner/billing/statements';
   static String businessOwnerStatementDetail(String sku) => '$baseUrl/business-owner/billing/statements/$sku';
 
+  // Garage role
+  static const String garageDashboard = '$baseUrl/garage/dashboard';
+  static const String garageInbox = '$baseUrl/garage/inbox';
+  static const String garageMyApplications = '$baseUrl/garage/my-applications';
+  static String garageProformaDetail(int id) => '$baseUrl/garage/proformas/$id';
+  static String garageApplyProforma(int id) => '$baseUrl/garage/proformas/$id/apply';
+  static const String garageMyFiles = '$baseUrl/garage/my-files';
+  static String garageMyFileDetail(int id) => '$baseUrl/garage/my-files/$id';
+  static const String garageBalance = '$baseUrl/garage/balance';
+  static const String garageWithdraw = '$baseUrl/garage/withdraw';
+  static const String garageReceivedProformas = '$baseUrl/garage/received-proformas';
+  static const String registerDeviceToken = '$baseUrl/device-token';
+  static const String notifications = '$baseUrl/notifications';
+  static const String notificationsMarkRead = '$baseUrl/notifications/read';
+  static String garageRequestClose(int id) => '$baseUrl/garage/proformas/$id/request-close';
+  static const String garageEmployees = '$baseUrl/garage/employees';
+  static String garageDeleteEmployee(int id) => '$baseUrl/garage/employees/$id';
+  static const String garageBilling = '$baseUrl/garage/billing';
+  static const String garageBillingPlan = '$baseUrl/garage/billing/plan';
+  static const String garageBillingStatements = '$baseUrl/garage/billing/statements';
+  static String garageBillingStatementDetail(String sku) => '$baseUrl/garage/billing/statements/$sku';
+
   // Proforma (role-based endpoints)
   static const String _createProformaOthers = '$baseUrl/others/create-file';
   static const String _createProformaBusinessOwner = '$baseUrl/business-owner/create-file';
