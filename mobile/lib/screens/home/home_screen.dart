@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../business_owner/business_owner_home_screen.dart';
 import '../others/others_home_screen.dart';
 
 /// Routes to the correct home screen based on the authenticated user's role.
@@ -15,7 +16,11 @@ class HomeScreen extends StatelessWidget {
 
     switch (user?.role) {
       case 'others':
+      case 'individual':
         return const OthersHomeScreen();
+      case 'business_owner':
+      case 'employee':
+        return const BusinessOwnerHomeScreen();
       default:
         return _ComingSoonScreen(role: user?.roleLabel ?? user?.role ?? 'Unknown');
     }

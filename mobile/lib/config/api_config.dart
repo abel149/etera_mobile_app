@@ -21,6 +21,20 @@ class ApiConfig {
   static String othersProformaDetail(int id) => '$baseUrl/others/proformas/$id';
   static String othersRequestClose(int id) => '$baseUrl/others/proformas/$id/request-close';
 
+  // Business Owner role
+  static const String businessOwnerDashboard = '$baseUrl/business-owner/dashboard';
+  static const String businessOwnerProformas = '$baseUrl/business-owner/proformas';
+  static String businessOwnerProformaDetail(int id) => '$baseUrl/business-owner/proformas/$id';
+  static String businessOwnerRequestClose(int id) => '$baseUrl/business-owner/proformas/$id/request-close';
+  static const String businessOwnerBalance = '$baseUrl/business-owner/balance';
+  static const String businessOwnerWithdraw = '$baseUrl/business-owner/withdraw';
+  static const String businessOwnerEmployees = '$baseUrl/business-owner/employees';
+  static String businessOwnerDeleteEmployee(int id) => '$baseUrl/business-owner/employees/$id';
+  static const String businessOwnerBilling = '$baseUrl/business-owner/billing';
+  static const String businessOwnerBillingPlan = '$baseUrl/business-owner/billing/plan';
+  static const String businessOwnerBillingStatements = '$baseUrl/business-owner/billing/statements';
+  static String businessOwnerStatementDetail(String sku) => '$baseUrl/business-owner/billing/statements/$sku';
+
   // Proforma (role-based endpoints)
   static const String _createProformaOthers = '$baseUrl/others/create-file';
   static const String _createProformaBusinessOwner = '$baseUrl/business-owner/create-file';

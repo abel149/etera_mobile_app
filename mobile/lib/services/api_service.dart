@@ -119,6 +119,22 @@ class ApiService {
     }
   }
 
+  // ─── DELETE ────────────────────────────────────────────────
+  static Future<Map<String, dynamic>> delete(
+    String url, {
+    bool withAuth = false,
+  }) async {
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: await _headers(withAuth: withAuth),
+      );
+      return _processResponse(response);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   // ─── PUT (JSON) ────────────────────────────────────────────
   static Future<Map<String, dynamic>> put(
     String url,
