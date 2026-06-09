@@ -57,10 +57,39 @@ class ApiConfig {
   static const String garageBillingStatements = '$baseUrl/garage/billing/statements';
   static String garageBillingStatementDetail(String sku) => '$baseUrl/garage/billing/statements/$sku';
 
+  // Shop role
+  static const String shopDashboard = '$baseUrl/shop/dashboard';
+  static const String shopInbox = '$baseUrl/shop/inbox';
+  static const String shopProformas = '$baseUrl/shop/proformas';
+  static const String shopMyApplications = '$baseUrl/shop/my-applications';
+  static String shopProformaDetail(int id) => '$baseUrl/shop/proformas/$id';
+  static String shopApplyProforma(int id) => '$baseUrl/shop/proformas/$id/apply';
+  static const String shopBalance = '$baseUrl/shop/balance';
+  static const String shopEmployees = '$baseUrl/shop/employees';
+  static String shopDeleteEmployee(int id) => '$baseUrl/shop/employees/$id';
+
+  // Insurance role
+  static const String insuranceDashboard = '$baseUrl/insurance/dashboard';
+  static const String insuranceProformas = '$baseUrl/insurance/proformas';
+  static String insuranceProformaDetail(int id) => '$baseUrl/insurance/proformas/$id';
+  static String insuranceCreateFile = '$baseUrl/insurance/create-file';
+  static String insuranceRequestClose(int id) => '$baseUrl/insurance/proformas/$id/request-close';
+  static const String insuranceReceivedProformas = '$baseUrl/insurance/received-proformas';
+  static const String insuranceBalance = '$baseUrl/insurance/balance';
+  static const String insurancePartners = '$baseUrl/insurance/partners';
+  static String insuranceDeletePartner(int id) => '$baseUrl/insurance/partners/$id';
+  static const String insuranceEmployees = '$baseUrl/insurance/employees';
+  static String insuranceDeleteEmployee(int id) => '$baseUrl/insurance/employees/$id';
+  static const String insuranceBilling = '$baseUrl/insurance/billing';
+  static const String insuranceBillingPlan = '$baseUrl/insurance/billing/plan';
+  static const String insuranceBillingStatements = '$baseUrl/insurance/billing/statements';
+  static String insuranceStatementDetail(String sku) => '$baseUrl/insurance/billing/statements/$sku';
+
   // Proforma (role-based endpoints)
   static const String _createProformaOthers = '$baseUrl/others/create-file';
   static const String _createProformaBusinessOwner = '$baseUrl/business-owner/create-file';
   static const String _createProformaGarage = '$baseUrl/garage/create-file';
+  static const String _createProformaInsurance = '$baseUrl/insurance/create-file';
 
   static String createProformaUrl(String role) {
     switch (role) {
@@ -68,8 +97,9 @@ class ApiConfig {
       case 'employee':
         return _createProformaBusinessOwner;
       case 'garage':
-      case 'shop':
         return _createProformaGarage;
+      case 'insurance':
+        return _createProformaInsurance;
       default:
         return _createProformaOthers;
     }
