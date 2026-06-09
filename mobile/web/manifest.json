@@ -1,6 +1,6 @@
 {
-    "name": "etera_mobile",
-    "short_name": "etera_mobile",
+    "name": "etera",
+    "short_name": "etera",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
