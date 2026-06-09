@@ -7,6 +7,7 @@ import 'bo_billing_tab.dart';
 import 'bo_dashboard_tab.dart';
 import 'bo_employees_tab.dart';
 import 'bo_proformas_tab.dart';
+import '../../widgets/notification_bell.dart';
 
 class BusinessOwnerHomeScreen extends StatefulWidget {
   const BusinessOwnerHomeScreen({super.key});
@@ -78,14 +79,10 @@ class _BusinessOwnerHomeScreenState extends State<BusinessOwnerHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('E-Tera'),
+        title: const Text('etera'),
         automaticallyImplyLeading: false,
         actions: [
-          IconButton(
-            tooltip: 'Notifications',
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {},
-          ),
+          const NotificationBell(),
           PopupMenuButton<String>(
             tooltip: 'Menu',
             offset: const Offset(0, 48),
