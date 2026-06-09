@@ -13,6 +13,8 @@ use App\Http\Controllers\Api\MarketerController;
 use App\Http\Controllers\Api\UserReviewController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AdminAnalyticsController;
+use App\Http\Controllers\Api\UserBalanceController;
+
 /*
 |--------------------------------------------------------------------------
 | ETERA Mobile API v1 Routes
@@ -130,10 +132,6 @@ Route::middleware(['auth:sanctum', 'role:business_owner,employee'])->prefix('bus
     Route::get('/proformas/{id}',                     [BusinessOwnerController::class, 'show']);
     Route::post('/proformas/{id}/request-close',      [BusinessOwnerController::class, 'requestClose']);
 
-    // Balance & Withdrawals
-    Route::get('/balance',                            [BusinessOwnerController::class, 'balance']);
-    Route::post('/withdraw',                          [BusinessOwnerController::class, 'submitWithdrawal']);
-
     // Employee management
     Route::get('/employees',                          [BusinessOwnerController::class, 'listEmployees']);
     Route::post('/employees',                         [BusinessOwnerController::class, 'createEmployee']);
@@ -170,9 +168,8 @@ Route::middleware(['auth:sanctum', 'role:garage,employee'])->prefix('garage')->g
     Route::get('/received-proformas',                 [GarageController::class, 'receivedProformas']);
 
     // Balance & Withdrawals
-    Route::get('/balance',                            [GarageController::class, 'balance']);
-    Route::post('/withdraw',                          [GarageController::class, 'submitWithdrawal']);
-
+    Route::get('/balance', [UserBalanceController::class, 'index']);
+    
     // Employee management
     Route::get('/employees',                          [GarageController::class, 'listEmployees']);
     Route::post('/employees',                         [GarageController::class, 'createEmployee']);
@@ -229,8 +226,7 @@ Route::middleware(['auth:sanctum', 'role:shop,employee'])->prefix('shop')->group
     Route::get('/my-applications',                    [ShopController::class, 'myApplications']);
 
     // Balance & Withdrawals
-    Route::get('/balance',                            [ShopController::class, 'balance']);
-    Route::post('/withdraw',                          [ShopController::class, 'submitWithdrawal']);
+    Route::get('/balance', [UserBalanceController::class, 'index']);
 
     // Employee management
     Route::get('/employees',                          [ShopController::class, 'listEmployees']);
