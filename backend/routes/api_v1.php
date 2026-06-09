@@ -218,7 +218,8 @@ Route::middleware(['auth:sanctum', 'role:shop,employee'])->prefix('shop')->group
     Route::get('/dashboard',                          [ShopController::class, 'dashboard']);
     Route::get('/inbox',                              [ShopController::class, 'inbox']);
 
-    // Proforma viewing & applying (shop bids on proformas)
+    // Proforma listing & applying (shop bids on proformas)
+    Route::get('/proformas',                          [ShopController::class, 'proformas']);
     Route::get('/proformas/{id}',                     [ShopController::class, 'proformaDetail']);
     Route::post('/proformas/{id}/apply',              [ShopController::class, 'applyProforma']);
 

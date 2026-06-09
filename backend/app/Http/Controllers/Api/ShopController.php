@@ -95,6 +95,58 @@ class ShopController extends Controller
     }
 
     // =========================================================================
+    // GET /api/v1/shop/proformas
+    // List published/floated proformas available for this shop to apply.
+    // Filtered by the shop's registered brands.
+    // =========================================================================
+    public function proformas(Request $request)
+    {
+        $ownerId = $this->getOwnerId();
+        $owner   = User::find($ownerId);
+
+        // Brand IDs this shop handles
+        $brandIds = $owner ? $owner->brands()->pluck('brands.id')->toArray() : [];
+
+        $query = Proforma::with(['brand', 'parts', 'poster'])
+            ->whereIn('status', ['published', 'opened'])
+            ->where(function ($q) use ($brandIds) {
+                if (!empty($brandIds)) {
+                    $q->whereIn('car_brand_id', $brandIds);
+                }
+            });
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $proformas = $query->orderBy('created_at', 'desc')->paginate(15);
+
+        return response()->json([
+            'success'    => true,
+            'data'       => $proformas->map(fn($p) => [
+                'id'              => $p->id,
+                'file_number'     => $p->file_number,
+                'status'          => $p->status,
+                'customer_name'   => $p->customer_name,
+                'brand'           => $p->brand ? ['id' => $p->brand->id, 'name' => $p->brand->name] : null,
+                'model'           => $p->model,
+                'year'            => $p->year,
+                'parts_count'     => $p->parts->count(),
+                'already_applied' => ProformaApplication::where('application_by', $ownerId)
+                    ->where('proforma_id', $p->id)->exists(),
+                'created_at'      => $p->created_at?->toIso8601String(),
+                'proforma'        => new ProformaResource($p),
+            ]),
+            'pagination' => [
+                'current_page' => $proformas->currentPage(),
+                'last_page'    => $proformas->lastPage(),
+                'per_page'     => $proformas->perPage(),
+                'total'        => $proformas->total(),
+            ],
+        ]);
+    }
+
+    // =========================================================================
     // GET /api/v1/shop/proformas/{id}
     // Full proforma detail for a shop to review before applying.
     // Clears inbox entry on view.

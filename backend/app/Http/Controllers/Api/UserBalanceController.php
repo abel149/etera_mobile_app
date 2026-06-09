@@ -58,7 +58,7 @@ class UserBalanceController extends Controller
         $transactions = $commissions->merge($invoices)->sortByDesc('date')->values();
 
         // ── Pending withdrawal requests ───────────────────────────────
-        $withdrawals = WithdrawalRequest::where('user_id', $ownerId)
+        $withdrawals = WithdrawalRequest::where('from', $ownerId)
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(fn ($w) => [
