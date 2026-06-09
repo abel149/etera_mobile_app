@@ -55,12 +55,12 @@ Route::post('/auth/login', [AuthController::class, 'login'])
 // -----------------------------------------------------------------------
 // Public: Helpers (cacheable dropdowns)
 // -----------------------------------------------------------------------
-/*Route::get('/brands', function () {
+Route::get('/brands', function () {
     return response()->json([
         'success' => true,
         'data'    => \App\Models\Brand::orderBy('name')->get(['id', 'name']),
     ]);
-});*/
+});
 
 Route::get('/parts', function () {
     return response()->json([
