@@ -5,6 +5,7 @@ class User {
   final String phoneNumber;
   final String role;
   final String? storeId;
+  final String? tinNumber;
   final bool approved;
   final double balance;
   final String? location;
@@ -17,6 +18,7 @@ class User {
     required this.phoneNumber,
     required this.role,
     this.storeId,
+    this.tinNumber,
     required this.approved,
     required this.balance,
     this.location,
@@ -30,7 +32,8 @@ class User {
       email: json['email'] as String?,
       phoneNumber: json['phone_number'] as String,
       role: json['role'] as String,
-      storeId: json['store_id'] as String?,
+      storeId: json['store_id']?.toString(),
+      tinNumber: json['tin_number'] as String?,
       approved: json['approved'] == true || json['approved'] == 1,
       balance: (json['balance'] ?? 0).toDouble(),
       location: json['location'] as String?,
@@ -47,6 +50,7 @@ class User {
         'phone_number': phoneNumber,
         'role': role,
         'store_id': storeId,
+        'tin_number': tinNumber,
         'approved': approved,
         'balance': balance,
         'location': location,
@@ -55,6 +59,7 @@ class User {
 
   String get roleLabel {
     switch (role) {
+      case 'others':
       case 'individual':
         return 'Individual';
       case 'business_owner':
