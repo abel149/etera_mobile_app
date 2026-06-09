@@ -81,6 +81,18 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
   Future<void> _submit() async {
     setState(() => _loading = true);
 
+    // ─── Step A: upload any pending images to /upload/temp ───
+    for (final p in _parts) {
+      if (p.images.isNotEmpty && p.tempPaths.isEmpty) {
+        final uploadedPaths = <String>[];
+        for (final img in p.images) {
+          final folder = await ProformaService.uploadTempImage(img.path);
+          if (folder != null) uploadedPaths.add(folder);
+        }
+        p.tempPaths = uploadedPaths;
+      }
+    }
+
     final req = ProformaRequest(
       numberOfProformas: _numberOfProformas,
       eteraCheretaHours: _numberOfProformas == -1 ? _eteraHours : null,
@@ -94,12 +106,14 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
       parts: _parts
           .map((p) => ProformaPart(
                 condition: p.condition,
+                name: p.nameCtrl.text.trim(),
                 number: p.numberCtrl.text.trim(),
                 grade: p.grade,
                 country: p.countryCtrl.text.trim(),
                 quantity: int.tryParse(p.quantityCtrl.text) ?? 1,
                 component: p.component,
                 photoPaths: p.images.map((f) => f.path).toList(),
+                tempPhotoPaths: p.tempPaths,
               ))
           .toList(),
     );
@@ -139,6 +153,7 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
     _plateCtrl.dispose();
     _chassisCtrl.dispose();
     for (final p in _parts) {
+      p.nameCtrl.dispose();
       p.numberCtrl.dispose();
       p.countryCtrl.dispose();
       p.quantityCtrl.dispose();
@@ -148,6 +163,8 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final hPad = width > 600 ? 48.0 : 20.0;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Request Proforma'),
@@ -159,26 +176,26 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Step indicator
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 14),
               child: StepIndicator(
                 currentStep: _step,
                 totalSteps: 4,
                 titles: const ['Basic', 'Car', 'Parts', 'Submit'],
               ),
             ),
-
-            // Step content
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: [
-                  _buildStep1(),
-                  _buildStep2(),
-                  _buildStep3(),
-                  _buildStep4(),
-                ][_step],
+                padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 32),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: [
+                    _buildStep1(),
+                    _buildStep2(),
+                    _buildStep3(),
+                    _buildStep4(),
+                  ][_step],
+                ),
               ),
             ),
           ],
@@ -435,11 +452,25 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Part name/number
+          // Part Name
+          TextFormField(
+            controller: part.nameCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Part Name',
+              hintText: 'e.g: Boost Sensor',
+            ),
+            textCapitalization: TextCapitalization.words,
+            validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+          ),
+          const SizedBox(height: 12),
+
+          // Part Number
           TextFormField(
             controller: part.numberCtrl,
-            decoration: const InputDecoration(labelText: 'Part Name (Part Number)', hintText: 'e.g: Boost Sensor (008-900734)'),
-            validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+            decoration: const InputDecoration(
+              labelText: 'Part Number (Optional)',
+              hintText: 'e.g: 008-900734',
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -493,28 +524,32 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
           const SizedBox(height: 12),
 
           // Images
-          const Text('Images (Optional, max 3)', style: TextStyle(fontSize: 12, color: EteraTheme.textMuted)),
-          const SizedBox(height: 6),
+          const Text('Photos (Optional, max 3)', style: TextStyle(fontSize: 12, color: EteraTheme.textMuted)),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               ...part.images.asMap().entries.map((e) => Stack(
+                    clipBehavior: Clip.none,
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(e.value, width: 60, height: 60, fit: BoxFit.cover),
+                        child: Image.file(e.value, width: 72, height: 72, fit: BoxFit.cover),
                       ),
                       Positioned(
-                        top: -4,
-                        right: -4,
+                        top: -6,
+                        right: -6,
                         child: GestureDetector(
-                          onTap: () => setState(() => part.images.removeAt(e.key)),
+                          onTap: () => setState(() {
+                            part.images.removeAt(e.key);
+                            part.tempPaths = []; // reset temp paths when images change
+                          }),
                           child: Container(
-                            width: 20,
-                            height: 20,
+                            width: 22,
+                            height: 22,
                             decoration: const BoxDecoration(color: EteraTheme.error, shape: BoxShape.circle),
-                            child: const Icon(Icons.close, size: 12, color: Colors.white),
+                            child: const Icon(Icons.close, size: 13, color: Colors.white),
                           ),
                         ),
                       ),
@@ -523,18 +558,27 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
               if (part.images.length < 3)
                 GestureDetector(
                   onTap: () async {
-                    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
-                    if (picked != null) setState(() => part.images.add(File(picked.path)));
+                    final picked = await ImagePicker().pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 70,
+                      maxWidth: 1200,
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        part.images.add(File(picked.path));
+                        part.tempPaths = []; // reset so photos re-upload on submit
+                      });
+                    }
                   },
                   child: Container(
-                    width: 60,
-                    height: 60,
+                    width: 72,
+                    height: 72,
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F8E9),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: EteraTheme.borderGreen),
                     ),
-                    child: const Icon(Icons.add_photo_alternate_outlined, color: EteraTheme.green),
+                    child: const Icon(Icons.add_photo_alternate_outlined, color: EteraTheme.green, size: 28),
                   ),
                 ),
             ],
@@ -612,10 +656,14 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
 // ─── Part entry helper ──────────────────────────────────────────────
 class _PartEntry {
   String condition = 'New';
+  final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController numberCtrl = TextEditingController();
   String grade = '1st grade (Original OEM)';
   final TextEditingController countryCtrl = TextEditingController();
   final TextEditingController quantityCtrl = TextEditingController(text: '1');
   String component = '';
   List<File> images = [];
+  // Populated after uploading to /upload/temp
+  List<String> tempPaths = [];
+  bool uploadingImages = false;
 }
