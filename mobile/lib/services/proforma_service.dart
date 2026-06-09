@@ -60,18 +60,18 @@ class ProformaService {
       // ─── Parts arrays ───
       for (int i = 0; i < req.parts.length; i++) {
         final p = req.parts[i];
-        request.fields['parts[condition][$i]'] = p.condition;
-        request.fields['parts[name][$i]'] = p.name.isNotEmpty ? p.name : p.number;
-        request.fields['parts[number][$i]'] = p.number.isNotEmpty ? p.number : p.name;
-        request.fields['parts[grade][$i]'] = p.grade;
-        request.fields['parts[country][$i]'] = p.country;
-        request.fields['parts[quantity][$i]'] = p.quantity.toString();
-        request.fields['parts[component][$i]'] = p.component;
+        request.fields['parts[$i][condition]'] = p.condition;
+        request.fields['parts[$i][name]'] = p.name.isNotEmpty ? p.name : p.number;
+        request.fields['parts[$i][number]'] = p.number.isNotEmpty ? p.number : p.name;
+        request.fields['parts[$i][grade]'] = p.grade;
+        request.fields['parts[$i][country]'] = p.country;
+        request.fields['parts[$i][quantity]'] = p.quantity.toString();
+        request.fields['parts[$i][component]'] = p.component;
 
         // Photos — send pre-uploaded temp folder names as strings
         for (int j = 0; j < p.tempPhotoPaths.length; j++) {
           if (p.tempPhotoPaths[j].isNotEmpty) {
-            request.fields['parts[photo][$i][$j]'] = p.tempPhotoPaths[j];
+            request.fields['parts[$i][photo_paths][$j]'] = p.tempPhotoPaths[j];
           }
         }
       }
