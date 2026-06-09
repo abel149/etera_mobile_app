@@ -11,6 +11,7 @@ import 'screens/auth/garage_shop_register_screen.dart';
 import 'screens/auth/pending_approval_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/proforma/create_proforma_screen.dart';
+import 'screens/others/proforma_detail_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +40,7 @@ class EteraApp extends StatelessWidget {
           '/pending': (_) => const PendingApprovalScreen(),
           '/home': (_) => const HomeScreen(),
           '/create-proforma': (_) => const CreateProformaScreen(),
+          '/proforma-detail': (_) => const ProformaDetailScreen(),
         },
       ),
     );
