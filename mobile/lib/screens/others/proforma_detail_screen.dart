@@ -285,6 +285,158 @@ class _PartCard extends StatelessWidget {
   }
 }
 
+// ─── Received applications section ───────────────────────────────
+class _ReceivedApplicationsSection extends StatelessWidget {
+  final List<ProformaApplication> shops;
+  final List<ProformaApplication> garages;
+
+  const _ReceivedApplicationsSection(
+      {required this.shops, required this.garages});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = shops.length + garages.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Received Applications ($total)',
+            style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        if (total == 0)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: EteraTheme.bgLight,
+              borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.hourglass_empty_outlined,
+                    color: EteraTheme.textMuted, size: 20),
+                SizedBox(width: 12),
+                Text('No applications received yet.',
+                    style: TextStyle(color: EteraTheme.textMuted)),
+              ],
+            ),
+          )
+        else ...[
+          if (shops.isNotEmpty) ...[
+            _sectionHeader('Spare Parts Shops (${shops.length})',
+                Icons.store_outlined, EteraTheme.green),
+            const SizedBox(height: 8),
+            ...shops.map((a) => _ApplicationCard(application: a)),
+          ],
+          if (garages.isNotEmpty) ...[
+            if (shops.isNotEmpty) const SizedBox(height: 16),
+            _sectionHeader('Garages (${garages.length})',
+                Icons.build_outlined, EteraTheme.teal),
+            const SizedBox(height: 8),
+            ...garages.map((a) => _ApplicationCard(application: a)),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _sectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
+        Text(title,
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w600, color: color)),
+      ],
+    );
+  }
+}
+
+// ─── Application card ─────────────────────────────────────────────
+class _ApplicationCard extends StatelessWidget {
+  final ProformaApplication application;
+  const _ApplicationCard({required this.application});
+
+  @override
+  Widget build(BuildContext context) {
+    return EteraCard(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  application.applicant.name,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: EteraTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${application.netTotal.toStringAsFixed(0)} Br',
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          if (application.applicant.phone != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.phone_outlined,
+                    size: 13, color: EteraTheme.textMuted),
+                const SizedBox(width: 4),
+                Text(application.applicant.phone!,
+                    style: const TextStyle(
+                        fontSize: 12, color: EteraTheme.textMuted)),
+              ],
+            ),
+          ],
+          if (application.discountPct > 0) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text(
+                  'Subtotal: ${application.subtotal.toStringAsFixed(0)} Br',
+                  style: const TextStyle(
+                      fontSize: 12, color: EteraTheme.textMuted),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: EteraTheme.teal.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${application.discountPct.toStringAsFixed(0)}% off',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: EteraTheme.teal,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Status badge (reused from proformas tab) ─────────────────────
 class _StatusBadge extends StatelessWidget {
   final String status;

@@ -446,9 +446,14 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
           // Condition
           DropdownButtonFormField<String>(
             initialValue: part.condition,
-            items: const [DropdownMenuItem(value: 'New', child: Text('New'))],
+            items: const [
+              DropdownMenuItem(value: 'New', child: Text('New')),
+              DropdownMenuItem(value: 'Used', child: Text('Used')),
+              DropdownMenuItem(value: 'Refurbished', child: Text('Refurbished')),
+            ],
             onChanged: (v) => part.condition = v!,
             decoration: const InputDecoration(labelText: 'Condition'),
+            validator: (v) => v == null || v.isEmpty ? 'Required' : null,
           ),
           const SizedBox(height: 12),
 
