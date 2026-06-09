@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -39,7 +40,27 @@ class ProformaApplicationReceived extends Notification implements ShouldQueue
      */
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        $channels = ['mail', 'database'];
+        if (!empty($notifiable->device_token)) {
+            $channels[] = FcmChannel::class;
+        }
+        return $channels;
+    }
+
+    public function toFcm(object $notifiable): array
+    {
+        $role     = ucfirst($this->applicant->role);
+        $progress = $this->totalRequired > 0
+            ? "{$this->currentCount}/{$this->totalRequired}"
+            : (string) $this->currentCount;
+        return [
+            "New {$role} Application ({$progress})",
+            "{$this->applicant->name} quoted for proforma #{$this->proforma->file_number}",
+            [
+                'type'        => 'proforma_application',
+                'proforma_id' => (string) $this->proforma->id,
+            ],
+        ];
     }
 
     /**

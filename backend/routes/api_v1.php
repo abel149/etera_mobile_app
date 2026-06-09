@@ -87,6 +87,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/profile',       [AuthController::class, 'profile']);
     Route::put('/profile',       [AuthController::class, 'updateProfile']);
 
+    // FCM device token registration
+    Route::post('/device-token', [AuthController::class, 'registerDeviceToken']);
+
+    // Push notifications
+    Route::get('/notifications',       [AuthController::class, 'notifications']);
+    Route::put('/notifications/read',  [AuthController::class, 'markNotificationsRead']);
+
     // Temp file upload (requires auth)
     Route::post('/upload/temp',   [\App\Http\Controllers\File\TemporaryFileController::class, 'store']);
     Route::delete('/upload/temp', [\App\Http\Controllers\File\TemporaryFileController::class, 'destroy']);

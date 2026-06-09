@@ -91,6 +91,7 @@ class User extends Authenticatable
         'commission_per_file',
         'employee_type',
         'telegram_chat_id',
+        'device_token',
     ];
 
     protected $hidden = [
