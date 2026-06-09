@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../business_owner/business_owner_home_screen.dart';
+import '../garage/garage_home_screen.dart';
 import '../others/others_home_screen.dart';
 
 /// Routes to the correct home screen based on the authenticated user's role.
@@ -21,6 +22,9 @@ class HomeScreen extends StatelessWidget {
       case 'business_owner':
       case 'employee':
         return const BusinessOwnerHomeScreen();
+      case 'garage':
+      case 'shop':
+        return const GarageHomeScreen();
       default:
         return _ComingSoonScreen(role: user?.roleLabel ?? user?.role ?? 'Unknown');
     }
@@ -36,7 +40,7 @@ class _ComingSoonScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('E-Tera'),
+        title: const Text('etera'),
         automaticallyImplyLeading: false,
         actions: [
           TextButton.icon(
