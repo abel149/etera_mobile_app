@@ -1598,7 +1598,10 @@ Route::get('/verify/{proforma}', function (Proforma $proforma) {
         $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
 
         // 🔹 Determine proforma type
-        if ($requiredShops > 0 && $requiredGarages == 0) {
+        // Explicit insurance subtypes (set via proforma_type column) always use insurance billing
+        if ($proforma->proforma_type && str_starts_with($proforma->proforma_type, 'insurance_')) {
+            $type = 'insurance';
+        } elseif ($requiredShops > 0 && $requiredGarages == 0) {
             $type = 'regular';
         } elseif ($requiredShops == 3 && $requiredGarages == 3) {
             $type = 'insurance';
@@ -1668,7 +1671,7 @@ Route::get('/verify/{proforma}', function (Proforma $proforma) {
             $rows[] = [
                 'proforma_id'     => $proforma->id,
                 'type'            => 'insurance',
-                'requested_count' => 6,
+                'requested_count' => ($requiredShops + $requiredGarages) ?: 6,
                 'unit_price'      => $unitPrice,
                 'vat_rate'        => $vatRate * 100,
                 'vat_amount'      => $vatAmount,
@@ -3101,7 +3104,9 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
                 'parts.*.images.*' => 'nullable|image|max:10240', // Validate images
                 'number_of_proformas' => 'nullable|integer|min:-1|max:5',
                 'etera_chereta_hours' => 'nullable|integer|in:4,8,12,24,48,72',
-                'voice_note' => 'nullable|string|max:10485760'
+                'voice_note' => 'nullable|string|max:10485760',
+                'proforma_type' => 'nullable|in:insurance_standard,insurance_shop_only,insurance_garage_only',
+                'number_of_garages' => 'nullable|integer|min:1|max:5'
             ]);
             
             if ($validator->fails()) {
@@ -3116,17 +3121,28 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
             $requiredShops = 3;
             $requiredGarages = 3;
             $timerExpiresAt = null;
+            $proformaType = null;
 
             if ($isEteraChereta) {
                 $eteraHours = (int) $request->input('etera_chereta_hours', 24);
                 $timerMinutes = $eteraHours * 60;
                 $timerEnabled = true;
                 $timerExpiresAt = now()->addMinutes($timerMinutes);
-                $requiredShops = 0; // Float mode - no limit on shops
-                $requiredGarages = 0; // Float mode - no limit on garages
+                $requiredShops = 0;
+                $requiredGarages = 0;
+                $proformaType = null;
+            } elseif ($request->input('proforma_type') === 'insurance_garage_only') {
+                $requiredShops = 0;
+                $requiredGarages = max(1, (int) $request->input('number_of_garages', 3));
+                $proformaType = 'insurance_garage_only';
+            } elseif ($request->input('proforma_type') === 'insurance_shop_only') {
+                $requiredShops = max(1, (int) $request->input('number_of_proformas', 3));
+                $requiredGarages = 0;
+                $proformaType = 'insurance_shop_only';
             } else {
-                $requiredShops = (int) $request->input('number_of_proformas', 3);
+                $requiredShops = max(1, (int) $request->input('number_of_proformas', 3));
                 $requiredGarages = 3;
+                $proformaType = 'insurance_standard';
             }
 
             $proforma = \App\Models\Proforma::create([
@@ -3143,6 +3159,7 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
                 'model' => $request->model,
                 'required_number_of_shops' => $requiredShops,
                 'required_number_of_garages' => $requiredGarages,
+                'proforma_type' => $proformaType,
                 'timer_duration' => $timerMinutes,
                 'timer_expires_at' => $timerExpiresAt,
                 'insured' => $request->has('insured') ? true : false,
@@ -3161,22 +3178,24 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
 
             }
             
-            if ($request->spare_part_partners) {
+            // Shop partner inboxes (skip for garage-only)
+            if ($proformaType !== 'insurance_garage_only' && $request->spare_part_partners) {
                 foreach ($request->spare_part_partners as $inbox) {
                     Inbox::create([
                         'proforma_id' => $proforma->id,
                         'user_id' => $inbox,
+                        'source' => 'insurance',
                     ]);
                 }
             }
 
-            // add garage partneer
-        
-            if ($request->garage_partners) {
+            // Garage partner inboxes (skip for shop-only)
+            if ($proformaType !== 'insurance_shop_only' && $request->garage_partners) {
                 foreach ($request->garage_partners as $inbox) {
                     Inbox::create([
                         'proforma_id' => $proforma->id,
                         'user_id' => $inbox,
+                        'source' => 'insurance',
                     ]);
                 }
             }

@@ -66,6 +66,10 @@ class GarageProformasList extends Component
             ->where('status', 'published')
             ->whereHas('poster', function ($q) {
                 $q->where('role', 'insurance');
+            })
+            ->where(function ($q) {
+                $q->whereNull('proforma_type')
+                  ->orWhere('proforma_type', '!=', 'insurance_shop_only');
             });
 
         /**

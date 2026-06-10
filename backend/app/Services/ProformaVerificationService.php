@@ -36,7 +36,10 @@ class ProformaVerificationService
         $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
         $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
 
-        if ($requiredShops > 0 && $requiredGarages == 0) {
+        // Explicit insurance subtypes (set via proforma_type column) always use insurance billing
+        if ($proforma->proforma_type && str_starts_with($proforma->proforma_type, 'insurance_')) {
+            $type = 'insurance';
+        } elseif ($requiredShops > 0 && $requiredGarages == 0) {
             $type = 'regular';
         } elseif ($requiredShops == 3 && $requiredGarages == 3) {
             $type = 'insurance';
@@ -103,7 +106,7 @@ class ProformaVerificationService
             $rows[] = [
                 'proforma_id'     => $proforma->id,
                 'type'            => 'insurance',
-                'requested_count' => 6,
+                'requested_count' => ($requiredShops + $requiredGarages) ?: 6,
                 'unit_price'      => $base,
                 'vat_rate'        => 15,
                 'vat_amount'      => $vat,

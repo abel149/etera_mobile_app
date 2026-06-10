@@ -166,6 +166,55 @@
                                         <span class="text-danger">{{$message}}</span>
                                         @enderror
                                     </div>
+                                    <!-- Proforma Type Selector -->
+                                    <div class="col-12">
+                                        <label class="form-label fw-semibold">Proforma Type</label>
+                                        <div class="d-flex flex-wrap gap-3" id="proformaTypeOptions">
+                                            <div class="form-check proforma-type-card active" data-type="insurance_standard">
+                                                <input class="form-check-input" type="radio" name="proforma_type" id="typeStandard" value="insurance_standard" checked>
+                                                <label class="form-check-label" for="typeStandard">
+                                                    <i class="bx bx-buildings me-1"></i> Standard <small class="text-muted d-block">Shops + Garages</small>
+                                                </label>
+                                            </div>
+                                            <div class="form-check proforma-type-card" data-type="insurance_shop_only">
+                                                <input class="form-check-input" type="radio" name="proforma_type" id="typeShopOnly" value="insurance_shop_only">
+                                                <label class="form-check-label" for="typeShopOnly">
+                                                    <i class="bx bx-store me-1"></i> Shop Only <small class="text-muted d-block">Spare Part Shops</small>
+                                                </label>
+                                            </div>
+                                            <div class="form-check proforma-type-card" data-type="insurance_garage_only">
+                                                <input class="form-check-input" type="radio" name="proforma_type" id="typeGarageOnly" value="insurance_garage_only">
+                                                <label class="form-check-label" for="typeGarageOnly">
+                                                    <i class="bx bx-wrench me-1"></i> Garage Only <small class="text-muted d-block">Repair Garages</small>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Number of Shops (Standard / Shop Only) -->
+                                    <div class="col-12 col-lg-6" id="numberOfShopsWrapper">
+                                        <label for="number_of_proformas" class="form-label">Number of Required Shops</label>
+                                        <select name="number_of_proformas" id="number_of_proformas" class="form-select">
+                                            <option value="1">1 Shop</option>
+                                            <option value="2">2 Shops</option>
+                                            <option value="3" selected>3 Shops</option>
+                                            <option value="4">4 Shops</option>
+                                            <option value="5">5 Shops</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Number of Garages (Garage Only) -->
+                                    <div class="col-12 col-lg-6" id="numberOfGaragesWrapper" style="display:none;">
+                                        <label for="number_of_garages" class="form-label">Number of Required Garages</label>
+                                        <select name="number_of_garages" id="number_of_garages" class="form-select">
+                                            <option value="1">1 Garage</option>
+                                            <option value="2">2 Garages</option>
+                                            <option value="3" selected>3 Garages</option>
+                                            <option value="4">4 Garages</option>
+                                            <option value="5">5 Garages</option>
+                                        </select>
+                                    </div>
+
                                     <div class="col-12 col-lg-6">
                                         <button type="button" class="btn btn-primary btn-next px-4 rounded-pill">Next<i class='bx bx-right-arrow-alt ms-2'></i></button>
                                     </div>
@@ -326,7 +375,7 @@
 
                                 <br>
                                 <div class="row g-3">
-                                    <div class="col-12 col-lg-6">
+                                    <div class="col-12 col-lg-6" id="shopPartnersWrapper">
                                         <label for="multiple-select-sparepart" class="form-label">Spare Part Shop Partners (Optional)</label>
                                         <select class="form-select" name="spare_part_partners[]" id="multiple-select-sparepart" data-placeholder="Choose anything" multiple>
                                             @foreach($spare_part_partners as $partner)
@@ -334,7 +383,7 @@
                                             @endforeach
                                         </select>
                                     </div>
-                                    <div class="col-12 col-lg-6">
+                                    <div class="col-12 col-lg-6" id="garagePartnersWrapper">
                                         <label for="multiple-select-garage" class="form-label">Garage Partners (Optional)</label>
                                         <select class="form-select" name="garage_partners[]" id="multiple-select-garage" data-placeholder="Choose anything" multiple>
                                             @foreach($garage_partners as $partner)
@@ -426,6 +475,35 @@
 </div>
 
 <style>
+/* Proforma Type Cards */
+.proforma-type-card {
+    display: flex;
+    flex-direction: column;
+    border: 2px solid #dee2e6;
+    border-radius: 12px;
+    padding: 14px 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 140px;
+    background: #fff;
+}
+.proforma-type-card:hover {
+    border-color: #0d6efd;
+    background: #f0f6ff;
+}
+.proforma-type-card.active {
+    border-color: #0d6efd;
+    background: #e8f1ff;
+}
+.proforma-type-card .form-check-input {
+    display: none;
+}
+.proforma-type-card .form-check-label {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
     .recording-indicator {
         width: 10px;
         height: 10px;
@@ -524,6 +602,47 @@ position: relative;}
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+
+    // ── Proforma Type Selector ──────────────────────────────────────────────
+    const typeCards = document.querySelectorAll('.proforma-type-card');
+    const numberOfShopsWrapper  = document.getElementById('numberOfShopsWrapper');
+    const numberOfGaragesWrapper = document.getElementById('numberOfGaragesWrapper');
+    const shopPartnersWrapper   = document.getElementById('shopPartnersWrapper');
+    const garagePartnersWrapper = document.getElementById('garagePartnersWrapper');
+
+    function applyProformaType(type) {
+        if (type === 'insurance_garage_only') {
+            numberOfShopsWrapper.style.display  = 'none';
+            numberOfGaragesWrapper.style.display = '';
+            shopPartnersWrapper.style.display   = 'none';
+            garagePartnersWrapper.style.display = '';
+        } else if (type === 'insurance_shop_only') {
+            numberOfShopsWrapper.style.display  = '';
+            numberOfGaragesWrapper.style.display = 'none';
+            shopPartnersWrapper.style.display   = '';
+            garagePartnersWrapper.style.display = 'none';
+        } else {
+            numberOfShopsWrapper.style.display  = '';
+            numberOfGaragesWrapper.style.display = 'none';
+            shopPartnersWrapper.style.display   = '';
+            garagePartnersWrapper.style.display = '';
+        }
+    }
+
+    typeCards.forEach(card => {
+        card.addEventListener('click', () => {
+            typeCards.forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            const radio = card.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+            applyProformaType(card.dataset.type);
+        });
+    });
+
+    // Initialise based on any pre-checked radio (e.g. after validation error)
+    const checkedRadio = document.querySelector('input[name="proforma_type"]:checked');
+    if (checkedRadio) applyProformaType(checkedRadio.value);
+    // ── End Proforma Type Selector ──────────────────────────────────────────
 
 const stepper3 = new Stepper(document.getElementById('stepper3'), {
         linear: false, // We'll handle linearity manually
