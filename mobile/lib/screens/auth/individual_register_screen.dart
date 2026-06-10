@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/etera_button.dart';
 import '../../widgets/etera_text_field.dart';
@@ -57,16 +59,17 @@ class _IndividualRegisterScreenState extends State<IndividualRegisterScreen> {
     if (!mounted) return;
     setState(() => _loading = false);
 
-    if (result.success) {
+    if (result.success && result.user != null) {
+      context.read<AuthProvider>().setUser(result.user!);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Registration successful! Awaiting admin approval.'),
+          content: const Text('Registration successful!'),
           backgroundColor: EteraTheme.green,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
-      Navigator.pushNamedAndRemoveUntil(context, '/pending', (r) => false);
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
     } else {
       final errorMsg = result.errors != null
           ? result.errors!.values.expand((v) => v is List ? v : [v]).join('\n')

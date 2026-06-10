@@ -34,13 +34,17 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkAuth() async {
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-
     final auth = context.read<AuthProvider>();
-    final restored = await auth.tryRestoreSession();
+
+    // Run auth restore and minimum branding display time in parallel.
+    // The minimum timer prevents an ugly flash; auth never waits extra.
+    final results = await Future.wait([
+      auth.tryRestoreSession(),
+      Future<bool>.delayed(const Duration(milliseconds: 900), () => true),
+    ]);
 
     if (!mounted) return;
+    final restored = results[0];
     if (restored && auth.user != null && auth.user!.approved) {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
@@ -67,29 +71,14 @@ class _SplashScreenState extends State<SplashScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Logo placeholder — green circle with "E"
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.2),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 2),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'E',
-                        style: TextStyle(
-                          fontSize: 48,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+                  Image.asset(
+                    'assets/icon/app_icon.png',
+                    width: 110,
+                    height: 110,
                   ),
                   const SizedBox(height: 24),
                   const Text(
-                    'E-Tera',
+                    'etera',
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.w800,

@@ -1,8 +1,11 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:provider/provider.dart';
+import 'services/notification_service.dart';
 import 'config/theme.dart';
 import 'providers/auth_provider.dart';
-import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/role_selection_screen.dart';
 import 'screens/auth/individual_register_screen.dart';
@@ -11,26 +14,54 @@ import 'screens/auth/garage_shop_register_screen.dart';
 import 'screens/auth/pending_approval_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/proforma/create_proforma_screen.dart';
+import 'screens/business_owner/bo_proforma_detail_screen.dart';
+import 'screens/garage/garage_my_file_detail_screen.dart';
+import 'screens/others/proforma_detail_screen.dart';
+import 'screens/shared/notifications_screen.dart';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const EteraApp());
+void main() async {
+  final binding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: binding);
+
+  // Init Firebase (gracefully — requires google-services.json to activate push)
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    await NotificationService.init();
+  } catch (_) {
+    // Firebase not configured — in-app notifications still work via polling
+  }
+
+  final auth = AuthProvider();
+  final restored = await auth.tryRestoreSession();
+  final startRoute =
+      (restored && auth.user != null && auth.user!.approved) ? '/home' : '/login';
+
+  // If restored, register FCM token for push notifications
+  if (restored && auth.user != null) {
+    NotificationService.registerToken();
+  }
+
+  FlutterNativeSplash.remove();
+  runApp(EteraApp(auth: auth, startRoute: startRoute));
 }
 
 class EteraApp extends StatelessWidget {
-  const EteraApp({super.key});
+  final AuthProvider auth;
+  final String startRoute;
+
+  const EteraApp({super.key, required this.auth, required this.startRoute});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AuthProvider(),
+    return ChangeNotifierProvider.value(
+      value: auth,
       child: MaterialApp(
-        title: 'E-Tera',
+        title: 'etera',
         debugShowCheckedModeBanner: false,
         theme: EteraTheme.lightTheme,
-        initialRoute: '/',
+        initialRoute: startRoute,
         routes: {
-          '/': (_) => const SplashScreen(),
           '/login': (_) => const LoginScreen(),
           '/register': (_) => const RoleSelectionScreen(),
           '/register/individual': (_) => const IndividualRegisterScreen(),
@@ -39,6 +70,10 @@ class EteraApp extends StatelessWidget {
           '/pending': (_) => const PendingApprovalScreen(),
           '/home': (_) => const HomeScreen(),
           '/create-proforma': (_) => const CreateProformaScreen(),
+          '/proforma-detail': (_) => const ProformaDetailScreen(),
+          '/bo-proforma-detail': (_) => const BOProformaDetailScreen(),
+          '/garage-file-detail': (_) => const GarageMyFileDetailScreen(),
+          '/notifications': (_) => const NotificationsScreen(),
         },
       ),
     );

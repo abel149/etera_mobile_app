@@ -13,6 +13,8 @@ use App\Http\Controllers\Api\MarketerController;
 use App\Http\Controllers\Api\UserReviewController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AdminAnalyticsController;
+use App\Http\Controllers\Api\UserBalanceController;
+
 /*
 |--------------------------------------------------------------------------
 | ETERA Mobile API v1 Routes
@@ -55,12 +57,12 @@ Route::post('/auth/login', [AuthController::class, 'login'])
 // -----------------------------------------------------------------------
 // Public: Helpers (cacheable dropdowns)
 // -----------------------------------------------------------------------
-/*Route::get('/brands', function () {
+Route::get('/brands', function () {
     return response()->json([
         'success' => true,
         'data'    => \App\Models\Brand::orderBy('name')->get(['id', 'name']),
     ]);
-});*/
+});
 
 Route::get('/parts', function () {
     return response()->json([
@@ -86,6 +88,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout',  [AuthController::class, 'logout']);
     Route::get('/profile',       [AuthController::class, 'profile']);
     Route::put('/profile',       [AuthController::class, 'updateProfile']);
+
+    // FCM device token registration
+    Route::post('/device-token', [AuthController::class, 'registerDeviceToken']);
+
+    // Push notifications
+    Route::get('/notifications',       [AuthController::class, 'notifications']);
+    Route::put('/notifications/read',  [AuthController::class, 'markNotificationsRead']);
 
     // Temp file upload (requires auth)
     Route::post('/upload/temp',   [\App\Http\Controllers\File\TemporaryFileController::class, 'store']);
@@ -123,10 +132,6 @@ Route::middleware(['auth:sanctum', 'role:business_owner,employee'])->prefix('bus
     Route::get('/proformas/{id}',                     [BusinessOwnerController::class, 'show']);
     Route::post('/proformas/{id}/request-close',      [BusinessOwnerController::class, 'requestClose']);
 
-    // Balance & Withdrawals
-    Route::get('/balance',                            [BusinessOwnerController::class, 'balance']);
-    Route::post('/withdraw',                          [BusinessOwnerController::class, 'submitWithdrawal']);
-
     // Employee management
     Route::get('/employees',                          [BusinessOwnerController::class, 'listEmployees']);
     Route::post('/employees',                         [BusinessOwnerController::class, 'createEmployee']);
@@ -163,9 +168,8 @@ Route::middleware(['auth:sanctum', 'role:garage,employee'])->prefix('garage')->g
     Route::get('/received-proformas',                 [GarageController::class, 'receivedProformas']);
 
     // Balance & Withdrawals
-    Route::get('/balance',                            [GarageController::class, 'balance']);
-    Route::post('/withdraw',                          [GarageController::class, 'submitWithdrawal']);
-
+    Route::get('/balance', [UserBalanceController::class, 'index']);
+    
     // Employee management
     Route::get('/employees',                          [GarageController::class, 'listEmployees']);
     Route::post('/employees',                         [GarageController::class, 'createEmployee']);
@@ -214,7 +218,8 @@ Route::middleware(['auth:sanctum', 'role:shop,employee'])->prefix('shop')->group
     Route::get('/dashboard',                          [ShopController::class, 'dashboard']);
     Route::get('/inbox',                              [ShopController::class, 'inbox']);
 
-    // Proforma viewing & applying (shop bids on proformas)
+    // Proforma listing & applying (shop bids on proformas)
+    Route::get('/proformas',                          [ShopController::class, 'proformas']);
     Route::get('/proformas/{id}',                     [ShopController::class, 'proformaDetail']);
     Route::post('/proformas/{id}/apply',              [ShopController::class, 'applyProforma']);
 
@@ -222,8 +227,7 @@ Route::middleware(['auth:sanctum', 'role:shop,employee'])->prefix('shop')->group
     Route::get('/my-applications',                    [ShopController::class, 'myApplications']);
 
     // Balance & Withdrawals
-    Route::get('/balance',                            [ShopController::class, 'balance']);
-    Route::post('/withdraw',                          [ShopController::class, 'submitWithdrawal']);
+    Route::get('/balance', [UserBalanceController::class, 'index']);
 
     // Employee management
     Route::get('/employees',                          [ShopController::class, 'listEmployees']);

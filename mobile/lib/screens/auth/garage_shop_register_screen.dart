@@ -35,6 +35,7 @@ class _GarageShopRegisterScreenState extends State<GarageShopRegisterScreen> {
   File? _stampImage;
   List<Brand> _brands = [];
   final Set<int> _selectedBrands = {};
+  bool _brandsLoading = true;
   final _picker = ImagePicker();
 
   @override
@@ -50,8 +51,12 @@ class _GarageShopRegisterScreenState extends State<GarageShopRegisterScreen> {
   }
 
   Future<void> _loadBrands() async {
+    if (mounted) setState(() => _brandsLoading = true);
     final brands = await AuthService.fetchBrands();
-    if (mounted) setState(() => _brands = brands);
+    if (mounted) setState(() {
+      _brands = brands;
+      _brandsLoading = false;
+    });
   }
 
   Future<void> _pickImage(bool isLicense) async {
@@ -329,10 +334,26 @@ class _GarageShopRegisterScreenState extends State<GarageShopRegisterScreen> {
                 const SizedBox(height: 16),
 
                 // Brand selection (for shops)
-                if (_role == 'shop' || _brands.isNotEmpty) ...[
-                  const Text(
-                    'Select Brands',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: EteraTheme.textSoft),
+                if (_role == 'shop' || _brands.isNotEmpty || _brandsLoading) ...[
+                  Row(
+                    children: [
+                      const Text(
+                        'Select Brands',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: EteraTheme.textSoft),
+                      ),
+                      if (_brandsLoading) ...
+                        const [
+                          SizedBox(width: 8),
+                          SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                        ],
+                      if (!_brandsLoading && _brands.isEmpty)
+                        TextButton.icon(
+                          onPressed: _loadBrands,
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: const Text('Retry'),
+                          style: TextButton.styleFrom(foregroundColor: EteraTheme.green),
+                        ),
+                    ],
                   ),
                   if (_role == 'shop')
                     const Text(
@@ -340,38 +361,52 @@ class _GarageShopRegisterScreenState extends State<GarageShopRegisterScreen> {
                       style: TextStyle(fontSize: 11, color: EteraTheme.textMuted),
                     ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _brands.map((brand) {
-                      final selected = _selectedBrands.contains(brand.id);
-                      return FilterChip(
-                        label: Text(brand.name),
-                        selected: selected,
-                        onSelected: (v) {
-                          setState(() {
-                            if (v) {
-                              _selectedBrands.add(brand.id);
-                            } else {
-                              _selectedBrands.remove(brand.id);
-                            }
-                          });
-                        },
-                        selectedColor: EteraTheme.green.withValues(alpha: 0.15),
-                        checkmarkColor: EteraTheme.green,
-                        labelStyle: TextStyle(
-                          color: selected ? EteraTheme.green : EteraTheme.textSoft,
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: selected ? EteraTheme.green : EteraTheme.borderGreen,
+                  if (!_brandsLoading && _brands.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: EteraTheme.borderGreen),
+                      ),
+                      child: const Text(
+                        'Could not load brands. Tap Retry above.',
+                        style: TextStyle(fontSize: 13, color: EteraTheme.textMuted),
+                      ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _brands.map((brand) {
+                        final selected = _selectedBrands.contains(brand.id);
+                        return FilterChip(
+                          label: Text(brand.name),
+                          selected: selected,
+                          onSelected: (v) {
+                            setState(() {
+                              if (v) {
+                                _selectedBrands.add(brand.id);
+                              } else {
+                                _selectedBrands.remove(brand.id);
+                              }
+                            });
+                          },
+                          selectedColor: EteraTheme.green.withValues(alpha: 0.15),
+                          checkmarkColor: EteraTheme.green,
+                          labelStyle: TextStyle(
+                            color: selected ? EteraTheme.green : EteraTheme.textSoft,
+                            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            side: BorderSide(
+                              color: selected ? EteraTheme.green : EteraTheme.borderGreen,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   const SizedBox(height: 16),
                 ],
 

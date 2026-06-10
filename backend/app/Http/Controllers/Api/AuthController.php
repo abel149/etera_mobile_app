@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Helpers\FcmHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
@@ -119,6 +120,62 @@ class AuthController extends Controller
             'message' => 'Profile updated successfully',
             'data'    => new UserResource($user->fresh()),
         ]);
+    }
+
+    /**
+     * POST /api/v1/device-token
+     * Stores the FCM device token for push notifications.
+     */
+    public function registerDeviceToken(Request $request)
+    {
+        $request->validate([
+            'device_token' => ['required', 'string'],
+            'platform'     => ['nullable', 'in:android,ios'],
+        ]);
+
+        $request->user()->update([
+            'device_token' => $request->device_token,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Device token registered.']);
+    }
+
+    /**
+     * GET /api/v1/notifications
+     * Returns the user's recent database notifications.
+     */
+    public function notifications(Request $request)
+    {
+        $notifications = $request->user()
+            ->notifications()
+            ->latest()
+            ->take(50)
+            ->get()
+            ->map(fn ($n) => [
+                'id'         => $n->id,
+                'type'       => $n->type,
+                'data'       => $n->data,
+                'read_at'    => $n->read_at?->toISOString(),
+                'created_at' => $n->created_at->toISOString(),
+            ]);
+
+        $unread = $request->user()->unreadNotifications()->count();
+
+        return response()->json([
+            'success' => true,
+            'unread'  => $unread,
+            'data'    => $notifications,
+        ]);
+    }
+
+    /**
+     * PUT /api/v1/notifications/read
+     * Mark all notifications as read.
+     */
+    public function markNotificationsRead(Request $request)
+    {
+        $request->user()->unreadNotifications->markAsRead();
+        return response()->json(['success' => true, 'message' => 'Marked as read.']);
     }
 
 }

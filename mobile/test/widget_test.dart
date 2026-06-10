@@ -1,12 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:etera_mobile/main.dart';
+import 'package:etera/main.dart';
+import 'package:etera/providers/auth_provider.dart';
 
 void main() {
-  testWidgets('App launches and shows splash screen', (WidgetTester tester) async {
-    await tester.pumpWidget(const EteraApp());
+  testWidgets('App launches and shows login screen', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      EteraApp(auth: AuthProvider(), startRoute: '/login'),
+    );
+    await tester.pump();
 
-    // Splash screen should show the E-Tera branding
-    expect(find.text('E-Tera'), findsOneWidget);
-    expect(find.text('Auto Parts Sourcing'), findsOneWidget);
+    expect(find.text('Login'), findsWidgets);
   });
 }

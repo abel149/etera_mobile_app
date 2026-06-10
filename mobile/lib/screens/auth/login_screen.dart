@@ -33,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final result = await auth.login(
       _phoneCtrl.text.trim(),
       _passwordCtrl.text,
+      rememberMe: _remember,
     );
 
     if (!mounted) return;

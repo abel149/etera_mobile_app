@@ -87,53 +87,60 @@ class AuthService {
       'terms': true,
     });
 
-    return _parseRegistrationResult(res);
+    if (res['success'] == true) {
+      final data = res['data'] as Map<String, dynamic>;
+      final token = data['token'] as String?;
+      if (token != null) await ApiService.saveToken(token);
+      final user = User.fromJson(data['user'] as Map<String, dynamic>);
+      return AuthResult(success: true, message: res['message'], user: user, token: token);
+    }
+
+    return AuthResult(
+      success: false,
+      message: res['message'] ?? 'Registration failed',
+      errors: res['errors'] as Map<String, dynamic>?,
+    );
   }
 
   // ─── Register: Business Owner ──────────────────────────────
   static Future<AuthResult> registerBusinessOwner({
     required String name,
     required String phoneNumber,
-    String? location,
+    required String location,
+    required String tinNumber,
+    required File licenseImage,
+    required File stampImage,
+    String? licenseExpireDate,
     String? email,
+    String? bankName,
+    String? accountNumber,
     required String password,
     required String passwordConfirmation,
   }) async {
-    final res = await ApiService.post(ApiConfig.registerBusinessOwner, {
+    final fields = <String, String>{
       'name': name,
       'phone_number': phoneNumber,
-      if (location != null) 'location': location,
-      if (email != null && email.isNotEmpty) 'email': email,
+      'location': location,
+      'tin_number': tinNumber,
       'password': password,
       'password_confirmation': passwordConfirmation,
-      'terms': true,
-    });
+      'terms': '1',
+    };
+    if (email != null && email.isNotEmpty) fields['email'] = email;
+    if (bankName != null) fields['bank_name'] = bankName;
+    if (accountNumber != null) fields['account_number'] = accountNumber;
+    if (licenseExpireDate != null) fields['license_expire_date'] = licenseExpireDate;
 
-    if (res['success'] == true) {
-      final data = res['data'] as Map<String, dynamic>;
-      if (data['token'] != null) {
-        await ApiService.saveToken(data['token']);
-      }
-      return AuthResult(
-        success: true,
-        message: res['message'],
-        token: data['token'],
-        user: User(
-          id: data['user_id'],
-          name: data['name'],
-          phoneNumber: data['phone_number'],
-          role: data['role'],
-          approved: data['approved'] == true,
-          balance: 0,
-        ),
-      );
-    }
-
-    return AuthResult(
-      success: false,
-      message: res['message'] ?? 'Registration failed',
-      errors: res['errors'],
+    final res = await ApiService.postMultipart(
+      ApiConfig.registerBusinessOwner,
+      fields: fields,
+      files: {
+        'license_image': licenseImage,
+        'stamp_image': stampImage,
+      },
     );
+
+    return _parseRegistrationResult(res);
   }
 
   // ─── Register: Garage / Shop ───────────────────────────────
@@ -194,21 +201,14 @@ class AuthService {
       return AuthResult(
         success: true,
         message: res['message'],
-        user: User(
-          id: data['user_id'],
-          name: data['name'],
-          phoneNumber: data['phone_number'],
-          role: data['role'],
-          approved: data['approved'] == true,
-          balance: 0,
-        ),
+        user: User.fromJson(data),
       );
     }
 
     return AuthResult(
       success: false,
       message: res['message'] ?? 'Registration failed',
-      errors: res['errors'],
+      errors: res['errors'] as Map<String, dynamic>?,
     );
   }
 }

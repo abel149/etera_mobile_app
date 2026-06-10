@@ -1,7 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
-import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/etera_button.dart';
 import '../../widgets/etera_text_field.dart';
@@ -20,9 +20,12 @@ class _BusinessOwnerRegisterScreenState
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
+  final _tinCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  File? _licenseImage;
+  File? _stampImage;
   bool _obscure = true;
   bool _terms = false;
   bool _loading = false;
@@ -32,14 +35,87 @@ class _BusinessOwnerRegisterScreenState
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _locationCtrl.dispose();
+    _tinCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
     super.dispose();
   }
 
+  Future<void> _pickImage(bool isLicense) async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+    if (picked != null) {
+      setState(() {
+        if (isLicense) {
+          _licenseImage = File(picked.path);
+        } else {
+          _stampImage = File(picked.path);
+        }
+      });
+    }
+  }
+
+  Widget _imagePickerTile(String label, File? file, bool isLicense) {
+    return GestureDetector(
+      onTap: () => _pickImage(isLicense),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: file != null ? EteraTheme.green : EteraTheme.borderGreen,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              file != null ? Icons.check_circle : Icons.upload_file,
+              color: file != null ? EteraTheme.green : EteraTheme.textMuted,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                file != null ? file.path.split('/').last : label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: file != null ? EteraTheme.textPrimary : EteraTheme.textMuted,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              'Browse',
+              style: TextStyle(
+                fontSize: 12,
+                color: EteraTheme.green,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_licenseImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please upload your business license')),
+      );
+      return;
+    }
+    if (_stampImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please upload your stamp image')),
+      );
+      return;
+    }
     if (!_terms) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please accept the terms and conditions')),
@@ -53,6 +129,9 @@ class _BusinessOwnerRegisterScreenState
       name: _nameCtrl.text.trim(),
       phoneNumber: _phoneCtrl.text.trim(),
       location: _locationCtrl.text.trim(),
+      tinNumber: _tinCtrl.text.trim(),
+      licenseImage: _licenseImage!,
+      stampImage: _stampImage!,
       email: _emailCtrl.text.trim(),
       password: _passwordCtrl.text,
       passwordConfirmation: _confirmCtrl.text,
@@ -61,18 +140,16 @@ class _BusinessOwnerRegisterScreenState
     if (!mounted) return;
     setState(() => _loading = false);
 
-    if (result.success && result.user != null) {
-      // Business owners are auto-approved
-      context.read<AuthProvider>().setUser(result.user!);
+    if (result.success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Registration successful!'),
+          content: const Text('Registration submitted! Awaiting admin approval.'),
           backgroundColor: EteraTheme.green,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
-      Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
+      Navigator.pushNamedAndRemoveUntil(context, '/pending', (r) => false);
     } else {
       final errorMsg = result.errors != null
           ? result.errors!.values.expand((v) => v is List ? v : [v]).join('\n')
@@ -92,7 +169,7 @@ class _BusinessOwnerRegisterScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Business Owner'),
+        title: const Text('Business Owner Registration'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, size: 20),
           onPressed: () => Navigator.pop(context),
@@ -106,31 +183,6 @@ class _BusinessOwnerRegisterScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: EteraTheme.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle, color: EteraTheme.green, size: 16),
-                      SizedBox(width: 6),
-                      Text(
-                        'Auto-approved account',
-                        style: TextStyle(
-                          color: EteraTheme.green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-
                 EteraTextField(
                   label: 'Full Name',
                   hint: 'Enter your full name',
@@ -154,18 +206,43 @@ class _BusinessOwnerRegisterScreenState
                 ),
                 const SizedBox(height: 16),
                 EteraTextField(
-                  label: 'Location (Optional)',
-                  hint: 'Enter your location',
+                  label: 'Location',
+                  hint: 'Enter your business location',
                   controller: _locationCtrl,
+                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                ),
+                const SizedBox(height: 16),
+                EteraTextField(
+                  label: 'TIN Number',
+                  hint: 'Enter your TIN number',
+                  controller: _tinCtrl,
+                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                 ),
                 const SizedBox(height: 16),
                 EteraTextField(
                   label: 'Email (Optional)',
-                  hint: 'john@example.com',
+                  hint: 'business@example.com',
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 16),
+
+                const Text(
+                  'Business License',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: EteraTheme.textSoft),
+                ),
+                const SizedBox(height: 6),
+                _imagePickerTile('Upload business license image', _licenseImage, true),
+                const SizedBox(height: 16),
+
+                const Text(
+                  'Stamp Image',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: EteraTheme.textSoft),
+                ),
+                const SizedBox(height: 6),
+                _imagePickerTile('Upload stamp image', _stampImage, false),
+                const SizedBox(height: 16),
+
                 EteraTextField(
                   label: 'Password (6 digits)',
                   hint: 'Enter 6-digit password',

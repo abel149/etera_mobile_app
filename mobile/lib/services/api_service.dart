@@ -119,11 +119,51 @@ class ApiService {
     }
   }
 
+  // ─── DELETE ────────────────────────────────────────────────
+  static Future<Map<String, dynamic>> delete(
+    String url, {
+    bool withAuth = false,
+  }) async {
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: await _headers(withAuth: withAuth),
+      );
+      return _processResponse(response);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // ─── PUT (JSON) ────────────────────────────────────────────
+  static Future<Map<String, dynamic>> put(
+    String url,
+    Map<String, dynamic> body, {
+    bool withAuth = false,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse(url),
+        headers: await _headers(withAuth: withAuth),
+        body: jsonEncode(body),
+      );
+      return _processResponse(response);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   // ─── Response processor ────────────────────────────────────
   static Map<String, dynamic> _processResponse(http.Response response) {
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       body['statusCode'] = response.statusCode;
+      // Auto-clear token on 401 — Sanctum token expired or revoked
+      if (response.statusCode == 401) {
+        clearToken();
+        body['success'] = false;
+        body['unauthorized'] = true;
+      }
       return body;
     } catch (_) {
       return {

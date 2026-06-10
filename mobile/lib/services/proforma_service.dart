@@ -6,10 +6,35 @@ import '../models/proforma.dart';
 import 'api_service.dart';
 
 class ProformaService {
-  /// Create a proforma via POST /api/create-file (multipart).
-  static Future<Map<String, dynamic>> createProforma(ProformaRequest req) async {
+  /// Upload a single image to the temp endpoint.
+  /// Returns the folder name string on success, null on failure.
+  static Future<String?> uploadTempImage(String filePath) async {
     try {
-      final uri = Uri.parse(ApiConfig.createProforma);
+      final uri = Uri.parse(ApiConfig.uploadTemp);
+      final request = http.MultipartRequest('POST', uri);
+      final token = await ApiService.getToken();
+      if (token != null) request.headers['Authorization'] = 'Bearer $token';
+      request.headers['Accept'] = 'application/json';
+      request.files.add(await http.MultipartFile.fromPath('file', filePath));
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (body['success'] == true && body['folders'] is List) {
+        final folders = body['folders'] as List;
+        if (folders.isNotEmpty) return folders.first.toString();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Create a proforma via the role-based endpoint.
+  /// Call [uploadTempImage] for each photo BEFORE calling this method,
+  /// and store the returned folder names in [ProformaPart.tempPhotoPaths].
+  static Future<Map<String, dynamic>> createProforma(ProformaRequest req, String userRole) async {
+    try {
+      final uri = Uri.parse(ApiConfig.createProformaUrl(userRole));
       final request = http.MultipartRequest('POST', uri);
 
       // Auth
@@ -35,20 +60,18 @@ class ProformaService {
       // ─── Parts arrays ───
       for (int i = 0; i < req.parts.length; i++) {
         final p = req.parts[i];
-        request.fields['parts[condition][$i]'] = p.condition;
-        request.fields['parts[number][$i]'] = p.number;
-        request.fields['parts[grade][$i]'] = p.grade;
-        request.fields['parts[country][$i]'] = p.country;
-        request.fields['parts[quantity][$i]'] = p.quantity.toString();
-        request.fields['parts[component][$i]'] = p.component;
+        request.fields['parts[$i][condition]'] = p.condition;
+        request.fields['parts[$i][name]'] = p.name.isNotEmpty ? p.name : p.number;
+        request.fields['parts[$i][number]'] = p.number.isNotEmpty ? p.number : p.name;
+        request.fields['parts[$i][grade]'] = p.grade;
+        request.fields['parts[$i][country]'] = p.country;
+        request.fields['parts[$i][quantity]'] = p.quantity.toString();
+        request.fields['parts[$i][component]'] = p.component;
 
-        // Part images
-        for (int j = 0; j < p.photoPaths.length; j++) {
-          final file = File(p.photoPaths[j]);
-          if (await file.exists()) {
-            request.files.add(
-              await http.MultipartFile.fromPath('parts[photo][$i][$j]', file.path),
-            );
+        // Photos — send pre-uploaded temp folder names as strings
+        for (int j = 0; j < p.tempPhotoPaths.length; j++) {
+          if (p.tempPhotoPaths[j].isNotEmpty) {
+            request.fields['parts[$i][photo_paths][$j]'] = p.tempPhotoPaths[j];
           }
         }
       }

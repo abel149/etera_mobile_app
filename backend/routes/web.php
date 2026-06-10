@@ -3808,15 +3808,25 @@ Route::post('/proformas', function (Request $request) {
                 'user_id' => $inbox,
             ]);
 
-            // Send Telegram notification to inboxed user
+            // Send Telegram + FCM notification to inboxed user
             if ($inboxRecord->wasRecentlyCreated) {
                 try {
                     $user = \App\Models\User::find($inbox);
-                    if ($user && !empty($user->telegram_chat_id) && $telegram->isConfigured()) {
-                        $telegram->sendInboxReceivedNotification((string) $user->telegram_chat_id, $proforma);
+                    if ($user) {
+                        if (!empty($user->telegram_chat_id) && $telegram->isConfigured()) {
+                            $telegram->sendInboxReceivedNotification((string) $user->telegram_chat_id, $proforma);
+                        }
+                        if (!empty($user->device_token)) {
+                            \App\Helpers\FcmHelper::send(
+                                $user->device_token,
+                                'New Proforma in Inbox',
+                                "Proforma #{$proforma->file_number} has been sent to your inbox.",
+                                ['type' => 'inbox', 'proforma_id' => (string) $proforma->id]
+                            );
+                        }
                     }
                 } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning('Inbox Telegram notification failed', [
+                    \Illuminate\Support\Facades\Log::warning('Inbox notification failed', [
                         'proforma_id' => $proforma->id,
                         'user_id' => $inbox,
                         'error' => $e->getMessage(),
@@ -3838,15 +3848,25 @@ Route::post('/proformas', function (Request $request) {
                 'user_id' => $inbox,
             ]);
 
-            // Send Telegram notification to inboxed user
+            // Send Telegram + FCM notification to inboxed user
             if ($inboxRecord->wasRecentlyCreated) {
                 try {
                     $user = \App\Models\User::find($inbox);
-                    if ($user && !empty($user->telegram_chat_id) && $telegram->isConfigured()) {
-                        $telegram->sendInboxReceivedNotification((string) $user->telegram_chat_id, $proforma);
+                    if ($user) {
+                        if (!empty($user->telegram_chat_id) && $telegram->isConfigured()) {
+                            $telegram->sendInboxReceivedNotification((string) $user->telegram_chat_id, $proforma);
+                        }
+                        if (!empty($user->device_token)) {
+                            \App\Helpers\FcmHelper::send(
+                                $user->device_token,
+                                'New Proforma in Inbox',
+                                "Proforma #{$proforma->file_number} has been sent to your inbox.",
+                                ['type' => 'inbox', 'proforma_id' => (string) $proforma->id]
+                            );
+                        }
                     }
                 } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning('Inbox Telegram notification failed', [
+                    \Illuminate\Support\Facades\Log::warning('Inbox notification failed', [
                         'proforma_id' => $proforma->id,
                         'user_id' => $inbox,
                         'error' => $e->getMessage(),
