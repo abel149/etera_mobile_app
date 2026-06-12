@@ -199,20 +199,23 @@ class AdminController extends Controller
         $proforma = \App\Models\Proforma::findOrFail($id);
         $proforma->update(['status' => 'published']);
 
-        // Notify shops whose brands match this proforma's brand
+        // Notify shops whose brands match this proforma's brand (skip for garage-only)
         try {
-            $matchingShops = User::where('role', 'shop')
-                ->where('approved', true)
-                ->whereHas('brands', function ($q) use ($proforma) {
-                    $q->where('brand_id', $proforma->car_brand_id);
-                })->get();
+            if ($proforma->proforma_type !== 'insurance_garage_only') {
+                $matchingShops = User::where('role', 'shop')
+                    ->where('approved', true)
+                    ->whereHas('brands', function ($q) use ($proforma) {
+                        $q->where('brand_id', $proforma->car_brand_id);
+                    })->get();
 
-            if ($matchingShops->isNotEmpty()) {
-                Notification::send($matchingShops, new ProformaFloatedNotification($proforma));
+                if ($matchingShops->isNotEmpty()) {
+                    Notification::send($matchingShops, new ProformaFloatedNotification($proforma));
+                }
             }
 
-            // Also notify garages if proforma is from insurance
-            if ($proforma->poster && $proforma->poster->role === 'insurance') {
+            // Notify garages if proforma is from insurance AND not shop-only
+            if ($proforma->poster && $proforma->poster->role === 'insurance'
+                && $proforma->proforma_type !== 'insurance_shop_only') {
                 $garages = User::where('role', 'garage')->where('approved', true)->get();
                 if ($garages->isNotEmpty()) {
                     Notification::send($garages, new ProformaFloatedNotification($proforma));
