@@ -246,7 +246,7 @@ Route::middleware(['auth:sanctum', 'role:shop,employee'])->prefix('shop')->group
 // -----------------------------------------------------------------------
 Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->prefix('admin-mobile')->group(function () {
 
-    Route::get('/dashboard',                          [AdminMobileController::class, 'dashboard']);
+    Route::get('/dashboard',                          [AdminController::class, 'dashboard']);
 
     // Proforma management
     Route::get('/proformas',                          [AdminMobileController::class, 'proformas']);
