@@ -248,13 +248,13 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->prefix('admin-mobi
 
     Route::get('/dashboard',                          [AdminMobileController::class, 'dashboard']);
 
-    //others proforma
-   Route::get('/others-proforma', [AdminController::class, 'othersProforma']);
-   Route::get('/proforma-details/{id}', [AdminController::class, 'proformaDetails']);
-   Route::Post('/float/{id}', [AdminController::class, 'float']);
-   Route::post('/close/{id}', [AdminController::class, 'closeProforma']);
-   Route::get('/proforma-status', [AdminController::class, 'proformaStatus']);
-
+     Route::get('/dashboard',                          [AdminMobileController::class, 'dashboard']);
+ 
+    // Proforma management
+    Route::get('/proformas',                          [AdminMobileController::class, 'proformas']);
+    Route::post('/proformas/{id}/float',              [AdminMobileController::class, 'floatProforma']);
+    Route::post('/proformas/{id}/close',              [AdminMobileController::class, 'closeProforma']);
+ 
     // User approvals
     Route::get('/approvals',                          [AdminMobileController::class, 'pendingApprovals']);
     Route::put('/approvals/{id}/approve',             [AdminMobileController::class, 'approveUser']);
