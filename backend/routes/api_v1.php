@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\MarketerController;
 use App\Http\Controllers\Api\UserReviewController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AdminAnalyticsController;
+use App\Http\Controllers\Api\AdminMobileController;
 use App\Http\Controllers\Api\UserBalanceController;
 
 /*
@@ -114,6 +115,7 @@ Route::middleware(['auth:sanctum', 'role:others'])->prefix('others')->group(func
     Route::get('/proformas',                          [CreateProfoermaController::class, 'index']);
     Route::get('/proformas/{id}',                     [CreateProfoermaController::class, 'show']);
     Route::post('/proformas/{id}/request-close',      [CreateProfoermaController::class, 'requestClose']);
+    Route::get('/received-proformas',                 [CreateProfoermaController::class, 'receivedProformas']);
 
 });
 
@@ -131,6 +133,7 @@ Route::middleware(['auth:sanctum', 'role:business_owner,employee'])->prefix('bus
     Route::get('/proformas',                          [BusinessOwnerController::class, 'index']);
     Route::get('/proformas/{id}',                     [BusinessOwnerController::class, 'show']);
     Route::post('/proformas/{id}/request-close',      [BusinessOwnerController::class, 'requestClose']);
+    Route::get('/received-proformas',                 [BusinessOwnerController::class, 'receivedProformas']);
 
     // Employee management
     Route::get('/employees',                          [BusinessOwnerController::class, 'listEmployees']);
@@ -235,6 +238,31 @@ Route::middleware(['auth:sanctum', 'role:shop,employee'])->prefix('shop')->group
     Route::delete('/employees/{id}',                  [ShopController::class, 'deleteEmployee']);
 
    
+});
+
+// -----------------------------------------------------------------------
+// Protected: Admin Mobile routes  (role: admin + superadmin)
+// All prefixed /api/v1/admin-mobile/...
+// -----------------------------------------------------------------------
+Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->prefix('admin-mobile')->group(function () {
+
+    Route::get('/dashboard',                          [AdminMobileController::class, 'dashboard']);
+
+    // Proforma management
+    Route::get('/proformas',                          [AdminMobileController::class, 'proformas']);
+    Route::post('/proformas/{id}/float',              [AdminMobileController::class, 'floatProforma']);
+    Route::post('/proformas/{id}/close',              [AdminMobileController::class, 'closeProforma']);
+
+    // User approvals
+    Route::get('/approvals',                          [AdminMobileController::class, 'pendingApprovals']);
+    Route::put('/approvals/{id}/approve',             [AdminMobileController::class, 'approveUser']);
+    Route::put('/approvals/{id}/reject',              [AdminMobileController::class, 'rejectUser']);
+
+    // Admin management (superadmin only — controller enforces internally)
+    Route::get('/admins',                             [AdminMobileController::class, 'admins']);
+    Route::post('/admins',                            [AdminMobileController::class, 'createAdmin']);
+    Route::delete('/admins/{id}',                     [AdminMobileController::class, 'deleteAdmin']);
+
 });
 
 Route::middleware(['auth:sanctum', 'role:superadmin'])->prefix('admin')->group(function () {

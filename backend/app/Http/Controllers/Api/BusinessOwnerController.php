@@ -185,6 +185,28 @@ class BusinessOwnerController extends Controller
         ]);
     }
     
+    public function receivedProformas()
+    {
+        $ownerId = $this->getOwnerId();
+
+        $proformas = Proforma::with('brand')
+            ->where('poster_id', $ownerId)
+            ->whereIn('status', ['completed', 'closed'])
+            ->orderBy('updated_at', 'desc')
+            ->paginate(10);
+
+        return response()->json([
+            'success'    => true,
+            'data'       => ProformaResource::collection($proformas),
+            'pagination' => [
+                'current_page' => $proformas->currentPage(),
+                'last_page'    => $proformas->lastPage(),
+                'per_page'     => $proformas->perPage(),
+                'total'        => $proformas->total(),
+            ],
+        ]);
+    }
+
     public function requestClose($id)
     {
         $ownerId  = $this->getOwnerId();

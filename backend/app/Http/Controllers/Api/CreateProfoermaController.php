@@ -264,6 +264,28 @@ class CreateProfoermaController extends Controller {
             'data' => ProformaResource::collection($proformas),
         ]);
     }
+    public function receivedProformas()
+    {
+        $user = auth()->user();
+
+        $proformas = Proforma::with('brand')
+            ->where('poster_id', $user->id)
+            ->whereIn('status', ['completed', 'closed'])
+            ->orderBy('updated_at', 'desc')
+            ->paginate(10);
+
+        return response()->json([
+            'success'    => true,
+            'data'       => ProformaResource::collection($proformas),
+            'pagination' => [
+                'current_page' => $proformas->currentPage(),
+                'last_page'    => $proformas->lastPage(),
+                'per_page'     => $proformas->perPage(),
+                'total'        => $proformas->total(),
+            ],
+        ]);
+    }
+
     public function requestClose($id)
     {
         $user = auth()->user();
