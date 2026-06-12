@@ -15,18 +15,31 @@ class ApiConfig {
   static const String profile = '$baseUrl/profile';
   static const String uploadTemp = '$baseUrl/upload/temp';
 
+  // Admin / Superadmin (mobile)
+  static const String adminDashboard       = '$baseUrl/admin-mobile/dashboard';
+  static const String adminProformas       = '$baseUrl/admin-mobile/proformas';
+  static String adminFloatProforma(int id) => '$baseUrl/admin-mobile/proformas/$id/float';
+  static String adminCloseProforma(int id) => '$baseUrl/admin-mobile/proformas/$id/close';
+  static const String adminApprovals       = '$baseUrl/admin-mobile/approvals';
+  static String adminApproveUser(int id)   => '$baseUrl/admin-mobile/approvals/$id/approve';
+  static String adminRejectUser(int id)    => '$baseUrl/admin-mobile/approvals/$id/reject';
+  static const String adminAdmins          = '$baseUrl/admin-mobile/admins';
+  static String adminDeleteAdmin(int id)   => '$baseUrl/admin-mobile/admins/$id';
+
   // Others role
-  static const String othersDashboard = '$baseUrl/others/dashboard';
-  static const String othersProformas = '$baseUrl/others/proformas';
-  static String othersProformaDetail(int id) => '$baseUrl/others/proformas/$id';
-  static String othersRequestClose(int id) => '$baseUrl/others/proformas/$id/request-close';
+  static const String othersDashboard         = '$baseUrl/others/dashboard';
+  static const String othersProformas         = '$baseUrl/others/proformas';
+  static String othersProformaDetail(int id)  => '$baseUrl/others/proformas/$id';
+  static String othersRequestClose(int id)    => '$baseUrl/others/proformas/$id/request-close';
+  static const String othersReceivedProformas = '$baseUrl/others/received-proformas';
 
   // Business Owner role
-  static const String businessOwnerDashboard = '$baseUrl/business-owner/dashboard';
-  static const String businessOwnerProformas = '$baseUrl/business-owner/proformas';
-  static String businessOwnerProformaDetail(int id) => '$baseUrl/business-owner/proformas/$id';
-  static String businessOwnerRequestClose(int id) => '$baseUrl/business-owner/proformas/$id/request-close';
-  static const String businessOwnerBalance = '$baseUrl/business-owner/balance';
+  static const String businessOwnerDashboard         = '$baseUrl/business-owner/dashboard';
+  static const String businessOwnerProformas         = '$baseUrl/business-owner/proformas';
+  static String businessOwnerProformaDetail(int id)  => '$baseUrl/business-owner/proformas/$id';
+  static String businessOwnerRequestClose(int id)    => '$baseUrl/business-owner/proformas/$id/request-close';
+  static const String businessOwnerReceivedProformas = '$baseUrl/business-owner/received-proformas';
+  static const String businessOwnerBalance           = '$baseUrl/business-owner/balance';
   static const String businessOwnerWithdraw = '$baseUrl/business-owner/withdraw';
   static const String businessOwnerEmployees = '$baseUrl/business-owner/employees';
   static String businessOwnerDeleteEmployee(int id) => '$baseUrl/business-owner/employees/$id';
