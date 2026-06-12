@@ -256,12 +256,12 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->prefix('admin-mobi
    Route::get('/proforma-status', [AdminController::class, 'proformaStatus']);
 
     // User approvals
-    Route::get('/approvals',                          [AdminController::class, 'pendingApprovals']);
-    Route::put('/approvals/{id}/approve',             [AdminController::class, 'approveUser']);
-    Route::put('/approvals/{id}/reject',              [AdminController::class, 'rejectUser']);
+    Route::get('/approvals',                          [AdminMobileController::class, 'pendingApprovals']);
+    Route::put('/approvals/{id}/approve',             [AdminMobileController::class, 'approveUser']);
+    Route::put('/approvals/{id}/reject',              [AdminMobileController::class, 'rejectUser']);
 
     // Admin management (superadmin only — controller enforces internally)
-    Route::get('/admins',                             [AdminController::class, 'admins']);
+    Route::get('/admins',                             [AdminMobileController::class, 'admins']);
     Route::post('/admins',                            [AdminMobileController::class, 'createAdmin']);
     Route::delete('/admins/{id}',                     [AdminMobileController::class, 'deleteAdmin']);
 
