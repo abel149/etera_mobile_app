@@ -246,12 +246,14 @@ Route::middleware(['auth:sanctum', 'role:shop,employee'])->prefix('shop')->group
 // -----------------------------------------------------------------------
 Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->prefix('admin-mobile')->group(function () {
 
-    Route::get('/dashboard',                          [AdminController::class, 'dashboard']);
+    Route::get('/dashboard',                          [AdminMobileController::class, 'dashboard']);
 
-    // Proforma management
-    Route::get('/proformas',                          [AdminController::class, 'proformas']);
-    Route::post('/proformas/{id}/float',              [AdminController::class, 'floatProforma']);
-    Route::post('/proformas/{id}/close',              [AdminController::class, 'closeProforma']);
+    //others proforma
+   Route::get('/others-proforma', [AdminController::class, 'othersProforma']);
+   Route::get('/proforma-details/{id}', [AdminController::class, 'proformaDetails']);
+   Route::Post('/float/{id}', [AdminController::class, 'float']);
+   Route::post('/close/{id}', [AdminController::class, 'closeProforma']);
+   Route::get('/proforma-status', [AdminController::class, 'proformaStatus']);
 
     // User approvals
     Route::get('/approvals',                          [AdminController::class, 'pendingApprovals']);
