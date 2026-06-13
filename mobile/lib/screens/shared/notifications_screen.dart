@@ -162,6 +162,18 @@ class _NotificationCard extends StatelessWidget {
         icon = Icons.inbox_outlined;
         iconColor = Colors.blue;
         break;
+      case 'approval_pending_signup':
+        icon = Icons.person_add_outlined;
+        iconColor = Colors.orange;
+        break;
+      case 'approval_pending_login':
+        icon = Icons.login_outlined;
+        iconColor = Colors.red.shade400;
+        break;
+      case 'new_proforma':
+        icon = Icons.receipt_long_outlined;
+        iconColor = EteraTheme.teal;
+        break;
       default:
         icon = Icons.notifications_outlined;
         iconColor = EteraTheme.teal;

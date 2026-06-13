@@ -76,7 +76,17 @@ class _ShopProformaDetailScreenState extends State<ShopProformaDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final p = _proforma;
-    final brand = p == null ? '' : ((p['brand'] as Map?)?['name']?.toString() ?? '');
+    String brand = '';
+
+if (p != null) {
+  final brandData = p['brand'];
+
+  if (brandData is Map) {
+    brand = brandData['name']?.toString() ?? '';
+  } else {
+    brand = brandData?.toString() ?? '';
+  }
+}
     final model = p?['model']?.toString() ?? '';
     final year = p?['year']?.toString() ?? '';
     final fileNum = p?['file_number']?.toString() ?? '';
