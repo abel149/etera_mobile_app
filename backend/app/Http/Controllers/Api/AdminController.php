@@ -27,9 +27,8 @@ class AdminController extends Controller
 
     public function userApprovals(Request $request)
     {
-        $query = User::whereIn('role', ['others','business_owner', 'garage', 'shop']);
+        $query = User::whereIn('role', ['others', 'business_owner', 'garage', 'shop']);
 
-        // Apply search filter
         if ($request->filled('search')) {
             $search = $request->get('search');
             $query->where(function ($q) use ($search) {
@@ -40,18 +39,14 @@ class AdminController extends Controller
             });
         }
 
-        // Apply role filter
         if ($request->filled('role')) {
             $query->where('role', $request->get('role'));
         }
 
-        // Apply status filter
         if ($request->filled('status')) {
             if ($request->get('status') === 'pending') {
-                // Pending includes both null and false
                 $query->where(function ($q) {
-                    $q->where('approved', false)
-                        ->orWhereNull('approved');
+                    $q->where('approved', false)->orWhereNull('approved');
                 });
             } elseif ($request->get('status') === 'approved') {
                 $query->where('approved', true);
@@ -60,27 +55,39 @@ class AdminController extends Controller
 
         $users = $query->with('brands')->orderBy('created_at', 'desc')->paginate(20);
 
-        // Get statistics - pending includes both null and false
-
-        $pending = User::whereIn('role', ['business_owner', 'garage', 'shop'])
-            ->where(function ($q) {
-                $q->where('approved', false)
-                    ->orWhereNull('approved');
-            })->count();
-        $approved = User::whereIn('role', ['business_owner', 'garage', 'shop'])->where('approved', true)->count();
+        $pending       = User::whereIn('role', ['business_owner', 'garage', 'shop'])
+            ->where(fn($q) => $q->where('approved', false)->orWhereNull('approved'))->count();
+        $approved      = User::whereIn('role', ['business_owner', 'garage', 'shop'])->where('approved', true)->count();
         $business_owners = User::where('role', 'business_owner')->count();
         $garages_shops = User::whereIn('role', ['garage', 'shop'])->count();
 
-
         return response()->json([
             'success' => true,
-            'data' => [
-                'Pending' => $pending,
-                'approved' => $approved,
-                'business_owners' => $garages_shops,
-            ]
-
-        ], 200);
+            'data'    => $users->map(fn($u) => [
+                'id'           => $u->id,
+                'name'         => $u->name,
+                'role'         => $u->role,
+                'phone_number' => $u->phone_number,
+                'email'        => $u->email,
+                'tin_number'   => $u->tin_number,
+                'location'     => $u->location,
+                'approved'     => (bool) $u->approved,
+                'store_id'     => $u->store_id,
+                'created_at'   => $u->created_at?->toIso8601String(),
+                'brands'       => $u->brands->pluck('name'),
+            ]),
+            'stats' => [
+                'pending'         => $pending,
+                'approved'        => $approved,
+                'business_owners' => $business_owners,
+                'garages_shops'   => $garages_shops,
+            ],
+            'pagination' => [
+                'current_page' => $users->currentPage(),
+                'last_page'    => $users->lastPage(),
+                'total'        => $users->total(),
+            ],
+        ]);
     }
     /**
      * Approve a user (superadmin only)
@@ -88,10 +95,9 @@ class AdminController extends Controller
     public function approveUser($id)
     {
         if (!auth()->user()->isSuperAdmin()) {
-            return response->json([
+            return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized action. Only superadmin can approve users.'
-
+                'message' => 'Unauthorized action. Only superadmin can approve users.',
             ], 403);
         }
 
@@ -114,10 +120,9 @@ class AdminController extends Controller
             ]);
         }
 
-        return response->json([
+        return response()->json([
             'success' => true,
-            'message' => 'User approved successfully!'
-
+            'message' => 'User approved successfully!',
         ]);
     }
     /**
@@ -125,24 +130,12 @@ class AdminController extends Controller
      */
     public function revokeUser($id)
     {
-        if (!auth()->user()->isSuperAdmin()) {
-            return response->json([
-                'success' => false,
-                'message' => 'Unauthorized action. Only superadmin can approve users.'
-
-            ]);
-        }
-
         $user = User::findOrFail($id);
-        $user->update([
-            'approved' => false,
-            'approved_at' => null
-        ]);
+        $user->update(['approved' => false, 'approved_at' => null]);
 
-        return response->json([
+        return response()->json([
             'success' => true,
-            'message' => 'User rejected successfully!'
-
+            'message' => 'User approval revoked successfully!',
         ]);
     }
 
@@ -152,23 +145,24 @@ class AdminController extends Controller
     public function viewUser($id)
     {
         $user = User::with('brands')->findOrFail($id);
-        return response->json([
-            'success' => true,
-            'data' => [
-                'user' => $user
-            ]
-        ]);
+        return response()->json(['success' => true, 'data' => ['user' => $user]]);
     }
-    public function othersProforma(){
-        $proformas = \App\Models\Proforma::fromOthers()
-                ->orderBy('created_at', 'desc')
-                ->get();
-        return response->json([
-            'success' => true,
-            'data' => [
-                'user' => $proformas
-            ]
-        ]);
+    public function othersProforma()
+    {
+        $proformas = \App\Models\Proforma::with('poster')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(fn($p) => [
+                'id'            => $p->id,
+                'file_number'   => $p->file_number ?? 'N/A',
+                'status'        => $p->status ?? 'pending',
+                'customer_name' => $p->customer_name ?? 'N/A',
+                'model'         => $p->model ?? '',
+                'year'          => $p->year ?? '',
+                'from'          => $p->poster ? ucfirst(str_replace('_', ' ', $p->poster->role)) : 'Unknown',
+                'created_at'    => $p->created_at?->toIso8601String(),
+            ]);
+        return response()->json(['success' => true, 'data' => $proformas]);
     }
     /**
      * Display proforma details for admin
@@ -198,15 +192,14 @@ class AdminController extends Controller
         $shops = \App\Models\User::where('role', 'shop')->where('approved', true)->orderBy('name')->get();
         $garages = \App\Models\User::where('role', 'garage')->where('approved', true)->orderBy('name')->get();
 
-        return response->json([
+        return response()->json([
             'success' => true,
-            'data' => [
-                'proforma' => $proforma,
+            'data'    => [
+                'proforma'     => $proforma,
                 'applications' => $applications,
-                'shops' => $shops,
-                'garages' => $garages,
-
-            ]
+                'shops'        => $shops,
+                'garages'      => $garages,
+            ],
         ]);
     }
     /**
@@ -214,20 +207,14 @@ class AdminController extends Controller
      */
     public function float($id)
     {
-        // Require Telegram connection for non-superadmin admins
-        $user = auth()->user();
-        if ($user->role === 'admin' && !$user->is_superadmin && empty($user->telegram_chat_id)) {
-            return redirect('/telegram-connect')->with('error', 'Please connect your Telegram before you process a file!');
+        $proforma = \App\Models\Proforma::find($id);
+
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
         }
 
-        $proforma = \App\Models\Proforma::find($request->query($id));
-
-
-        if (! $proforma || $proforma?->status != 'pending') {
-            return response->json([
-                'success' => false,
-                'message' => 'Proforma already floated'
-            ]);
+        if ($proforma->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'Only pending proformas can be floated'], 422);
         }
 
         $requiredShops = (int) ($proforma->required_number_of_shops ?? 0);
@@ -236,33 +223,32 @@ class AdminController extends Controller
                 ->whereHas('user', fn($q) => $q->where('role', 'shop'))
                 ->count();
             if ($shopInboxCount >= $requiredShops) {
-                return ressponse->json([
+                return response()->json([
                     'success' => false,
-                    'message' => 'This proforma already has all requested shop slots inboxed. You cannot float it.'
-                ]);
+                    'message' => 'Proforma already has all requested shop slots inboxed.',
+                ], 422);
             }
         }
 
         $proforma->update(['status' => 'published', 'processed_by' => auth()->id()]);
-        $poster = \App\Models\User::find($proforma->poster_id);
-        if ($poster && $poster->telegram_chat_id) {
-            (new \App\Services\TelegramService())->sendProformaFloatedNotification($poster->telegram_chat_id, $poster);
+
+        try {
+            $poster = \App\Models\User::find($proforma->poster_id);
+            if ($poster && $poster->telegram_chat_id) {
+                (new \App\Services\TelegramService())->sendProformaFloatedNotification($poster->telegram_chat_id, $poster);
+            }
+            \App\Models\ProformaActivityLog::create([
+                'proforma_id' => $proforma->id,
+                'user_id'     => auth()->id(),
+                'action'      => 'floated',
+                'details'     => 'Proforma floated by ' . auth()->user()->name,
+            ]);
+            event(new ProformaPublished($proforma));
+        } catch (\Throwable $e) {
+            Log::warning('Float side-effects failed', ['error' => $e->getMessage()]);
         }
-        // Log Activity
-        \App\Models\ProformaActivityLog::create([
-            'proforma_id' => $proforma->id,
-            'user_id' => auth()->id(),
-            'action' => 'floated',
-            'details' => 'Proforma floated (published) by ' . auth()->user()->name,
-        ]);
 
-        // 🔥 Fire Event
-        event(new ProformaPublished($proforma));
-
-        return response->json([
-            'success' => true,
-            'message' => 'Proforma published successfully'
-        ]);
+        return response()->json(['success' => true, 'message' => 'Proforma published successfully']);
     }
 
     /**
@@ -319,10 +305,10 @@ class AdminController extends Controller
     public function deleteUser($id)
     {
         if (!auth()->user()->isSuperAdmin()) {
-            return response->json([
-                'success' => true,
+            return response()->json([
+                'success' => false,
                 'message' => 'Unauthorized action. Only superadmin can delete users.',
-            ]);
+            ], 403);
         }
 
         $user = User::findOrFail($id);
@@ -337,10 +323,7 @@ class AdminController extends Controller
         
         $user->delete();
 
-        return response->json([
-           'success'=>true,
-           'message'=> 'User deleted successfully!'
-        ]);
+        return response()->json(['success' => true, 'message' => 'User deleted successfully!']);
     }
     // API endpoint for admin dashboard real-time polling
     function dashboard() {
@@ -397,7 +380,7 @@ class AdminController extends Controller
     }
     
 // API endpoint for notification bell polling (all roles)
-    function  notifications() {
+    function notifications() {
         if (!auth()->check()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -420,7 +403,7 @@ class AdminController extends Controller
         ]);
     }
     // Mark notifications as read
- function markasread() {
+ function markAsRead() {
         if (!auth()->check()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -458,35 +441,18 @@ class AdminController extends Controller
    /*
     admin managment
     */
-   function createAdmin(Request $request){
-     $request->validate([
-                'name' => 'required|string|max:255',
-                'phone_number' => 'required',
-                'email' => 'nullable|email',
-            ]);
-
-            // Check if phone number already exists
-            $existingUser = User::where('phone_number', $request->phone_number)->first();
-            if ($existingUser) {
-                return redirect()->back()
-                    ->with('admin_error', 'The phone number already exists. Please try again.')
-                    ->withInput();
-            }
-
-            // Check if email already exists
-            if ($request->filled('email')) {
-                $existingEmail = User::where('email', $request->email)->first();
-                if ($existingEmail) {
-                    return redirect()->back()
-                        ->with('admin_error', 'The email already exists. Please try again.')
-                        ->withInput();
-                }
-            }
+   function createAdmin(Request $request)
+   {
+     $validated = $request->validate([
+         'name'         => 'required|string|max:255',
+         'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
+         'email'        => 'nullable|email|unique:users,email',
+     ]);
 
             $user = User::create([
-                'name' => $request->name,
-                'email' => $request->email,
-                'phone_number' => $request->phone_number,
+                'name'         => $validated['name'],
+                'email'        => $validated['email'] ?? null,
+                'phone_number' => $validated['phone_number'],
                 'password' => bcrypt('123456'),
                 'role' => 'admin',
                 'approved' => true,
@@ -501,23 +467,20 @@ class AdminController extends Controller
         ]);
             
    }
-   function viewAdmins(){
-     $admins = \App\Models\User::whereIn('role', ['admin', 'superadmin'])->get();
-
-     return response()->json([
-            'success' => true,
-            'data'=>[
-                'admins' => $admins
-            ]
-        ]);
+   function admins()
+   {
+     $admins = \App\Models\User::whereIn('role', ['admin', 'superadmin'])
+         ->orderBy('role')->orderBy('name')
+         ->get(['id', 'name', 'email', 'phone_number', 'role', 'created_at']);
+     return response()->json(['success' => true, 'data' => $admins]);
    }
-   function updateAdmins($id){
+   function updateAdmin(Request $request, $id){
     if (auth()->user()->role !== 'superadmin') {
-                abort(403);
+                return response()->json(['success' => false, 'message' => 'Superadmin access required.'], 403);
             }
             $admin = \App\Models\User::findOrFail($id);
             if ($admin->role === 'superadmin') {
-                return redirect()->back()->withErrors(['error' => 'Cannot edit superadmin.']);
+                return response()->json(['success' => false, 'message' => 'Cannot edit superadmin.'], 422);
             }
 
             $request->validate([
@@ -526,37 +489,33 @@ class AdminController extends Controller
                 'email' => 'nullable|email|unique:users,email,' . $admin->id,
             ]);
 
-            // Check phone uniqueness manually
             $existingPhone = User::where('phone_number', $request->phone_number)->where('id', '!=', $admin->id)->first();
             if ($existingPhone) {
-                return redirect()->back()->withErrors(['phone_number' => 'The phone number already exists.'])->withInput();
+                return response()->json(['success' => false, 'errors' => ['phone_number' => 'Phone number already exists.']], 422);
             }
 
             $admin->update([
-                'name' => $request->name,
+                'name'         => $request->name,
                 'phone_number' => $request->phone_number,
-                'email' => $request->email,
+                'email'        => $request->email,
             ]);
 
-            return response()->json([
-               'success'=>true,
-               'message'=> 'Admin updated successfully!'
-            ]);
-        
+            return response()->json(['success' => true, 'message' => 'Admin updated successfully!']);
    }
-   function deleteAdmin($id){
-    if (!auth()->user()->is_superadmin) {
-                abort(403);
-            }
-            $admin = \App\Models\User::findOrFail($id);
-            if ($admin->role === 'superadmin' || $admin->id === auth()->id()) {
-                return redirect()->back()->withErrors(['error' => 'Cannot delete this admin.']);
-            }
-            $admin->delete();
-             return response()->json([
-               'success'=>true,
-               'message'=> 'Admin deleted successfully!'
-            ]);
+   function deleteAdmin($id)
+   {
+       if (!auth()->user()->isSuperAdmin()) {
+           return response()->json(['success' => false, 'message' => 'Superadmin access required.'], 403);
+       }
+       $admin = \App\Models\User::findOrFail($id);
+       if ($admin->role === 'superadmin') {
+           return response()->json(['success' => false, 'message' => 'Cannot delete a superadmin.'], 422);
+       }
+       if ($admin->id === auth()->id()) {
+           return response()->json(['success' => false, 'message' => 'Cannot delete your own account.'], 422);
+       }
+       $admin->delete();
+       return response()->json(['success' => true, 'message' => 'Admin deleted successfully!']);
    }
     /*
     insurance view
@@ -576,7 +535,8 @@ class AdminController extends Controller
    /*
     spare part shop managment
     */
-   function spareparts(){
+   function spareparts(Request $request)
+   {
      $query = \App\Models\User::where('role', 'shop')->with('brands');
 
             if ($request->filled('search')) {
@@ -744,7 +704,7 @@ class AdminController extends Controller
     public function viewAllCommissions()
     {
         if (!auth()->user()->isSuperAdmin()) {
-            return redirect()->back()->with('error', 'Unauthorized access');
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
         $operators = User::where('role', User::ROLE_OPERATOR)->get();
@@ -767,7 +727,8 @@ class AdminController extends Controller
     }
 
 
-   public function garages(){
+   public function garages(Request $request)
+   {
          $query = \App\Models\User::where('role', 'garage');
 
             if ($request->filled('search')) {

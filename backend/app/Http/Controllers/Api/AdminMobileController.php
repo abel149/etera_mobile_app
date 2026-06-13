@@ -14,7 +14,8 @@ class AdminMobileController extends Controller
 {
     private function isSuperAdmin(): bool
     {
-        return auth()->user()->role === 'superadmin';
+        $user = auth()->user();
+        return $user->role === 'superadmin' || (bool) $user->is_superadmin;
     }
 
     // =========================================================================
@@ -22,42 +23,65 @@ class AdminMobileController extends Controller
     // =========================================================================
     public function dashboard()
     {
-        $user        = auth()->user();
+        $user         = auth()->user();
         $isSuperAdmin = $this->isSuperAdmin();
 
-        $query = Proforma::query();
+        // ── Proforma pipeline (own proformas for admin, all for superadmin) ──
+        $base = Proforma::query();
         if (!$isSuperAdmin) {
-            $query->where(function ($q) use ($user) {
+            $base->where(function ($q) use ($user) {
                 $q->whereNull('processed_by')->orWhere('processed_by', $user->id);
             });
         }
 
-        $total     = (clone $query)->count();
-        $pending   = (clone $query)->where('status', 'pending')->count();
-        $published = (clone $query)->where('status', 'published')->count();
-        $closed    = (clone $query)->where('status', 'closed')->count();
-        $completed = (clone $query)->where('status', 'completed')->count();
+        $proformaPending   = (clone $base)->where('status', 'pending')->count();
+        $proformaPublished = (clone $base)->where('status', 'published')->count();
+        $proformaClosed    = (clone $base)->where('status', 'closed')->count();
+        $proformaCompleted = (clone $base)->where('status', 'completed')->count();
 
+        // ── Insurance & Others stats (matching web admin dashboard) ──
+        $insBase = Proforma::fromInsurances();
+        $othBase = Proforma::fromOthers();
+        if (!$isSuperAdmin) {
+            $insBase->where('processed_by', $user->id);
+            $othBase->where('processed_by', $user->id);
+        }
+
+        $insuranceTotal     = (clone $insBase)->count();
+        $insuranceCompleted = (clone $insBase)->where('status', 'completed')->count();
+        $othersTotal        = (clone $othBase)->count();
+        $othersCompleted    = (clone $othBase)->where('status', 'completed')->count();
+
+        // ── Pending approvals ──
         $pendingApprovals = User::whereIn('role', ['others', 'business_owner', 'garage', 'shop'])
             ->where(function ($q) {
                 $q->where('approved', false)->orWhereNull('approved');
             })->count();
 
-        $adminCount = User::where('role', 'admin')->count();
+        $data = [
+            'is_superadmin'      => $isSuperAdmin,
+            'proforma_pending'   => $proformaPending,
+            'proforma_published' => $proformaPublished,
+            'proforma_closed'    => $proformaClosed,
+            'proforma_completed' => $proformaCompleted,
+            'insurance_total'    => $insuranceTotal,
+            'insurance_completed'=> $insuranceCompleted,
+            'others_total'       => $othersTotal,
+            'others_completed'   => $othersCompleted,
+            'pending_approvals'  => $pendingApprovals,
+        ];
 
-        return response()->json([
-            'success' => true,
-            'data'    => [
-                'proforma_total'     => $total,
-                'proforma_pending'   => $pending,
-                'proforma_published' => $published,
-                'proforma_closed'    => $closed,
-                'proforma_completed' => $completed,
-                'pending_approvals'  => $pendingApprovals,
-                'admin_count'        => $adminCount,
-                'is_superadmin'      => $isSuperAdmin,
-            ],
-        ]);
+        // ── Superadmin-only user counts ──
+        if ($isSuperAdmin) {
+            $data['total_users']    = User::count();
+            $data['admin_count']    = User::where('role', 'admin')->count();
+            $data['insurance_users']= User::where('role', 'insurance')->count();
+            $data['others_users']   = User::where('role', 'others')->count();
+            $data['garage_users']   = User::where('role', 'garage')->count();
+            $data['shop_users']     = User::where('role', 'shop')->count();
+        }
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     // =========================================================================
@@ -297,5 +321,78 @@ class AdminMobileController extends Controller
         $admin->delete();
 
         return response()->json(['success' => true, 'message' => 'Admin deleted successfully']);
+    }
+
+    // =========================================================================
+    // GET /api/v1/admin-mobile/users   (superadmin only)
+    // Returns ALL users (approved + pending) with role & status filters
+    // =========================================================================
+    public function allUsers(Request $request)
+    {
+        if (!$this->isSuperAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Superadmin access required'], 403);
+        }
+
+        $query = User::whereIn('role', ['others', 'business_owner', 'garage', 'shop', 'insurance'])
+            ->with('brands')
+            ->orderBy('created_at', 'desc');
+
+        if ($request->filled('role')) {
+            $query->where('role', $request->role);
+        }
+
+        if ($request->filled('status')) {
+            if ($request->status === 'pending') {
+                $query->where(function ($q) {
+                    $q->where('approved', false)->orWhereNull('approved');
+                });
+            } elseif ($request->status === 'approved') {
+                $query->where('approved', true);
+            }
+        }
+
+        $users = $query->paginate(20);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $users->map(fn($u) => [
+                'id'           => $u->id,
+                'name'         => $u->name,
+                'role'         => $u->role,
+                'phone_number' => $u->phone_number,
+                'email'        => $u->email,
+                'tin_number'   => $u->tin_number,
+                'location'     => $u->location,
+                'approved'     => (bool) $u->approved,
+                'store_id'     => $u->store_id,
+                'created_at'   => $u->created_at?->toIso8601String(),
+                'brands'       => $u->brands->pluck('name'),
+            ]),
+            'pagination' => [
+                'current_page' => $users->currentPage(),
+                'last_page'    => $users->lastPage(),
+                'total'        => $users->total(),
+            ],
+        ]);
+    }
+
+    // =========================================================================
+    // DELETE /api/v1/admin-mobile/users/{id}   (superadmin only)
+    // =========================================================================
+    public function deleteUser($id)
+    {
+        if (!$this->isSuperAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Superadmin access required'], 403);
+        }
+
+        $user = User::findOrFail($id);
+
+        if (in_array($user->role, ['admin', 'superadmin'])) {
+            return response()->json(['success' => false, 'message' => 'Use the Admins endpoint to manage admin users'], 422);
+        }
+
+        $user->delete();
+
+        return response()->json(['success' => true, 'message' => 'User deleted successfully']);
     }
 }

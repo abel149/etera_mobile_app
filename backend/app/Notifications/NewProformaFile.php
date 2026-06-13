@@ -28,10 +28,12 @@ class NewProformaFile extends Notification
     public function toArray($notifiable)
     {
         return [
-            'brand_id' => $this->brand->id,
+            'type'       => 'new_proforma',
+            'title'      => 'New Proforma Created',
+            'brand_id'   => $this->brand->id,
             'brand_name' => $this->brand->name,
-            'proforma_id' => $this->proforma->id,
-            'message' => 'A new proforma has been created for the brand you serve: ' . $this->brand->name,
+            'proforma_id'=> $this->proforma->id,
+            'message'    => 'New proforma for brand: ' . $this->brand->name,
         ];
     }
 

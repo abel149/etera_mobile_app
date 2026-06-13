@@ -37,13 +37,14 @@ class PendingApprovalLoginAttempt extends Notification
         $roleText = $this->userRole ? ('Role: ' . $this->userRole) : 'Role: N/A';
 
         return [
-            'type' => 'approval_pending_login',
+            'type'        => 'approval_pending_login',
+            'title'       => 'Login Attempt — Unapproved User',
             'file_number' => 'Approval',
-            'user_id' => $this->userId,
-            'user_name' => $this->userName,
-            'user_role' => $this->userRole,
-            'message' => "Pending approval login attempt: {$this->userName}{$contact}. {$roleText}.",
-            'created_at' => now()->toISOString(),
+            'user_id'     => $this->userId,
+            'user_name'   => $this->userName,
+            'user_role'   => $this->userRole,
+            'message'     => "Login attempt by unapproved user: {$this->userName}{$contact}. {$roleText}.",
+            'created_at'  => now()->toISOString(),
         ];
     }
 }

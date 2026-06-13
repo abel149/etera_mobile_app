@@ -248,8 +248,6 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->prefix('admin-mobi
 
     Route::get('/dashboard',                          [AdminMobileController::class, 'dashboard']);
 
-     Route::get('/dashboard',                          [AdminMobileController::class, 'dashboard']);
- 
     // Proforma management
     Route::get('/proformas',                          [AdminMobileController::class, 'proformas']);
     Route::post('/proformas/{id}/float',              [AdminMobileController::class, 'floatProforma']);
@@ -264,6 +262,10 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->prefix('admin-mobi
     Route::get('/admins',                             [AdminMobileController::class, 'admins']);
     Route::post('/admins',                            [AdminMobileController::class, 'createAdmin']);
     Route::delete('/admins/{id}',                     [AdminMobileController::class, 'deleteAdmin']);
+
+    // User management (superadmin only — controller enforces internally)
+    Route::get('/users',                              [AdminMobileController::class, 'allUsers']);
+    Route::delete('/users/{id}',                      [AdminMobileController::class, 'deleteUser']);
 
 });
 
