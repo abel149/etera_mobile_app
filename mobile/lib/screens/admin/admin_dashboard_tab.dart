@@ -8,11 +8,15 @@ import '../../widgets/etera_card.dart';
 class AdminDashboardTab extends StatefulWidget {
   final VoidCallback? onGoToProformas;
   final VoidCallback? onGoToApprovals;
+  final VoidCallback? onGoToEmployees;
+  final ValueNotifier<int>? refreshTrigger;
 
   const AdminDashboardTab({
     super.key,
     this.onGoToProformas,
     this.onGoToApprovals,
+    this.onGoToEmployees,
+    this.refreshTrigger,
   });
 
   @override
@@ -27,7 +31,14 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
   @override
   void initState() {
     super.initState();
+    widget.refreshTrigger?.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    widget.refreshTrigger?.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -49,7 +60,7 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().user;
-    final isSuperAdmin = user?.role == 'superadmin';
+    final isSuperAdmin = _data['is_superadmin'] == true || user?.role == 'superadmin';
 
     return RefreshIndicator(
       color: EteraTheme.green,
@@ -96,7 +107,7 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
             else if (_error != null)
               _ErrorRetry(error: _error!, onRetry: _load)
             else ...[
-              Text('Overview', style: Theme.of(context).textTheme.titleMedium),
+              Text('Proforma Pipeline', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -139,20 +150,49 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
               ),
               const SizedBox(height: 20),
 
-              Text('Actions', style: Theme.of(context).textTheme.titleMedium),
+              // ── Insurance & Others Stats ─────────────────────────
+              Text('Proforma Statistics', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
+              EteraCard(
+                child: Column(children: [
+                  _StatRow(label: 'Insurance — Total',     value: '${_data['insurance_total'] ?? 0}',     color: Colors.indigo),
+                  const Divider(height: 1),
+                  _StatRow(label: 'Insurance — Completed', value: '${_data['insurance_completed'] ?? 0}', color: Colors.indigo),
+                  const Divider(height: 1),
+                  _StatRow(label: 'Others — Total',        value: '${_data['others_total'] ?? 0}',        color: Colors.purple),
+                  const Divider(height: 1),
+                  _StatRow(label: 'Others — Completed',    value: '${_data['others_completed'] ?? 0}',    color: Colors.purple),
+                ]),
+              ),
+              const SizedBox(height: 20),
 
+              // ── Superadmin user counts ───────────────────────────────
+              if (isSuperAdmin) ...[  
+                Text('User Counts', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                EteraCard(
+                  child: Column(children: [
+                    _StatRow(label: 'Total Users',     value: '${_data['total_users'] ?? 0}',     color: EteraTheme.teal),
+                    const Divider(height: 1),
+                    _StatRow(label: 'Admins',          value: '${_data['admin_count'] ?? 0}',     color: Colors.deepPurple),
+                    const Divider(height: 1),
+                    _StatRow(label: 'Insurance',       value: '${_data['insurance_users'] ?? 0}', color: Colors.indigo),
+                    const Divider(height: 1),
+                    _StatRow(label: 'Garages',         value: '${_data['garage_users'] ?? 0}',    color: EteraTheme.green),
+                    const Divider(height: 1),
+                    _StatRow(label: 'Spare Part Shops',value: '${_data['shop_users'] ?? 0}',      color: Colors.amber.shade700),
+                    const Divider(height: 1),
+                    _StatRow(label: 'Customers',       value: '${_data['others_users'] ?? 0}',    color: Colors.orange),
+                  ]),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              Text('Quick Actions', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
               EteraCard(
                 child: Column(
                   children: [
-                    _ActionRow(
-                      icon: Icons.how_to_reg_outlined,
-                      label: 'Pending Approvals',
-                      badge: _data['pending_approvals'] as int? ?? 0,
-                      color: Colors.orange,
-                      onTap: widget.onGoToApprovals,
-                    ),
-                    const Divider(height: 1),
                     _ActionRow(
                       icon: Icons.receipt_long_outlined,
                       label: 'Manage Proformas',
@@ -160,6 +200,24 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
                       color: EteraTheme.green,
                       onTap: widget.onGoToProformas,
                     ),
+                    const Divider(height: 1),
+                    _ActionRow(
+                      icon: Icons.how_to_reg_outlined,
+                      label: 'Pending Approvals',
+                      badge: _data['pending_approvals'] as int? ?? 0,
+                      color: Colors.orange,
+                      onTap: widget.onGoToApprovals,
+                    ),
+                    if (isSuperAdmin) ...[  
+                      const Divider(height: 1),
+                      _ActionRow(
+                        icon: Icons.manage_accounts_outlined,
+                        label: 'Manage Admins',
+                        badge: 0,
+                        color: Colors.deepPurple,
+                        onTap: widget.onGoToEmployees,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -172,6 +230,27 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+class _StatRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StatRow({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+      child: Row(children: [
+        Container(width: 4, height: 4, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 8),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+        Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: color)),
+      ]),
+    );
+  }
+}
 
 class _StatCard extends StatelessWidget {
   final String label;
