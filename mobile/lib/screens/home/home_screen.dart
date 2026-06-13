@@ -7,6 +7,8 @@ import '../garage/garage_home_screen.dart';
 import '../insurance/insurance_home_screen.dart';
 import '../others/others_home_screen.dart';
 import '../shop/shop_home_screen.dart';
+import '../admin/admin_home_screen.dart';
+import '../superadmin/superadmin_home_screen.dart';
 
 /// Routes to the correct home screen based on the authenticated user's role.
 /// Add new role screens here as they are built.
@@ -29,6 +31,10 @@ class HomeScreen extends StatelessWidget {
         return const ShopHomeScreen();
       case 'insurance':
         return const InsuranceHomeScreen();
+      case 'admin':
+        return const AdminHomeScreen();
+      case 'superadmin':
+        return const SuperadminHomeScreen();
       default:
         return _ComingSoonScreen(role: user?.roleLabel ?? user?.role ?? 'Unknown');
     }
