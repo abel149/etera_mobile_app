@@ -334,7 +334,7 @@ class AdminController extends Controller
 
         $user = auth()->user();
 
-        $data = Cache::remember('admin_proformas_data', 10, function () {
+        $data = \Illuminate\Support\Facades\Cache::remember('admin_proformas_data', 10, function () {
             $proformasQuery = \App\Models\Proforma::with('poster')
                 ->whereHas('poster')
                 ->orderBy('created_at', 'desc');
