@@ -355,7 +355,7 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->prefix('admin')->group(f
                 'name' => $request->name,
             ]);
 
-            $brands->save();ls\Brand::orderBy('name', 'asc')->get();  // Order by 'name' in ascending order
+            $brands->save();\App\Models\Brand::orderBy('name', 'asc')->get();  // Order by 'name' in ascending order
 
         return response()->json([
             'success' => true, 

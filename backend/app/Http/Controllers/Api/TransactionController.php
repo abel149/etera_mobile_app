@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Models\PaidUser;
 use App\Models\ProformaInvoice;
 use Carbon\Carbon;
+use App\Models\User;
 
 class TransactionController extends Controller
 {
