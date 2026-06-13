@@ -12,6 +12,7 @@ use App\Models\Inbox;
 use App\Models\PaidUser;
 use App\Models\Partner;
 use App\Models\Proforma;
+use App\Models\User;
 use App\Models\ProformaInvoice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
