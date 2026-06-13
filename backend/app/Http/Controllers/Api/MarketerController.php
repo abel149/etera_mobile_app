@@ -26,7 +26,7 @@ class MarketerController extends Controller
                 'email' => $request->email,
                 'phone_number' => $request->phone_number,
                 'password' => bcrypt($password),
-                'role' => 'Marketer',
+                'role' => 'marketer',
                 'registered_by' => auth()->user()->id
             ]);
 
@@ -75,8 +75,13 @@ class MarketerController extends Controller
         // Find the user (marketer) by ID
         $marketer = User::findOrFail($id);
 
-        // Return the edit view with the user data
-        return view('admin.users.marketers.edit', compact('marketer'));
+        // Return JSON for API
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'marketer' => $marketer
+            ]
+        ]);
     }
 
     // Update the user's (marketer's) data in the database
@@ -106,9 +111,12 @@ class MarketerController extends Controller
         $marketer->password = bcrypt($request->password);
         $marketer->save();  // Save the new password
     }
-    
-        // Redirect with a success message
-        return redirect()->to('admin/marketers')->with('success', 'Marketer updated successfully.');
+
+        // Return JSON for API
+        return response()->json([
+            'success' => true,
+            'message' => 'Marketer updated successfully.'
+        ]);
     }
     
     // Delete the user (marketer) from the database
@@ -120,7 +128,10 @@ class MarketerController extends Controller
         // Delete the user
         $marketer->delete();
 
-        // Redirect with a success message
-        return redirect()->to('admin/marketers');    
+        // Return JSON for API
+        return response()->json([
+            'success' => true,
+            'message' => 'Marketer deleted successfully.'
+        ]);
     }
 }

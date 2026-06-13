@@ -298,9 +298,9 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->prefix('admin')->group(f
 
    //Insurance managment
    Route::get('/insurances', [AdminController::class, 'insurances']);
-   Route::post('/add-insurance', [InsuranceController::class,'store']);
-   Route::put('/edit-insurance/{id}', [InsuranceController::class,'update']);
-   Route::delete('/delete-insurance/{id}', [InsuranceController::class,'destroy']);
+   Route::post('/add-insurance', [InsuranceController::class,'createInsurance']);
+   Route::put('/edit-insurance/{id}', [InsuranceController::class,'updateInsurance']);
+   Route::delete('/delete-insurance/{id}', [InsuranceController::class,'destroyInsurance']);
 
    //shop managment
    Route::get('/spare-parts', [AdminController::class, 'spareparts']);
@@ -318,17 +318,17 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->prefix('admin')->group(f
 
    //garage managment
     Route::get('/garages', [AdminController::class, 'garages']);
-    Route::post('/add-shop', [GarageController::class, 'createGarage']);
-    Route::put('/edit-shop/{id}', [GarageController::class, 'updateGarage']);
-    Route::get('/edit-shop/{id}', [GarageController::class, 'editgarage']);
-    Route::delete('/delete-shop/{id}', [GarageController::class, 'destroygarage']);
+    Route::post('/add-garage', [GarageController::class, 'createGarage']);
+    Route::put('/edit-garage/{id}', [GarageController::class, 'update']);
+    Route::get('/edit-garage/{id}', [GarageController::class, 'editGarage']);
+    Route::delete('/delete-garage/{id}', [GarageController::class, 'destroy']);
     
    //marketers managment
     Route::get('/marketers', [AdminController::class, 'marketers']);
-    Route::post('/add-shop', [MarketerController::class, 'createMarketer']);
-    Route::put('/edit-shop/{id}', [MarketerController::class, 'updateMarketer']);
-    Route::get('/edit-shop/{id}', [MarketerController::class, 'editMarketer']);
-    Route::delete('/delete-shop/{id}', [MarketerController::class, 'destroyMarketer']);
+    Route::post('/add-marketer', [MarketerController::class, 'createMarketer']);
+    Route::put('/edit-marketer/{id}', [MarketerController::class, 'updateMarketer']);
+    Route::get('/edit-marketer/{id}', [MarketerController::class, 'editMarketer']);
+    Route::delete('/delete-marketer/{id}', [MarketerController::class, 'destroyMarketer']);
     
     // view Rating
     Route::get('/ratings', [UserReviewController::class, 'index']);

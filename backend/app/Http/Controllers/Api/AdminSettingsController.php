@@ -64,10 +64,9 @@ class AdminSettingsController extends Controller
 
         Cost::create($request->all());
 
-        return respose()->json([
+        return response()->json([
            'success' => true,
            'message' => 'cost saved successfully'
-        
         ]);
            
         }
@@ -78,10 +77,9 @@ class AdminSettingsController extends Controller
     public function destroyCost(Cost $cost)
     {
         $cost->delete();
-        return respose()->json([
+        return response()->json([
            'success' => true,
            'message' => 'cost deleted successfully'
-        
         ]);
     }
 
@@ -105,10 +103,9 @@ class AdminSettingsController extends Controller
             Commission::create($request->all());
         }
 
-        return respose()->json([
+        return response()->json([
            'success' => true,
            'message' => 'cost commission saved successfully'
-        
         ]);
-            }
+    }
 }

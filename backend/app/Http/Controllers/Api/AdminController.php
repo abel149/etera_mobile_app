@@ -578,7 +578,7 @@ class AdminController extends Controller
     public function listOperators()
     {
         if (!auth()->user()->isSuperAdmin()) {
-            return redirect()->back()->with('error', 'Unauthorized access');
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
         $operators = User::where('role', User::ROLE_OPERATOR)
