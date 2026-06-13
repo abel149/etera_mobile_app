@@ -25,6 +25,74 @@ class ApiConfig {
   static String adminRejectUser(int id)    => '$baseUrl/admin-mobile/approvals/$id/reject';
   static const String adminAdmins          = '$baseUrl/admin-mobile/admins';
   static String adminDeleteAdmin(int id)   => '$baseUrl/admin-mobile/admins/$id';
+  static const String adminUsers           = '$baseUrl/admin-mobile/users';
+  static String adminDeleteUser(int id)    => '$baseUrl/admin-mobile/users/$id';
+ 
+  // Superadmin (/api/v1/admin/ — superadmin role only)
+  static const String saBase                   = '$baseUrl/admin';
+  static const String saDashboard              = '$saBase/dashboard';
+  // User management
+  static const String saUserApproval           = '$saBase/user-approval';
+  static String saApproveUser(int id)          => '$saBase/user-approval/$id';
+  static String saRevokeUser(int id)           => '$saBase/user-approval/$id';
+  static String saViewUser(int id)             => '$saBase/user/$id';
+  static String saDeleteUser(int id)           => '$saBase/user/$id';
+  // Proformas
+  static const String saProformas              = '$saBase/others-proforma';
+  static String saFloatProforma(int id)        => '$saBase/float/$id';
+  static String saCloseProforma(int id)        => '$saBase/close/$id';
+  // Admin management
+  static const String saAdmins                 = '$saBase/admins';
+  static String saUpdateAdmin(int id)          => '$saBase/admins/$id';
+  static String saDeleteAdmin(int id)          => '$saBase/admins/$id';
+  // Insurance management
+  static const String saInsurances             = '$saBase/insurances';
+  static const String saAddInsurance           = '$saBase/add-insurance';
+  static String saEditInsurance(int id)        => '$saBase/edit-insurance/$id';
+  static String saDeleteInsurance(int id)      => '$saBase/delete-insurance/$id';
+  // Shop management
+  static const String saShops                  = '$saBase/spare-parts';
+  static const String saAddShop                = '$saBase/add-shop';
+  static String saEditShop(int id)             => '$saBase/edit-shop/$id';
+  static String saUpdateShop(int id)           => '$saBase/edit-shop/$id';
+  static String saDeleteShop(int id)           => '$saBase/delete-shop/$id';
+  // Garage management
+  static const String saGarages                = '$saBase/garages';
+  static const String saAddGarage              = '$saBase/add-garage';
+  static String saEditGarage(int id)           => '$saBase/edit-garage/$id';
+  static String saUpdateGarage(int id)         => '$saBase/edit-garage/$id';
+  static String saDeleteGarage(int id)         => '$saBase/delete-garage/$id';
+  // Operators
+  static const String saOperators              = '$saBase/operators';
+  static String saAssignManager(int opId)     => '$saBase/assign-manager/$opId';
+  static String saSetQuota(int opId)          => '$saBase/set-quota/$opId';
+  static String saSetCommission(int opId)     => '$saBase/set-commission/$opId';
+  static const String saCommissions            = '$saBase/commissions';
+  // Marketers
+  static const String saMarketers              = '$saBase/marketers';
+  static const String saAddMarketer            = '$saBase/add-marketer';
+  static String saEditMarketer(int id)        => '$saBase/edit-marketer/$id';
+  static String saUpdateMarketer(int id)      => '$saBase/edit-marketer/$id';
+  static String saDeleteMarketer(int id)      => '$saBase/delete-marketer/$id';
+  // Brands
+  static const String saBrands                 = '$saBase/brands';
+  static const String saAddBrand               = '$saBase/brands';
+  // Notifications
+  static const String saNotifications          = '$saBase/notifications';
+  static const String saMarkAsRead             = '$saBase/mark-as-read';
+  // Ratings
+  static const String saRatings                = '$saBase/ratings';
+  // Transactions
+  static const String saTransactions            = '$saBase/transactions';
+  // Analytics
+  static const String saAnalytics              = '$saBase/admin/analytics';
+  static String saMarkPaid(int userId)         => '$saBase/admin/analytics/mark-paid/$userId';
+  static String saReceivePayment(int userId)   => '$saBase/admin/analytics/receieve/$userId';
+  // Settings
+  static const String saSettings               = '$saBase/admin/settings';
+  static const String saStoreCost              = '$saBase/admin/settings/costs';
+  static String saStoreCommission             = '$saBase/admin/settings/commissions';
+  static const String saToggleEmail            = '$saBase/admin/settings/email-toggle';
 
   // Others role
   static const String othersDashboard         = '$baseUrl/others/dashboard';
