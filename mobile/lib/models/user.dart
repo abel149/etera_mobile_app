@@ -30,6 +30,8 @@ class User {
   /// Effective role used for routing — employees inherit their parent's role.
   String get effectiveRole => role == 'employee' ? (parentRole ?? 'employee') : role;
 
+  bool get isSuperAdmin => role == 'superadmin';
+
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       id: json['id'] as int,
@@ -81,6 +83,10 @@ class User {
         return 'Employee';
       case 'marketer':
         return 'Marketer';
+      case 'admin':
+        return 'Admin';
+      case 'superadmin':
+        return 'Superadmin';
       default:
         return role;
     }
