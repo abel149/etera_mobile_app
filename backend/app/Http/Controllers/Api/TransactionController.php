@@ -8,7 +8,7 @@ use App\Models\PaidUser;
 use App\Models\ProformaInvoice;
 use Carbon\Carbon;
 use App\Models\User;
-
+use App\Http\Controllers\Controller;
 class TransactionController extends Controller
 {
     public function index(Request $request)

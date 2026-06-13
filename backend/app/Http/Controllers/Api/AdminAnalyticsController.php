@@ -6,7 +6,7 @@ use App\Models\User;
 use App\Models\PaidUser;
 use App\Models\ProformaInvoice;
 use Illuminate\Http\Request;
-
+use App\Http\Controllers\Controller;
 class AdminAnalyticsController extends Controller
 {
     // ---------------------------
