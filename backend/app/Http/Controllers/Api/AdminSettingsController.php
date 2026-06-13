@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Cost;
 use App\Models\Commission;
 use App\Models\EmailSetting;
+use App\Models\User;
 
 class AdminSettingsController extends Controller
 {
