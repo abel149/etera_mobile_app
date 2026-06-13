@@ -7,6 +7,7 @@ use App\Models\PaidUser;
 use App\Models\ProformaInvoice;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+
 class AdminAnalyticsController extends Controller
 {
     // ---------------------------
@@ -31,10 +32,10 @@ public function index()
         $users->where('role', 'operator')
     );
 
-    $allUsers = $garageShopUsers
-        ->merge($insuranceUsers)
-        ->merge($operatorUsers)
-        ->keyBy(fn ($u) => $u->user->id);
+   $allUsers = $garageShopUsers
+    ->merge($insuranceUsers)
+    ->merge($operatorUsers)
+    ->keyBy(fn ($u) => $u['user']->id);
 
     // Return view based on requester role
     switch ($currentUser->role) {
@@ -119,63 +120,64 @@ public function receivePayment($userId)
     // ---------------------------
     // PROCESS USERS
     // ---------------------------
-    private function processUsers($users)
-    {
-        return $users->map(function ($user) {
+   private function processUsers($users)
+{
+    return $users->map(function ($user) {
 
-            /* ================= PaidUser ================= */
-            $paidUsers = PaidUser::where('user_id', $user->id)->get();
+        /* ================= PaidUser ================= */
+        $paidUsers = PaidUser::where('user_id', $user->id)->get();
 
-            $totalEarned = $paidUsers->sum('amount');
-            $totalPaid   = $paidUsers->where('is_paid', true)->sum('amount');
-            $remaining   = $totalEarned - $totalPaid;
+        $totalEarned = $paidUsers->sum('amount');
+        $totalPaid   = $paidUsers->where('is_paid', true)->sum('amount');
+        $remaining   = $totalEarned - $totalPaid;
 
-            /* ================= Insurance Proformas ================= */
-            $invoiceCount = 0;
-            $invoiceTotal = 0;
-            $invoicePaid  = 0;
-            $invoiceUnpaid = 0;
-            $invoices = collect();
+        /* ================= Insurance Proformas ================= */
+        $invoiceCount = 0;
+        $invoiceTotal = 0;
+        $invoicePaid = 0;
+        $invoiceUnpaid = 0;
+        $invoices = collect();
 
-            if ($user->role === 'insurance') {
-               $invoices = ProformaInvoice::whereHas('proforma', function ($q) use ($user) {
-    $q->where('poster_id', $user->id)
-      ->where('insured', true); // <-- only insured proformas
-})->get();
+        if ($user->role === 'insurance') {
 
-                
-                
-    \Log::info("Invoices for user {$user->id} ({$user->name}):", $invoices->toArray());
+            $invoices = ProformaInvoice::whereHas('proforma', function ($q) use ($user) {
+                $q->where('poster_id', $user->id)
+                  ->where('insured', true);
+            })->get();
 
-                $invoiceCount = $invoices->count();
-                $invoiceTotal = $invoices->sum('total_amount');
-                $invoicePaid  = $invoices->where('is_paid', true)->sum('total_amount');
-                $invoiceUnpaid = $invoiceTotal - $invoicePaid;
-            }
+            \Log::info(
+                "Invoices for user {$user->id} ({$user->name}):",
+                $invoices->toArray()
+            );
 
-            return response()->json([
-                'success'=> true,
-                'data'=>  [
-                    'user' => $user,
-                    'role' => $user->role,
+            $invoiceCount = $invoices->count();
+            $invoiceTotal = $invoices->sum('total_amount');
+            $invoicePaid = $invoices->where('is_paid', true)->sum('total_amount');
+            $invoiceUnpaid = $invoiceTotal - $invoicePaid;
+        }
 
-                    'filled_applications' => $paidUsers->whereNotNull('application_id')->count(),
-                    'filled_proformas'    => $paidUsers->whereNotNull('proforma_id')->count(),
+        return [
+            'user' => $user,
+            'role' => $user->role,
 
-                    'total_earned' => $totalEarned,
-                    'total_paid'   => $totalPaid,
-                    'remaining'    => $remaining,
+            'filled_applications' =>
+                $paidUsers->whereNotNull('application_id')->count(),
 
-                    // Insurance only
-                    'insurance_proforma_count'  => $invoiceCount,
-                    'insurance_proforma_total'  => $invoiceTotal,
-                    'insurance_proforma_paid'   => $invoicePaid,
-                    'insurance_proforma_unpaid' => $invoiceUnpaid,
+            'filled_proformas' =>
+                $paidUsers->whereNotNull('proforma_id')->count(),
 
-                    'invoices' => $invoices,
-                    'transactions' => $paidUsers,
-            ]
-            ]);
+            'total_earned' => $totalEarned,
+            'total_paid' => $totalPaid,
+            'remaining' => $remaining,
+
+            'insurance_proforma_count' => $invoiceCount,
+            'insurance_proforma_total' => $invoiceTotal,
+            'insurance_proforma_paid' => $invoicePaid,
+            'insurance_proforma_unpaid' => $invoiceUnpaid,
+
+            'invoices' => $invoices,
+            'transactions' => $paidUsers,
+        ];
     });
-    }
+}
 }
