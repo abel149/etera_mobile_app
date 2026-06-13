@@ -43,4 +43,14 @@ class AdminService {
 
   static Future<Map<String, dynamic>> deleteAdmin(int id) =>
       ApiService.delete(ApiConfig.adminDeleteAdmin(id), withAuth: true);
+
+  static Future<Map<String, dynamic>> getAllUsers({String? role, String? status, int page = 1}) =>
+      ApiService.get(
+          '${ApiConfig.adminUsers}?page=$page'
+          '${role != null ? '&role=$role' : ''}'
+          '${status != null ? '&status=$status' : ''}',
+          withAuth: true);
+
+  static Future<Map<String, dynamic>> deleteUser(int id) =>
+      ApiService.delete(ApiConfig.adminDeleteUser(id), withAuth: true);
 }
