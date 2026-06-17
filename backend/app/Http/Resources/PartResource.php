@@ -11,6 +11,7 @@ class PartResource extends JsonResource
     {
         return [
             'id'        => $this->id,
+            'name'      => $this->name,
             'number'    => $this->number,
             'component' => $this->component,
             'condition' => $this->condition,

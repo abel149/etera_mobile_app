@@ -58,13 +58,10 @@ class ShopController extends Controller
                 'balance'         => (float) $owner->balance,
                 'inbox_count'     => $inboxCount,
                 'total'           => $applications->count(),
-                'pending_count'   => $applications->filter(
+                'pending'         => $applications->filter(
                     fn($a) => in_array(optional($a->proforma)->status, ['pending', 'opened', 'published'])
                 )->count(),
-                'closed_count'    => $applications->filter(
-                    fn($a) => optional($a->proforma)->status === 'closed'
-                )->count(),
-                'completed_count' => $applications->filter(
+                'completed'       => $applications->filter(
                     fn($a) => optional($a->proforma)->status === 'completed'
                 )->count(),
             ],
@@ -223,7 +220,7 @@ class ShopController extends Controller
                 // Validation — shops always submit per-part unit prices
                 $validated = $request->validate([
                     'parts'                    => ['required', 'array', 'min:1'],
-                    'parts.*.proforma_part_id' => ['required', 'integer', 'exists:proforma_parts,id'],
+                    'parts.*.proforma_part_id' => ['required', 'integer', 'exists:proforma_part,id'],
                     'parts.*.unit_price'       => ['required', 'numeric', 'min:0'],
                     'discount'                 => ['nullable', 'numeric', 'min:0', 'max:100'],
                 ]);
