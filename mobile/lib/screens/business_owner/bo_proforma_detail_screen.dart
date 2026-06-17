@@ -126,8 +126,8 @@ class _BOProformaDetailScreenState extends State<BOProformaDetailScreen> {
     if (_item == null) return const SizedBox.shrink();
 
     final item = _item!;
-    final canClose =
-        ['active', 'open', 'floating'].contains(item.status.toLowerCase());
+    final canClose = item.canRequestClose;
+    final alreadyRequested = item.closeRequest;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -206,7 +206,21 @@ class _BOProformaDetailScreenState extends State<BOProformaDetailScreen> {
           const SizedBox(height: 24),
 
           // Request close button
-          if (canClose)
+          if (alreadyRequested)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(children: [
+                Icon(Icons.flag_outlined, size: 16, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('Close request submitted — waiting for admin.',
+                    style: TextStyle(fontSize: 13, color: Colors.orange)),
+              ]),
+            )
+          else if (canClose)
             EteraButton(
               label: 'Request Close',
               icon: Icons.close,

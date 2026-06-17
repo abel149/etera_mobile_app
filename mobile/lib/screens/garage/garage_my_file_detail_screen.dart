@@ -102,9 +102,8 @@ class _GarageMyFileDetailScreenState extends State<GarageMyFileDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final status = (_proforma?['status'] ?? '').toString();
-    final canClose = !['closed', 'completed'].contains(status.toLowerCase()) &&
-        _proforma?['close_request'] != true;
+    final canRequestClose = _proforma?['can_request_close'] == true;
+    final closeRequest = _proforma?['close_request'] == true;
 
     return Scaffold(
       appBar: AppBar(
@@ -116,19 +115,28 @@ class _GarageMyFileDetailScreenState extends State<GarageMyFileDetailScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          if (!_loading && _proforma != null && canClose)
-            TextButton(
-              onPressed: _closing ? null : _requestClose,
-              child: _closing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: EteraTheme.error))
-                  : const Text('Close',
-                      style: TextStyle(
-                          color: EteraTheme.error, fontWeight: FontWeight.w600)),
-            ),
+          if (!_loading && _proforma != null)
+            if (canRequestClose)
+              TextButton(
+                onPressed: _closing ? null : _requestClose,
+                child: _closing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: EteraTheme.error))
+                    : const Text('Request Close',
+                        style: TextStyle(
+                            color: EteraTheme.error, fontWeight: FontWeight.w600)),
+              )
+            else if (closeRequest)
+              const Padding(
+                padding: EdgeInsets.only(right: 12),
+                child: Center(
+                  child: Text('Close Requested',
+                      style: TextStyle(fontSize: 12, color: Colors.orange)),
+                ),
+              ),
         ],
       ),
       body: _loading

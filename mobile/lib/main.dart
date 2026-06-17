@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:provider/provider.dart';
 import 'services/notification_service.dart';
+import 'screens/superadmin/admin_proforma_detail_screen.dart';
+import 'screens/shop/shop_proforma_detail_screen.dart';
 import 'config/theme.dart';
 import 'providers/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
@@ -60,6 +62,7 @@ class EteraApp extends StatelessWidget {
         title: 'etera',
         debugShowCheckedModeBanner: false,
         theme: EteraTheme.lightTheme,
+        navigatorKey: notificationNavigatorKey,
         initialRoute: startRoute,
         routes: {
           '/login': (_) => const LoginScreen(),
@@ -73,7 +76,16 @@ class EteraApp extends StatelessWidget {
           '/proforma-detail': (_) => const ProformaDetailScreen(),
           '/bo-proforma-detail': (_) => const BOProformaDetailScreen(),
           '/garage-file-detail': (_) => const GarageMyFileDetailScreen(),
-          '/notifications': (_) => const NotificationsScreen(),
+          '/notifications':          (_) => const NotificationsScreen(),
+          '/shop-proforma-detail':    (ctx) {
+            final id = ModalRoute.of(ctx)!.settings.arguments as int;
+            return ShopProformaDetailScreen(proformaId: id);
+          },
+          '/admin-proforma-detail':   (ctx) {
+            final id = ModalRoute.of(ctx)!.settings.arguments as int;
+            return AdminProformaDetailScreen(proformaId: id);
+          },
+          '/admin-approvals':         (_) => const NotificationsScreen(),
         },
       ),
     );

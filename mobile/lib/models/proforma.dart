@@ -108,6 +108,8 @@ class ProformaItem {
   final List<ProformaApplication> shops;
   final List<ProformaApplication> garages;
   final String createdAt;
+  final bool closeRequest;
+  final bool canRequestClose;
 
   ProformaItem({
     required this.id,
@@ -126,6 +128,8 @@ class ProformaItem {
     List<ProformaApplication>? shops,
     List<ProformaApplication>? garages,
     required this.createdAt,
+    this.closeRequest = false,
+    this.canRequestClose = false,
   })  : shops = shops ?? [],
         garages = garages ?? [];
 
@@ -184,6 +188,8 @@ class ProformaItem {
       shops: shops,
       garages: garages,
       createdAt: json['created_at'] ?? '',
+      closeRequest: json['close_request'] == true,
+      canRequestClose: json['can_request_close'] == true,
     );
   }
 

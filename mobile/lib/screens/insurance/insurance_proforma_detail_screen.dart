@@ -83,6 +83,8 @@ class _InsuranceProformaDetailScreenState
     final year = p?['year']?.toString() ?? '';
     final fileNum = p?['file_number']?.toString() ?? '';
     final status = p?['status']?.toString() ?? '';
+    final closeRequest = p?['close_request'] == true;
+    final canRequestClose = p?['can_request_close'] == true;
     final sColor = status == 'completed'
         ? EteraTheme.green
         : status == 'closed'
@@ -97,10 +99,17 @@ class _InsuranceProformaDetailScreenState
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          if (status == 'published' || status == 'pending')
+          if (canRequestClose)
             TextButton(
               onPressed: _requestClose,
-              child: const Text('Close', style: TextStyle(color: EteraTheme.error)),
+              child: const Text('Request Close', style: TextStyle(color: EteraTheme.error)),
+            )
+          else if (closeRequest)
+            const Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Center(
+                child: Text('Close Requested', style: TextStyle(fontSize: 12, color: Colors.orange)),
+              ),
             ),
         ],
       ),

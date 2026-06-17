@@ -4,6 +4,7 @@ import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/superadmin_service.dart';
 import '../../widgets/etera_card.dart';
+import 'admin_proforma_detail_screen.dart';
 
 class SuperadminProformasTab extends StatefulWidget {
   const SuperadminProformasTab({super.key});
@@ -170,6 +171,17 @@ class _SuperadminProformasTabState extends State<SuperadminProformasTab> {
             proforma: p,
             onFloat: () => _float(p, i),
             onClose: () => _close(p),
+            onTap: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AdminProformaDetailScreen(
+                    proformaId: p['id'] as int,
+                  ),
+                ),
+              );
+              _load();
+            },
           );
         },
       ),
@@ -182,7 +194,8 @@ class _ProformaCard extends StatelessWidget {
   final Map<String, dynamic> proforma;
   final VoidCallback onFloat;
   final VoidCallback onClose;
-  const _ProformaCard({required this.proforma, required this.onFloat, required this.onClose});
+  final VoidCallback? onTap;
+  const _ProformaCard({required this.proforma, required this.onFloat, required this.onClose, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +204,9 @@ class _ProformaCard extends StatelessWidget {
     final canFloat    = status == 'pending';
     final canClose    = status == 'published';
 
-    return EteraCard(
+    return GestureDetector(
+      onTap: onTap,
+      child: EteraCard(
       margin: const EdgeInsets.only(bottom: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -267,7 +282,8 @@ class _ProformaCard extends StatelessWidget {
           ]),
         ],
       ]),
-    );
+    ),   // EteraCard
+    );   // GestureDetector
   }
 
   Color _statusColor(String s) {

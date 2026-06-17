@@ -4,6 +4,9 @@ import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../config/api_config.dart';
+import '../shop/shop_proforma_detail_screen.dart';
+import '../superadmin/admin_proforma_detail_screen.dart';
+import '../business_owner/bo_proforma_detail_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -126,8 +129,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                         itemCount: _notifications.length,
-                        itemBuilder: (_, i) =>
-                            _NotificationCard(data: _notifications[i]),
+                        itemBuilder: (ctx, i) => _NotificationCard(
+                          data: _notifications[i],
+                          role: context.read<AuthProvider>().user?.role ?? '',
+                        ),
                       ),
       ),
     );
@@ -136,7 +141,53 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
 class _NotificationCard extends StatelessWidget {
   final Map<String, dynamic> data;
-  const _NotificationCard({required this.data});
+  final String role;
+  const _NotificationCard({required this.data, required this.role});
+
+  void _onTap(BuildContext context) {
+    final type       = data['data']?['type']?.toString() ?? '';
+    final proformaId = int.tryParse(data['data']?['proforma_id']?.toString() ?? '');
+
+    switch (type) {
+      case 'new_proforma':
+      case 'inbox_notification':
+      case 'proforma_floated':
+        if (proformaId != null) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => ShopProformaDetailScreen(proformaId: proformaId),
+          ));
+        }
+        break;
+      case 'proforma_application':
+      case 'proforma_application_received':
+      case 'proforma_results_ready':
+        if (proformaId != null) {
+          if (role == 'garage') {
+            Navigator.pushNamed(context, '/garage-file-detail', arguments: proformaId);
+          } else {
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => const BOProformaDetailScreen(),
+              settings: RouteSettings(arguments: proformaId),
+            ));
+          }
+        }
+        break;
+      case 'proforma_closed':
+        if (proformaId != null && (role == 'admin' || role == 'superadmin')) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => AdminProformaDetailScreen(proformaId: proformaId),
+          ));
+        } else if (proformaId != null) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => const BOProformaDetailScreen(),
+            settings: RouteSettings(arguments: proformaId),
+          ));
+        }
+        break;
+      default:
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +230,10 @@ class _NotificationCard extends StatelessWidget {
         iconColor = EteraTheme.teal;
     }
 
-    return Container(
+    return InkWell(
+      onTap: () => _onTap(context),
+      borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isRead ? Colors.white : EteraTheme.green.withValues(alpha: 0.04),
@@ -250,6 +304,7 @@ class _NotificationCard extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 

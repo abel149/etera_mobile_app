@@ -30,13 +30,25 @@ class SuperadminService {
 
   // ── Proformas ─────────────────────────────────────────────────────────────
   static Future<Map<String, dynamic>> getProformas() =>
-      ApiService.get(ApiConfig.saProformas, withAuth: true);
+      ApiService.get(ApiConfig.adminProformas, withAuth: true);
+
+  static Future<Map<String, dynamic>> getProformaDetail(int id) =>
+      ApiService.get(ApiConfig.adminProformaDetail(id), withAuth: true);
 
   static Future<Map<String, dynamic>> floatProforma(int id) =>
-      ApiService.post(ApiConfig.saFloatProforma(id), {}, withAuth: true);
+      ApiService.post(ApiConfig.adminFloatProforma(id), {}, withAuth: true);
 
   static Future<Map<String, dynamic>> closeProforma(int id) =>
-      ApiService.post(ApiConfig.saCloseProforma(id), {}, withAuth: true);
+      ApiService.post(ApiConfig.adminCloseProforma(id), {}, withAuth: true);
+
+  static Future<Map<String, dynamic>> inboxShops(int id, List<int> userIds) =>
+      ApiService.post(ApiConfig.adminInboxShops(id), {'user_ids': userIds}, withAuth: true);
+
+  static Future<Map<String, dynamic>> inboxGarages(int id, List<int> userIds) =>
+      ApiService.post(ApiConfig.adminInboxGarages(id), {'user_ids': userIds}, withAuth: true);
+
+  static Future<Map<String, dynamic>> sendToOwner(int id) =>
+      ApiService.post(ApiConfig.adminSendToOwner(id), {}, withAuth: true);
 
   // ── Admin management ──────────────────────────────────────────────────────
   static Future<Map<String, dynamic>> getAdmins() =>

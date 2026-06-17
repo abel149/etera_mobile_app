@@ -20,6 +20,10 @@ class ApiConfig {
   static const String adminProformas       = '$baseUrl/admin-mobile/proformas';
   static String adminFloatProforma(int id) => '$baseUrl/admin-mobile/proformas/$id/float';
   static String adminCloseProforma(int id) => '$baseUrl/admin-mobile/proformas/$id/close';
+  static String adminProformaDetail(int id)       => '$baseUrl/admin-mobile/proformas/$id';
+  static String adminInboxShops(int id)           => '$baseUrl/admin-mobile/proformas/$id/inbox-shops';
+  static String adminInboxGarages(int id)         => '$baseUrl/admin-mobile/proformas/$id/inbox-garages';
+  static String adminSendToOwner(int id)          => '$baseUrl/admin-mobile/proformas/$id/send-to-owner';
   static const String adminApprovals       = '$baseUrl/admin-mobile/approvals';
   static String adminApproveUser(int id)   => '$baseUrl/admin-mobile/approvals/$id/approve';
   static String adminRejectUser(int id)    => '$baseUrl/admin-mobile/approvals/$id/reject';

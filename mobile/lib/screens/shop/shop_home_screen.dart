@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../config/theme.dart';
-import '../../providers/auth_provider.dart';
 import '../../widgets/notification_bell.dart';
 import 'shop_applications_tab.dart';
 import 'shop_balance_tab.dart';
 import 'shop_dashboard_tab.dart';
 import 'shop_inbox_tab.dart';
 import 'shop_proformas_tab.dart';
+import 'shop_profile_screen.dart';
 
 class ShopHomeScreen extends StatefulWidget {
   const ShopHomeScreen({super.key});
@@ -28,8 +27,6 @@ class _ShopHomeScreenState extends State<ShopHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = context.watch<AuthProvider>().user;
-
     final tabs = [
       ShopDashboardTab(
         refreshTrigger: _refreshNotifier,
@@ -40,6 +37,7 @@ class _ShopHomeScreenState extends State<ShopHomeScreen> {
       ShopProformasTab(refreshTrigger: _refreshNotifier),
       ShopApplicationsTab(refreshTrigger: _refreshNotifier),
       ShopBalanceTab(),
+      const ShopProfileScreen(),
     ];
 
     const navItems = [
@@ -68,6 +66,11 @@ class _ShopHomeScreenState extends State<ShopHomeScreen> {
         activeIcon: Icon(Icons.account_balance_wallet),
         label: 'Balance',
       ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.person_outline),
+        activeIcon: Icon(Icons.person),
+        label: 'Profile',
+      ),
     ];
 
     return Scaffold(
@@ -76,52 +79,7 @@ class _ShopHomeScreenState extends State<ShopHomeScreen> {
         automaticallyImplyLeading: false,
         actions: [
           const NotificationBell(),
-          PopupMenuButton<String>(
-            tooltip: 'Menu',
-            offset: const Offset(0, 48),
-            child: Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: EteraTheme.green.withValues(alpha: 0.15),
-                child: Text(
-                  (user?.name ?? 'U')[0].toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: EteraTheme.green,
-                  ),
-                ),
-              ),
-            ),
-            onSelected: (value) async {
-              if (value == 'logout') {
-                await context.read<AuthProvider>().logout();
-                if (context.mounted) {
-                  Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
-                }
-              }
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'employees',
-                child: Row(children: [
-                  Icon(Icons.group_outlined, size: 18),
-                  SizedBox(width: 10),
-                  Text('Employees'),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'logout',
-                child: Row(children: [
-                  Icon(Icons.logout, size: 18, color: EteraTheme.error),
-                  const SizedBox(width: 10),
-                  Text('Logout',
-                      style: TextStyle(color: EteraTheme.error, fontWeight: FontWeight.w600)),
-                ]),
-              ),
-            ],
-          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: IndexedStack(index: _currentIndex, children: tabs),
