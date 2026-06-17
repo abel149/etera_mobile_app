@@ -8,6 +8,7 @@ use App\Models\Cost;
 use App\Models\ProformaApplication;
 use App\Jobs\AutoSelectProformaOffers;
 use App\Notifications\ProformaClosed;
+use App\Notifications\ProformaResultsReadyNotification;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +64,15 @@ class ProformaClosingService
                 }
             } catch (\Throwable $e) {
                 Log::warning("Failed to send processed_by Telegram for proforma {$proforma->id}", ['error' => $e->getMessage()]);
+            }
+
+            // Notify the poster in-app that results are ready
+            try {
+                if ($proforma->poster) {
+                    $proforma->poster->notify(new ProformaResultsReadyNotification($proforma));
+                }
+            } catch (\Throwable $e) {
+                Log::warning("Failed to send results-ready notification to poster for proforma {$proforma->id}", ['error' => $e->getMessage()]);
             }
 
             // Log the action

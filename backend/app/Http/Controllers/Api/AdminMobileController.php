@@ -377,6 +377,163 @@ class AdminMobileController extends Controller
     }
 
     // =========================================================================
+    // GET /api/v1/admin-mobile/proformas/{id}
+    // Full proforma detail: parts, applications, available shops/garages for inbox
+    // =========================================================================
+    public function showProforma($id)
+    {
+        $proforma = Proforma::with([
+            'poster:id,name,role,phone_number',
+            'brand:id,name',
+            'parts',
+            'applications.applicationBy:id,name,role,phone_number,location',
+            'applications.prices',
+            'inboxes.user:id,name,role',
+        ])->find($id);
+
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
+        }
+
+        $applications = $proforma->applications->map(function ($app) {
+            if ($app->from === 'shop' && $app->prices->isNotEmpty()) {
+                $subtotal = $app->prices->sum('part_total');
+                $discount = (float) ($app->discount ?? 0);
+                $app->final_price = $subtotal - ($subtotal * $discount / 100);
+            } else {
+                $app->final_price = (float) ($app->amount ?? 0);
+            }
+            return $app;
+        })->sortBy('final_price')->values();
+
+        $shops   = User::where('role', 'shop')->where('approved', true)->get(['id', 'name', 'phone_number', 'location']);
+        $garages = User::where('role', 'garage')->where('approved', true)->get(['id', 'name', 'phone_number', 'location']);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id'               => $proforma->id,
+                'file_number'      => $proforma->file_number ?? 'N/A',
+                'status'           => $proforma->status ?? 'pending',
+                'close_request'    => (bool) $proforma->close_request,
+                'customer_name'    => $proforma->customer_name,
+                'customer_phone'   => $proforma->customer_phone_number,
+                'model'            => $proforma->model ?? '',
+                'year'             => $proforma->year ?? '',
+                'car_type'         => $proforma->car_type ?? '',
+                'brand'            => $proforma->brand?->name ?? '',
+                'from'             => $proforma->poster ? ucfirst(str_replace('_', ' ', $proforma->poster->role)) : 'Unknown',
+                'poster_name'      => $proforma->poster?->name,
+                'poster_phone'     => $proforma->poster?->phone_number,
+                'required_shops'   => (int) ($proforma->required_number_of_shops ?? 0),
+                'required_garages' => (int) ($proforma->required_number_of_garages ?? 0),
+                'proforma_type'    => $proforma->proforma_type,
+                'created_at'       => $proforma->created_at?->toIso8601String(),
+                'parts' => $proforma->parts->map(fn($p) => [
+                    'number'    => $p->number,
+                    'name'      => $p->name,
+                    'grade'     => $p->grade,
+                    'condition' => $p->condition,
+                    'country'   => $p->country,
+                    'quantity'  => $p->quantity ?? 1,
+                    'component' => $p->component,
+                ]),
+                'applications' => $applications->map(fn($a) => [
+                    'id'                => $a->id,
+                    'from'              => $a->from,
+                    'applicant_name'    => $a->applicationBy?->name,
+                    'applicant_phone'   => $a->applicationBy?->phone_number,
+                    'applicant_location'=> $a->applicationBy?->location,
+                    'amount'            => (float) ($a->amount ?? 0),
+                    'discount'          => (float) ($a->discount ?? 0),
+                    'final_price'       => (float) ($a->final_price ?? 0),
+                    'status'            => $a->status,
+                    'prices'            => $a->prices->map(fn($p) => [
+                        'quantity'   => $p->quantity,
+                        'unit_price' => (float) $p->unit_price,
+                        'part_total' => (float) $p->part_total,
+                    ]),
+                ]),
+                'inboxed_user_ids'  => $proforma->inboxes->pluck('user_id')->values(),
+                'available_shops'   => $shops->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'phone' => $u->phone_number, 'location' => $u->location]),
+                'available_garages' => $garages->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'phone' => $u->phone_number, 'location' => $u->location]),
+            ],
+        ]);
+    }
+
+    // =========================================================================
+    // POST /api/v1/admin-mobile/proformas/{id}/inbox-shops
+    // Send proforma to specific spare-part shops (inbox)
+    // Body: { "user_ids": [1,2,3] }
+    // =========================================================================
+    public function inboxShops(Request $request, $id)
+    {
+        $proforma = Proforma::find($id);
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
+        }
+
+        $userIds = $request->input('user_ids', []);
+        $service = new \App\Services\InboxNotificationService();
+        $result  = $service->sendToSparePartUsers($proforma, $userIds);
+
+        return response()->json(
+            $result['success']
+                ? ['success' => true,  'message' => "Sent to {$result['count']} shop(s)"]
+                : ['success' => false, 'message' => $result['message']],
+            $result['success'] ? 200 : 500
+        );
+    }
+
+    // =========================================================================
+    // POST /api/v1/admin-mobile/proformas/{id}/inbox-garages
+    // Send proforma to specific garages (inbox)
+    // Body: { "user_ids": [1,2,3] }
+    // =========================================================================
+    public function inboxGarages(Request $request, $id)
+    {
+        $proforma = Proforma::find($id);
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
+        }
+
+        $userIds = $request->input('user_ids', []);
+        $service = new \App\Services\InboxNotificationService();
+        $result  = $service->sendToGarageUsers($proforma, $userIds);
+
+        return response()->json(
+            $result['success']
+                ? ['success' => true,  'message' => "Sent to {$result['count']} garage(s)"]
+                : ['success' => false, 'message' => $result['message']],
+            $result['success'] ? 200 : 500
+        );
+    }
+
+    // =========================================================================
+    // POST /api/v1/admin-mobile/proformas/{id}/send-to-owner
+    // Mark proforma as closed (sends billing email + notifies poster)
+    // =========================================================================
+    public function sendToOwner($id)
+    {
+        $proforma = Proforma::find($id);
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
+        }
+
+        if (in_array($proforma->status, ['closed', 'completed'])) {
+            return response()->json(['success' => false, 'message' => 'Proforma is already closed/completed'], 422);
+        }
+
+        $service = new \App\Services\ProformaClosingService();
+        $result  = $service->closeProforma($proforma, auth()->id());
+
+        return response()->json([
+            'success' => $result['success'],
+            'message' => $result['message'],
+        ], $result['success'] ? 200 : 500);
+    }
+
+    // =========================================================================
     // DELETE /api/v1/admin-mobile/users/{id}   (superadmin only)
     // =========================================================================
     public function deleteUser($id)

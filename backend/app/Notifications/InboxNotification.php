@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -29,7 +30,23 @@ class InboxNotification extends Notification implements ShouldQueue
      */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        $channels = ['database'];
+        if (!empty($notifiable->device_token)) {
+            $channels[] = FcmChannel::class;
+        }
+        return $channels;
+    }
+
+    public function toFcm(object $notifiable): array
+    {
+        return [
+            'New Proforma in Your Inbox',
+            "Proforma #{$this->proforma->file_number} — {$this->proforma->customer_name}",
+            [
+                'type'        => 'inbox_notification',
+                'proforma_id' => (string) $this->proforma->id,
+            ],
+        ];
     }
 
     /**

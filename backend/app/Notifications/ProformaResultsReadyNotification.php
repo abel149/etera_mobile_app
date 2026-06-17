@@ -4,19 +4,15 @@ namespace App\Notifications;
 
 use App\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 use App\Models\Proforma;
 
-class ProformaFloatedNotification extends Notification
+class ProformaResultsReadyNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    protected $proforma;
-
-    public function __construct(Proforma $proforma)
-    {
-        $this->proforma = $proforma;
-    }
+    public function __construct(protected Proforma $proforma) {}
 
     public function via(object $notifiable): array
     {
@@ -30,10 +26,10 @@ class ProformaFloatedNotification extends Notification
     public function toFcm(object $notifiable): array
     {
         return [
-            'New Proforma Available',
-            "#{$this->proforma->file_number} — {$this->proforma->customer_name} ({$this->proforma->brand?->name})",
+            'Your Proforma Results Are Ready',
+            "Proforma #{$this->proforma->file_number} has been closed. Tap to view your quotes.",
             [
-                'type'        => 'proforma_floated',
+                'type'        => 'proforma_results_ready',
                 'proforma_id' => (string) $this->proforma->id,
             ],
         ];
@@ -42,13 +38,12 @@ class ProformaFloatedNotification extends Notification
     public function toDatabase(object $notifiable): array
     {
         return [
+            'type'        => 'proforma_results_ready',
+            'title'       => 'Proforma Results Ready',
             'proforma_id' => $this->proforma->id,
             'file_number' => $this->proforma->file_number,
-            'customer_name' => $this->proforma->customer_name,
-            'brand_name' => $this->proforma->brand?->name ?? 'Unknown',
-            'message' => "Proforma #{$this->proforma->file_number} has been floated for {$this->proforma->customer_name}",
-            'type' => 'proforma_floated',
-            'created_at' => now()->toISOString(),
+            'message'     => "Proforma #{$this->proforma->file_number} has been closed. Your price quotes are ready to view.",
+            'created_at'  => now()->toISOString(),
         ];
     }
 }

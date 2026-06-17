@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -20,7 +21,21 @@ class PendingApprovalSignup extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        $channels = ['database'];
+        if (!empty($notifiable->device_token)) {
+            $channels[] = FcmChannel::class;
+        }
+        return $channels;
+    }
+
+    public function toFcm(object $notifiable): array
+    {
+        $roleText = $this->userRole ? ucfirst($this->userRole) : 'User';
+        return [
+            'New User Pending Approval',
+            "{$this->userName} ({$roleText}) signed up and needs your approval.",
+            ['type' => 'approval_pending_signup'],
+        ];
     }
 
     public function toDatabase(object $notifiable): array
