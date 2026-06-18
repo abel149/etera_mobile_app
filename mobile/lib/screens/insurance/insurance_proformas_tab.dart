@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../config/api_config.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/insurance_service.dart';
 import '../../widgets/etera_card.dart';
 import 'insurance_proforma_detail_screen.dart';
+import '../shared/received_proformas_list.dart';
 
 class InsuranceProformasTab extends StatefulWidget {
   final ValueNotifier<int>? refreshTrigger;
@@ -15,23 +17,27 @@ class InsuranceProformasTab extends StatefulWidget {
   State<InsuranceProformasTab> createState() => _InsuranceProformasTabState();
 }
 
-class _InsuranceProformasTabState extends State<InsuranceProformasTab> {
+class _InsuranceProformasTabState extends State<InsuranceProformasTab>
+    with SingleTickerProviderStateMixin {
   bool _loading = true;
   List<Map<String, dynamic>> _items = [];
   String? _error;
   String _filter = 'all';
+  late final TabController _tabCtrl;
 
   final _filters = ['all', 'pending', 'published', 'closed', 'completed'];
 
   @override
   void initState() {
     super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
     widget.refreshTrigger?.addListener(_load);
     _load();
   }
 
   @override
   void dispose() {
+    _tabCtrl.dispose();
     widget.refreshTrigger?.removeListener(_load);
     super.dispose();
   }
@@ -56,8 +62,7 @@ class _InsuranceProformasTabState extends State<InsuranceProformasTab> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildMyFilesTab() {
     return Column(children: [
       // Filter chips
       SizedBox(
@@ -131,6 +136,34 @@ class _InsuranceProformasTabState extends State<InsuranceProformasTab> {
       ),
     ]);
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      Material(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: TabBar(
+          controller: _tabCtrl,
+          labelColor: EteraTheme.green,
+          unselectedLabelColor: EteraTheme.textMuted,
+          indicatorColor: EteraTheme.green,
+          tabs: const [Tab(text: 'My Files'), Tab(text: 'Received')],
+        ),
+      ),
+      Expanded(
+        child: TabBarView(
+          controller: _tabCtrl,
+          children: [
+            _buildMyFilesTab(),
+            ReceivedProformasList(
+              listUrl: ApiConfig.insuranceReceivedProformas,
+              detailUrl: '${ApiConfig.baseUrl}/insurance/proformas',
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
 }
 
 class _ProformaCard extends StatelessWidget {
@@ -140,7 +173,7 @@ class _ProformaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brand = (item['brand'] as Map?)?['name']?.toString() ?? '—';
+    final brand = item['brand']?.toString() ?? '—';
     final model = item['model']?.toString() ?? '';
     final year = item['year']?.toString() ?? '';
     final fileNum = item['file_number']?.toString() ?? '';

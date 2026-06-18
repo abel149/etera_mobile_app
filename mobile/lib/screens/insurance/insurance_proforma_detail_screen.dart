@@ -18,7 +18,6 @@ class _InsuranceProformaDetailScreenState
   String? _error;
   Map<String, dynamic>? _proforma;
   List<dynamic> _parts = [];
-  List<dynamic> _applications = [];
 
   @override
   void initState() {
@@ -36,7 +35,6 @@ class _InsuranceProformaDetailScreenState
         _loading = false;
         _proforma = Map<String, dynamic>.from(data['proforma'] as Map? ?? data);
         _parts = data['parts'] as List? ?? [];
-        _applications = data['applications'] as List? ?? [];
       });
     } else {
       setState(() { _loading = false; _error = res['message']?.toString() ?? 'Failed to load'; });
@@ -78,7 +76,7 @@ class _InsuranceProformaDetailScreenState
   @override
   Widget build(BuildContext context) {
     final p = _proforma;
-    final brand = p == null ? '' : ((p['brand'] as Map?)?['name']?.toString() ?? '');
+    final brand = p?['brand']?.toString() ?? '';
     final model = p?['model']?.toString() ?? '';
     final year = p?['year']?.toString() ?? '';
     final fileNum = p?['file_number']?.toString() ?? '';
@@ -189,53 +187,10 @@ class _InsuranceProformaDetailScreenState
                       const SizedBox(height: 16),
                     ],
 
-                    // Applications/quotes received
-                    if (_applications.isNotEmpty) ...[
-                      Text('Quotes Received (${_applications.length})',
-                          style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      ..._applications.map((a) {
-                        final app = a as Map;
-                        final applicant = app['applicant'] as Map? ?? {};
-                        final amount = (app['amount'] as num?)?.toDouble() ?? 0;
-                        final appStatus = app['status']?.toString() ?? '';
-                        final aColor = appStatus == 'selected'
-                            ? EteraTheme.green
-                            : appStatus == 'rejected'
-                                ? EteraTheme.error
-                                : Colors.orange;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: EteraCard(child: Row(children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor: EteraTheme.green.withValues(alpha: 0.15),
-                              child: Text(
-                                (applicant['name']?.toString() ?? 'U')[0].toUpperCase(),
-                                style: const TextStyle(color: EteraTheme.green, fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(applicant['name']?.toString() ?? '—',
-                                  style: const TextStyle(fontWeight: FontWeight.w600)),
-                              Text('${amount.toStringAsFixed(2)} Br',
-                                  style: const TextStyle(fontSize: 13, color: EteraTheme.green,
-                                      fontWeight: FontWeight.w600)),
-                            ])),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: aColor.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(appStatus,
-                                  style: TextStyle(fontSize: 11, color: aColor, fontWeight: FontWeight.w600)),
-                            ),
-                          ])),
-                        );
-                      }),
-                    ],
+                    _InsuranceStatusBanner(
+                      status: status,
+                      closeRequest: closeRequest,
+                    ),
                   ]),
                 ),
     );
@@ -255,4 +210,66 @@ class _Row extends StatelessWidget {
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
     ]),
   );
+}
+
+class _InsuranceStatusBanner extends StatelessWidget {
+  final String status;
+  final bool closeRequest;
+  const _InsuranceStatusBanner(
+      {required this.status, required this.closeRequest});
+
+  @override
+  Widget build(BuildContext context) {
+    late IconData icon;
+    late Color color;
+    late String message;
+
+    switch (status.toLowerCase()) {
+      case 'pending':
+        icon = Icons.schedule_outlined;
+        color = Colors.orange;
+        message = 'Waiting for admin to review and publish your request.';
+        break;
+      case 'published':
+        icon = Icons.how_to_vote_outlined;
+        color = EteraTheme.green;
+        message = closeRequest
+            ? 'Close requested — admin will finalize shortly.'
+            : 'Active: shops and garages are submitting quotes.';
+        break;
+      case 'closed':
+        icon = Icons.hourglass_empty_outlined;
+        color = EteraTheme.teal;
+        message = 'All quotes received. Waiting for admin to send results.';
+        break;
+      case 'completed':
+        icon = Icons.check_circle_outline;
+        color = EteraTheme.teal;
+        message = 'Done! View your price quotes in the Received tab.';
+        break;
+      default:
+        icon = Icons.info_outline;
+        color = EteraTheme.textMuted;
+        message = status.isNotEmpty ? 'Status: $status' : '';
+    }
+
+    if (message.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(message,
+              style: TextStyle(fontSize: 13, color: color, height: 1.4)),
+        ),
+      ]),
+    );
+  }
 }

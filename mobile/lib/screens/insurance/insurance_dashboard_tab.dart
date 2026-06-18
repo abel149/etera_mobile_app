@@ -116,7 +116,7 @@ class _InsuranceDashboardTabState extends State<InsuranceDashboardTab> {
                       const SizedBox(height: 8),
                       ...(_data!['proformas'] as List).take(5).map((p) {
                         final pf = p as Map;
-                        final brand = (pf['brand'] as Map?)?['name']?.toString() ?? '';
+                        final brand = pf['brand']?.toString() ?? '';
                         final model = pf['model']?.toString() ?? '';
                         final year = pf['year']?.toString() ?? '';
                         final status = pf['status']?.toString() ?? '';
