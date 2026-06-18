@@ -589,6 +589,7 @@ class InsuranceController extends Controller
                 'phone_number' => $request->phone_number,
                 'password' => bcrypt($password),
                 'role' => 'insurance',
+                'approved' => true,
                 'registered_by' => auth()->user()->id
             ]);
 

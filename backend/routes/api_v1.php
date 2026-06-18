@@ -373,7 +373,7 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->prefix('admin')->group(f
     });
 
     //transaction
-    Route::get('/transactions', [TransactionController::class, 'index'])->name('admin.transactions.index');
+    Route::get('/transactions', [TransactionController::class, 'index']);
         
 
     //Analytics
