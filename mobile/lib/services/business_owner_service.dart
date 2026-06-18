@@ -161,4 +161,9 @@ class BusinessOwnerService {
   static Future<Map<String, dynamic>> getStatementDetail(String sku) async {
     return ApiService.get(ApiConfig.businessOwnerStatementDetail(sku), withAuth: true);
   }
+
+  // ─── Paginated proforma invoices (all plans) ──────────────────
+  static Future<Map<String, dynamic>> getBillingInvoices({int page = 1}) async {
+    return ApiService.get('${ApiConfig.businessOwnerBillingInvoices}?page=$page', withAuth: true);
+  }
 }

@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import '../config/api_config.dart';
 
@@ -17,6 +19,14 @@ class NotificationService {
   static const _channelId   = 'etera_channel';
   static const _channelName = 'Etera Notifications';
 
+  /// Cached user role — set after login/restore so navigation is role-aware.
+  static String? _cachedRole;
+
+  /// Call this after login or session restore to enable role-aware deep-linking.
+  static void setUserRole(String? role) {
+    _cachedRole = role;
+  }
+
   // ─── Initialise ────────────────────────────────────────────────
   static Future<void> init() async {
     await _messaging.requestPermission(alert: true, badge: true, sound: true);
@@ -27,13 +37,12 @@ class NotificationService {
     await _local.initialize(
       const InitializationSettings(android: androidSettings, iOS: iosSettings),
       onDidReceiveNotificationResponse: (details) {
-        // Local notification tapped (foreground)
         final payload = details.payload;
         if (payload != null) _navigateFromString(payload);
       },
     );
 
-    // Android 8+ channel
+    // Android 8+ notification channel
     if (Platform.isAndroid) {
       await _local
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
@@ -44,16 +53,15 @@ class NotificationService {
           ));
     }
 
-    // Foreground messages → show local notification
+    // Foreground FCM → show local notification banner
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
-    // Background tap (app was in background when notification arrived)
+    // Background tap (app in background when notification arrived)
     FirebaseMessaging.onMessageOpenedApp.listen((msg) => _handleTap(msg.data));
 
     // Terminated tap (app was killed when notification arrived)
     final initial = await _messaging.getInitialMessage();
     if (initial != null) {
-      // Delay slightly so the widget tree is ready
       Future.delayed(const Duration(milliseconds: 600), () => _handleTap(initial.data));
     }
   }
@@ -62,27 +70,33 @@ class NotificationService {
   static Future<void> registerToken() async {
     try {
       final token = await _messaging.getToken().catchError((_) => null);
-      if (token == null) {
-        print('[NotificationService] FCM token is null');
-        return;
-      }
-      print('[NotificationService] Registering FCM token: ${token.substring(0, 20)}...');
-      final res = await ApiService.post(
+      if (token == null) return;
+
+      await ApiService.post(
         ApiConfig.registerDeviceToken,
         {'device_token': token, 'platform': Platform.isIOS ? 'ios' : 'android'},
         withAuth: true,
       );
-      print('[NotificationService] Token registration result: $res');
+
       _messaging.onTokenRefresh.listen((newToken) {
-        print('[NotificationService] Token refreshed, re-registering...');
         ApiService.post(
           ApiConfig.registerDeviceToken,
           {'device_token': newToken, 'platform': Platform.isIOS ? 'ios' : 'android'},
           withAuth: true,
         );
       });
+
+      // Cache the user role for role-aware notification routing
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString('user_data');
+        if (raw != null) {
+          final user = jsonDecode(raw) as Map<String, dynamic>;
+          _cachedRole = user['role']?.toString();
+        }
+      } catch (_) {}
     } catch (e) {
-      print('[NotificationService] Token registration error: $e');
+      // Swallow — FCM unavailable in dev/emulator without Google Play
     }
   }
 
@@ -91,10 +105,9 @@ class NotificationService {
     final notification = message.notification;
     if (notification == null) return;
 
-    // Build a payload string so local-notification tap can also navigate
-    final type        = message.data['type'] ?? '';
-    final proformaId  = message.data['proforma_id'] ?? '';
-    final payload     = '$type:$proformaId';
+    final type       = message.data['type'] ?? '';
+    final proformaId = message.data['proforma_id'] ?? '';
+    final payload    = '$type:$proformaId';
 
     await _local.show(
       notification.hashCode,
@@ -128,52 +141,122 @@ class NotificationService {
     _navigate(type, proformaId);
   }
 
-  // ─── Central navigation logic ──────────────────────────────────
+  // ─── Central role-aware navigation logic ───────────────────────
   static void _navigate(String type, String proformaIdStr) {
     final nav = notificationNavigatorKey.currentState;
     if (nav == null) return;
 
     final int? proformaId = int.tryParse(proformaIdStr);
+    final role = _cachedRole ?? '';
+    final isAdmin = role == 'admin' || role == 'superadmin';
+
+    // ── Admin / superadmin: all proforma notifications go to detail ──
+    if (isAdmin && proformaId != null) {
+      switch (type) {
+        case 'new_proforma':
+        case 'proforma_closed':
+        case 'proforma_floated':
+        case 'inbox_notification':
+        case 'proforma_application':
+        case 'proforma_application_received':
+          nav.pushNamed('/admin-proforma-detail', arguments: proformaId);
+          return;
+        case 'approval_pending_signup':
+        case 'approval_pending_login':
+          nav.pushNamedAndRemoveUntil('/home', (r) => false);
+          return;
+        default:
+          nav.pushNamed('/admin-proforma-detail', arguments: proformaId);
+          return;
+      }
+    }
+
+    if (isAdmin) {
+      // Admin notification without a proforma_id (approvals, etc.)
+      switch (type) {
+        case 'approval_pending_signup':
+        case 'approval_pending_login':
+          nav.pushNamedAndRemoveUntil('/home', (r) => false);
+          break;
+        default:
+          nav.pushNamed('/notifications');
+      }
+      return;
+    }
 
     switch (type) {
-      // Shop / Garage → view the proforma they received
+      // ── Inbox / floated → applicant roles (shop or garage) ────────
       case 'new_proforma':
       case 'inbox_notification':
       case 'proforma_floated':
         if (proformaId != null) {
-          nav.pushNamed('/shop-proforma-detail', arguments: proformaId);
+          if (role == 'garage') {
+            nav.pushNamed('/garage-inbox-detail', arguments: proformaId);
+          } else {
+            nav.pushNamed('/shop-proforma-detail', arguments: proformaId);
+          }
         } else {
           nav.pushNamed('/notifications');
         }
         break;
 
-      // Poster → view their proforma detail (application received / results ready)
+      // ── New application on active proforma → poster roles ────────
       case 'proforma_application':
       case 'proforma_application_received':
+        if (proformaId != null) {
+          switch (role) {
+            case 'garage':
+              nav.pushNamed('/garage-file-detail', arguments: proformaId);
+              break;
+            case 'insurance':
+              nav.pushNamed('/insurance-proforma-detail', arguments: proformaId);
+              break;
+            case 'others':
+              nav.pushNamed('/proforma-detail', arguments: proformaId);
+              break;
+            case 'business_owner':
+            case 'employee':
+            default:
+              nav.pushNamed('/bo-proforma-detail', arguments: proformaId);
+          }
+        } else {
+          nav.pushNamed('/notifications');
+        }
+        break;
+
+      // ── Admin sent results to owner → received proforma detail ────
       case 'proforma_results_ready':
+      case 'proforma_sent_to_owner':
         if (proformaId != null) {
-          nav.pushNamed('/bo-proforma-detail', arguments: proformaId);
+          final String detailUrl;
+          switch (role) {
+            case 'garage':
+              detailUrl = '${ApiConfig.baseUrl}/garage/my-files';
+              break;
+            case 'insurance':
+              detailUrl = '${ApiConfig.baseUrl}/insurance/proformas';
+              break;
+            case 'others':
+              detailUrl = '${ApiConfig.baseUrl}/others/proformas';
+              break;
+            default:
+              detailUrl = '${ApiConfig.baseUrl}/business-owner/proformas';
+          }
+          nav.pushNamed('/received-proforma-detail', arguments: {
+            'id': proformaId,
+            'url': detailUrl,
+          });
         } else {
           nav.pushNamed('/notifications');
         }
         break;
 
-      // Admin → proforma was closed; open admin detail to send to owner
-      case 'proforma_closed':
-        if (proformaId != null) {
-          nav.pushNamed('/admin-proforma-detail', arguments: proformaId);
-        } else {
-          nav.pushNamed('/notifications');
-        }
-        break;
-
-      // Admin → new user pending approval
+      // ── Admin → new user pending approval ─────────────────────────
       case 'approval_pending_signup':
       case 'approval_pending_login':
-        nav.pushNamed('/admin-approvals');
+        nav.pushNamedAndRemoveUntil('/home', (r) => false);
         break;
 
-      // Default → notifications list
       default:
         nav.pushNamed('/notifications');
     }

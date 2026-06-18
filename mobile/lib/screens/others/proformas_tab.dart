@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../config/api_config.dart';
 import '../../config/theme.dart';
 import '../../models/proforma.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/others_service.dart';
 import '../../widgets/etera_card.dart';
+import '../shared/received_proformas_list.dart';
 
 class OthersProformasTab extends StatefulWidget {
   const OthersProformasTab({super.key});
@@ -13,15 +15,24 @@ class OthersProformasTab extends StatefulWidget {
   State<OthersProformasTab> createState() => _OthersProformasTabState();
 }
 
-class _OthersProformasTabState extends State<OthersProformasTab> {
+class _OthersProformasTabState extends State<OthersProformasTab>
+    with SingleTickerProviderStateMixin {
   bool _loading = true;
   List<ProformaItem> _items = [];
   String? _error;
+  late final TabController _tabCtrl;
 
   @override
   void initState() {
     super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -42,10 +53,35 @@ class _OthersProformasTabState extends State<OthersProformasTab> {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      color: EteraTheme.green,
-      onRefresh: _load,
-      child: _buildBody(),
+    return Column(
+      children: [
+        Material(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: TabBar(
+            controller: _tabCtrl,
+            labelColor: EteraTheme.green,
+            unselectedLabelColor: EteraTheme.textMuted,
+            indicatorColor: EteraTheme.green,
+            tabs: const [Tab(text: 'My Proformas'), Tab(text: 'Received')],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabCtrl,
+            children: [
+              RefreshIndicator(
+                color: EteraTheme.green,
+                onRefresh: _load,
+                child: _buildBody(),
+              ),
+              ReceivedProformasList(
+                listUrl: ApiConfig.othersReceivedProformas,
+                detailUrl: '${ApiConfig.baseUrl}/others/proformas',
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

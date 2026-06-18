@@ -112,7 +112,7 @@ class _ProformaDetailScreenState extends State<ProformaDetailScreen> {
     if (_item == null) return const SizedBox.shrink();
 
     final item = _item!;
-    final canClose = ['active', 'open', 'floating'].contains(item.status.toLowerCase());
+    final canClose = item.status.toLowerCase() == 'published' && !item.closeRequest;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -122,7 +122,7 @@ class _ProformaDetailScreenState extends State<ProformaDetailScreen> {
           // Status + ID
           Row(
             children: [
-              Text('#${item.id}', style: const TextStyle(fontSize: 13, color: EteraTheme.textMuted)),
+              Text('#${item.fileNumber}', style: const TextStyle(fontSize: 13, color: EteraTheme.textMuted)),
               const Spacer(),
               _StatusBadge(status: item.status),
             ],
@@ -164,13 +164,10 @@ class _ProformaDetailScreenState extends State<ProformaDetailScreen> {
 
           const SizedBox(height: 24),
 
-          // ── Received Applications ──────────────────────────────────
-          _ReceivedApplicationsSection(
-            shops: item.shops,
-            garages: item.garages,
-          ),
+          // Status info banner
+          _StatusInfoBanner(status: item.status, closeRequest: item.closeRequest),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // Request close button
           if (canClose)
@@ -284,152 +281,62 @@ class _PartCard extends StatelessWidget {
   }
 }
 
-// ─── Received applications section ───────────────────────────────
-class _ReceivedApplicationsSection extends StatelessWidget {
-  final List<ProformaApplication> shops;
-  final List<ProformaApplication> garages;
-
-  const _ReceivedApplicationsSection(
-      {required this.shops, required this.garages});
+// ─── Status info banner ───────────────────────────────────────────
+class _StatusInfoBanner extends StatelessWidget {
+  final String status;
+  final bool closeRequest;
+  const _StatusInfoBanner({required this.status, required this.closeRequest});
 
   @override
   Widget build(BuildContext context) {
-    final total = shops.length + garages.length;
+    late IconData icon;
+    late Color color;
+    late String message;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Received Applications ($total)',
-            style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        if (total == 0)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: EteraTheme.bgLight,
-              borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.hourglass_empty_outlined,
-                    color: EteraTheme.textMuted, size: 20),
-                SizedBox(width: 12),
-                Text('No applications received yet.',
-                    style: TextStyle(color: EteraTheme.textMuted)),
-              ],
-            ),
-          )
-        else ...[
-          if (shops.isNotEmpty) ...[
-            _sectionHeader('Spare Parts Shops (${shops.length})',
-                Icons.store_outlined, EteraTheme.green),
-            const SizedBox(height: 8),
-            ...shops.map((a) => _ApplicationCard(application: a)),
-          ],
-          if (garages.isNotEmpty) ...[
-            if (shops.isNotEmpty) const SizedBox(height: 16),
-            _sectionHeader('Garages (${garages.length})',
-                Icons.build_outlined, EteraTheme.teal),
-            const SizedBox(height: 8),
-            ...garages.map((a) => _ApplicationCard(application: a)),
-          ],
-        ],
-      ],
-    );
-  }
+    switch (status.toLowerCase()) {
+      case 'pending':
+        icon = Icons.schedule_outlined;
+        color = Colors.orange;
+        message = 'Waiting for admin to review and publish your request.';
+        break;
+      case 'published':
+        icon = Icons.how_to_vote_outlined;
+        color = EteraTheme.green;
+        message = closeRequest
+            ? 'Close requested — admin will finalize shortly.'
+            : 'Active: shops and garages are submitting quotes.';
+        break;
+      case 'closed':
+        icon = Icons.hourglass_empty_outlined;
+        color = EteraTheme.teal;
+        message = 'All quotes received. Waiting for admin to send results.';
+        break;
+      case 'completed':
+        icon = Icons.check_circle_outline;
+        color = EteraTheme.teal;
+        message = 'Done! View your price quotes in the Received tab.';
+        break;
+      default:
+        icon = Icons.info_outline;
+        color = EteraTheme.textMuted;
+        message = 'Status: $status';
+    }
 
-  Widget _sectionHeader(String title, IconData icon, Color color) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
-        Text(title,
-            style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w600, color: color)),
-      ],
-    );
-  }
-}
-
-// ─── Application card ─────────────────────────────────────────────
-class _ApplicationCard extends StatelessWidget {
-  final ProformaApplication application;
-  const _ApplicationCard({required this.application});
-
-  @override
-  Widget build(BuildContext context) {
-    return EteraCard(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  application.applicant.name,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 14),
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  gradient: EteraTheme.primaryGradient,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '${application.netTotal.toStringAsFixed(0)} Br',
-                  style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white),
-                ),
-              ),
-            ],
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(message,
+                style: TextStyle(fontSize: 13, color: color, height: 1.4)),
           ),
-          if (application.applicant.phone != null) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.phone_outlined,
-                    size: 13, color: EteraTheme.textMuted),
-                const SizedBox(width: 4),
-                Text(application.applicant.phone!,
-                    style: const TextStyle(
-                        fontSize: 12, color: EteraTheme.textMuted)),
-              ],
-            ),
-          ],
-          if (application.discountPct > 0) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  'Subtotal: ${application.subtotal.toStringAsFixed(0)} Br',
-                  style: const TextStyle(
-                      fontSize: 12, color: EteraTheme.textMuted),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: EteraTheme.teal.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '${application.discountPct.toStringAsFixed(0)}% off',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        color: EteraTheme.teal,
-                        fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
