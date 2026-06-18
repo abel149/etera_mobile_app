@@ -26,13 +26,8 @@ class AdminMobileController extends Controller
         $user         = auth()->user();
         $isSuperAdmin = $this->isSuperAdmin();
 
-        // ── Proforma pipeline (own proformas for admin, all for superadmin) ──
+        // ── Proforma pipeline — all proformas for both admin and superadmin ──
         $base = Proforma::query();
-        if (!$isSuperAdmin) {
-            $base->where(function ($q) use ($user) {
-                $q->whereNull('processed_by')->orWhere('processed_by', $user->id);
-            });
-        }
 
         $proformaPending   = (clone $base)->where('status', 'pending')->count();
         $proformaPublished = (clone $base)->where('status', 'published')->count();
@@ -42,10 +37,6 @@ class AdminMobileController extends Controller
         // ── Insurance & Others stats (matching web admin dashboard) ──
         $insBase = Proforma::fromInsurances();
         $othBase = Proforma::fromOthers();
-        if (!$isSuperAdmin) {
-            $insBase->where('processed_by', $user->id);
-            $othBase->where('processed_by', $user->id);
-        }
 
         $insuranceTotal     = (clone $insBase)->count();
         $insuranceCompleted = (clone $insBase)->where('status', 'completed')->count();
@@ -94,12 +85,6 @@ class AdminMobileController extends Controller
 
         $query = Proforma::with(['poster:id,name,role'])
             ->orderBy('created_at', 'desc');
-
-        if (!$isSuperAdmin) {
-            $query->where(function ($q) use ($user) {
-                $q->whereNull('processed_by')->orWhere('processed_by', $user->id);
-            });
-        }
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -531,9 +516,13 @@ class AdminMobileController extends Controller
         $service = new \App\Services\ProformaClosingService();
         $result  = $service->closeProforma($proforma, auth()->id());
 
+        if ($result['success']) {
+            $proforma->fresh()->update(['status' => 'completed']);
+        }
+
         return response()->json([
             'success' => $result['success'],
-            'message' => $result['message'],
+            'message' => $result['success'] ? 'Proforma sent to owner successfully' : $result['message'],
         ], $result['success'] ? 200 : 500);
     }
 

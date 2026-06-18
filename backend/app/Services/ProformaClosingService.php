@@ -415,9 +415,9 @@ class ProformaClosingService
     private function sendProformaClosedNotification(Proforma $proforma)
     {
         try {
-            // Get all admin users
-            $adminUsers = User::where('role', 'admin')->get();
-            
+            // Notify all admin and superadmin users
+            $adminUsers = User::whereIn('role', ['admin', 'superadmin'])->get();
+
             foreach ($adminUsers as $admin) {
                 $admin->notify(new ProformaClosed($proforma));
             }
