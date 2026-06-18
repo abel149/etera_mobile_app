@@ -58,7 +58,8 @@ class AuthProvider extends ChangeNotifier {
         await prefs.remove('user_data');
         await prefs.setBool('session_only', true);
       }
-      // Register FCM push token (fire-and-forget)
+      // Cache role for notification routing, then register FCM token
+      NotificationService.setUserRole(result.user!.role);
       NotificationService.registerToken();
     } else {
       _error = result.message;

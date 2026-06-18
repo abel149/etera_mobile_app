@@ -50,6 +50,11 @@ class SuperadminService {
   static Future<Map<String, dynamic>> sendToOwner(int id) =>
       ApiService.post(ApiConfig.adminSendToOwner(id), {}, withAuth: true);
 
+  static Future<Map<String, dynamic>> rejectProforma(int id, {String? reason}) =>
+      ApiService.post(ApiConfig.adminRejectProforma(id), {
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      }, withAuth: true);
+
   // ── Admin management ──────────────────────────────────────────────────────
   static Future<Map<String, dynamic>> getAdmins() =>
       ApiService.get(ApiConfig.saAdmins, withAuth: true);

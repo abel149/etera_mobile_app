@@ -5,9 +5,9 @@ import '../../providers/auth_provider.dart';
 import '../shared/profile_tab.dart';
 import '../../widgets/notification_bell.dart';
 import 'superadmin_dashboard_tab.dart';
-import 'superadmin_proformas_tab.dart';
 import 'superadmin_manage_tab.dart';
 import 'superadmin_reports_tab.dart';
+import '../admin/admin_proformas_tab.dart';
 
 class SuperadminHomeScreen extends StatefulWidget {
   const SuperadminHomeScreen({super.key});
@@ -39,7 +39,7 @@ class _SuperadminHomeScreenState extends State<SuperadminHomeScreen> {
         onGoToManage: _goToManage,
         onGoToReports: _goToReports,
       ),
-      const SuperadminProformasTab(),
+      const AdminProformasTab(),
       SuperadminManageTab(
         activeSection: _manageSection,
         onSectionChanged: (s) => setState(() => _manageSection = s),

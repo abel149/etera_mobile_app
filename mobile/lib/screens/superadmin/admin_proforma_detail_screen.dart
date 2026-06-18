@@ -68,14 +68,54 @@ class _AdminProformaDetailScreenState extends State<AdminProformaDetailScreen> {
   }
 
   Future<void> _sendToOwner() async {
-    final ok = await _confirm('Send to Owner',
-        'Close & send proforma results to the owner? This sends billing email and marks it closed.');
+    final ok = await _confirm(
+      'Send to Owner',
+      'Send proforma #${_data!["file_number"]} results to the owner?\n\nThis creates the invoice and notifies the poster.',
+    );
     if (!ok) return;
     setState(() => _actioning = true);
     final res = await SuperadminService.sendToOwner(widget.proformaId);
     if (!mounted) return;
     setState(() => _actioning = false);
     _snack(res['message']?.toString() ?? (res['success'] == true ? 'Sent to owner!' : 'Failed'), res['success'] == true);
+    if (res['success'] == true) _load();
+  }
+
+  Future<void> _reject() async {
+    String reason = '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reject Proforma'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Optionally enter a reason for rejection:'),
+          const SizedBox(height: 10),
+          TextField(
+            decoration: const InputDecoration(
+              hintText: 'Reason (optional)',
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+            maxLines: 2,
+            onChanged: (v) => reason = v,
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: EteraTheme.error),
+            child: const Text('Reject', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed) return;
+    setState(() => _actioning = true);
+    final res = await SuperadminService.rejectProforma(widget.proformaId, reason: reason);
+    if (!mounted) return;
+    setState(() => _actioning = false);
+    _snack(res['message']?.toString() ?? (res['success'] == true ? 'Rejected' : 'Failed'), res['success'] == true);
     if (res['success'] == true) _load();
   }
 
@@ -183,9 +223,11 @@ class _AdminProformaDetailScreenState extends State<AdminProformaDetailScreen> {
     final d = _data!;
     final status = d['status']?.toString() ?? 'pending';
     final closeRequest = d['close_request'] == true;
-    final canFloat = status == 'pending';
-    final canClose = status == 'published';
-    final canSendToOwner = status == 'published';
+    final canFloat        = status == 'pending';
+    final canReject       = status == 'pending';
+    final canClose        = status == 'published';
+    final canSendToOwner  = status == 'closed';
+    final canInbox        = status == 'pending' || status == 'published';
     final applications = (d['applications'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
     final parts = (d['parts'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
@@ -243,6 +285,14 @@ class _AdminProformaDetailScreenState extends State<AdminProformaDetailScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // ── Billing amount (status=closed — collect before Send to Owner) ──
+                if (status == 'closed' && _data!['billing_amount'] != null)
+                  _BillingAmountCard(billing: Map<String, dynamic>.from(_data!['billing_amount'] as Map)),
+
+                // ── Invoice summary (status=completed) ────────────────────
+                if (status == 'completed' && _data!['invoice'] != null)
+                  _InvoiceSummaryCard(invoice: Map<String, dynamic>.from(_data!['invoice'] as Map)),
+
                 // ── Parts ────────────────────────────────────────────────
                 Text('Parts (${parts.length})', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 10),
@@ -257,7 +307,7 @@ class _AdminProformaDetailScreenState extends State<AdminProformaDetailScreen> {
                   Text('Applications (${applications.length})',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   const Spacer(),
-                  if (status == 'published') ...[
+                  if (canInbox) ...[
                     _actionChip(Icons.store_outlined, 'Inbox Shops',   Colors.teal,   () => _openInboxDialog(isShops: true)),
                     const SizedBox(width: 6),
                     _actionChip(Icons.build_outlined, 'Inbox Garages', Colors.indigo, () => _openInboxDialog(isShops: false)),
@@ -295,60 +345,106 @@ class _AdminProformaDetailScreenState extends State<AdminProformaDetailScreen> {
               ),
               child: _actioning
                   ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
-                  : Row(children: [
-                      if (canFloat)
-                        Expanded(child: ElevatedButton.icon(
-                          onPressed: _float,
-                          icon: const Icon(Icons.upload_outlined, size: 18),
-                          label: const Text('Float', style: TextStyle(fontWeight: FontWeight.w600)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        )),
-                      if (canClose) ...[
-                        Expanded(child: OutlinedButton.icon(
-                          onPressed: _close,
-                          icon: const Icon(Icons.close, size: 18),
-                          label: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: EteraTheme.error,
-                            side: const BorderSide(color: EteraTheme.error),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        )),
-                        if (applications.isNotEmpty) ...[
-                          const SizedBox(width: 10),
-                          Expanded(child: ElevatedButton.icon(
-                            onPressed: canSendToOwner ? _sendToOwner : null,
-                            icon: const Icon(Icons.send_outlined, size: 18),
-                            label: const Text('Send to Owner', style: TextStyle(fontWeight: FontWeight.w600)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: EteraTheme.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          )),
-                        ],
-                      ],
-                      if (!canFloat && !canClose)
-                        Expanded(child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: EteraTheme.bgLight,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            status == 'closed' ? 'Proforma Closed' : status == 'completed' ? 'Completed' : 'No actions available',
-                            style: const TextStyle(color: EteraTheme.textMuted, fontWeight: FontWeight.w500),
-                          ),
-                        )),
-                    ]),
+                  : _buildActionBar(
+                      status: status,
+                      canFloat: canFloat,
+                      canReject: canReject,
+                      canClose: canClose,
+                      canSendToOwner: canSendToOwner,
+                      hasApplications: applications.isNotEmpty,
+                    ),
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildActionBar({
+    required String status,
+    required bool canFloat,
+    required bool canReject,
+    required bool canClose,
+    required bool canSendToOwner,
+    required bool hasApplications,
+  }) {
+    // pending → Float + Reject
+    if (canFloat) {
+      return Row(children: [
+        Expanded(child: OutlinedButton.icon(
+          onPressed: _reject,
+          icon: const Icon(Icons.cancel_outlined, size: 18),
+          label: const Text('Reject', style: TextStyle(fontWeight: FontWeight.w600)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: EteraTheme.error,
+            side: const BorderSide(color: EteraTheme.error),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: ElevatedButton.icon(
+          onPressed: _float,
+          icon: const Icon(Icons.upload_outlined, size: 18),
+          label: const Text('Float', style: TextStyle(fontWeight: FontWeight.w600)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.deepPurple,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        )),
+      ]);
+    }
+
+    // published → Close (if has applications)
+    if (canClose) {
+      return Row(children: [
+        if (hasApplications)
+          Expanded(child: ElevatedButton.icon(
+            onPressed: _close,
+            icon: const Icon(Icons.lock_outline, size: 18),
+            label: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: EteraTheme.error,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ))
+        else
+          Expanded(child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: EteraTheme.bgLight, borderRadius: BorderRadius.circular(10)),
+            child: const Text('Waiting for applications…',
+                style: TextStyle(color: EteraTheme.textMuted, fontWeight: FontWeight.w500)),
+          )),
+      ]);
+    }
+
+    // closed → Send to Owner
+    if (canSendToOwner) {
+      return SizedBox(width: double.infinity, child: ElevatedButton.icon(
+        onPressed: _sendToOwner,
+        icon: const Icon(Icons.send_outlined, size: 18),
+        label: const Text('Send to Owner', style: TextStyle(fontWeight: FontWeight.w600)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: EteraTheme.green,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ));
+    }
+
+    // completed / rejected / other → read-only
+    final label = status == 'completed'
+        ? 'Results sent to owner'
+        : status == 'rejected'
+            ? 'Proforma rejected'
+            : 'No actions available';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: EteraTheme.bgLight, borderRadius: BorderRadius.circular(10)),
+      child: Text(label, style: const TextStyle(color: EteraTheme.textMuted, fontWeight: FontWeight.w500)),
     );
   }
 
@@ -389,8 +485,9 @@ class _StatusBadge extends StatelessWidget {
     switch (status) {
       case 'pending':   color = Colors.orange; break;
       case 'published': color = Colors.deepPurple; break;
-      case 'closed':    color = EteraTheme.error; break;
+      case 'closed':    color = Colors.red.shade700; break;
       case 'completed': color = EteraTheme.green; break;
+      case 'rejected':  color = EteraTheme.error; break;
       default:          color = EteraTheme.textMuted;
     }
     return Container(
@@ -627,5 +724,125 @@ class _InboxPickerSheetState extends State<_InboxPickerSheet> {
         ]),
       ),
     );
+  }
+}
+
+// ─── Billing amount card (shown when proforma is closed) ──────────────────────
+class _BillingAmountCard extends StatelessWidget {
+  final Map<String, dynamic> billing;
+  const _BillingAmountCard({required this.billing});
+
+  @override
+  Widget build(BuildContext context) {
+    final subtotal = (billing['subtotal'] ?? 0.0).toDouble();
+    final vat      = (billing['vat_amount'] ?? 0.0).toDouble();
+    final total    = (billing['total_amount'] ?? 0.0).toDouble();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        border: Border.all(color: Colors.amber.shade300),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.payments_outlined, size: 18, color: Colors.amber),
+          const SizedBox(width: 8),
+          const Text('Billing — Awaiting Payment',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.amber)),
+        ]),
+        const SizedBox(height: 4),
+        const Text('Collect payment from the poster before sending to owner.',
+            style: TextStyle(fontSize: 12, color: EteraTheme.textMuted)),
+        const Divider(height: 20),
+        Row(children: [
+          Expanded(child: _billingItem('Subtotal', '${subtotal.toStringAsFixed(2)} Br')),
+          Expanded(child: _billingItem('VAT (15%)', '${vat.toStringAsFixed(2)} Br')),
+          Expanded(child: _billingItem('Total Due', '${total.toStringAsFixed(2)} Br', bold: true)),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _billingItem(String label, String value, {bool bold = false}) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+      const SizedBox(height: 2),
+      Text(value, style: TextStyle(
+        fontSize: 13,
+        fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+        color: bold ? Colors.amber.shade800 : EteraTheme.textPrimary,
+      )),
+    ]);
+  }
+}
+
+// ─── Invoice summary card (shown when proforma is completed) ───────────────────
+class _InvoiceSummaryCard extends StatelessWidget {
+  final Map<String, dynamic> invoice;
+  const _InvoiceSummaryCard({required this.invoice});
+
+  @override
+  Widget build(BuildContext context) {
+    final sku      = invoice['sku']?.toString() ?? '';
+    final subtotal = (invoice['subtotal'] ?? 0.0).toDouble();
+    final vat      = (invoice['vat_amount'] ?? 0.0).toDouble();
+    final total    = (invoice['total_amount'] ?? 0.0).toDouble();
+    final isPaid   = invoice['is_paid'] == true;
+    final date     = invoice['created_at']?.toString() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: isPaid ? EteraTheme.green.withValues(alpha: 0.06) : Colors.red.shade50,
+        border: Border.all(color: isPaid ? EteraTheme.green.withValues(alpha: 0.3) : Colors.red.shade200),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(isPaid ? Icons.check_circle_outline : Icons.receipt_long_outlined,
+              size: 18, color: isPaid ? EteraTheme.green : EteraTheme.error),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Invoice · $sku',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14,
+                  color: isPaid ? EteraTheme.green : EteraTheme.error))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: isPaid ? EteraTheme.green.withValues(alpha: 0.12) : EteraTheme.error.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(isPaid ? 'Paid' : 'Unpaid',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                    color: isPaid ? EteraTheme.green : EteraTheme.error)),
+          ),
+        ]),
+        if (date.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(date, style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+        ],
+        const Divider(height: 20),
+        Row(children: [
+          Expanded(child: _item('Subtotal', '${subtotal.toStringAsFixed(2)} Br')),
+          Expanded(child: _item('VAT (15%)', '${vat.toStringAsFixed(2)} Br')),
+          Expanded(child: _item('Total', '${total.toStringAsFixed(2)} Br', bold: true)),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _item(String label, String value, {bool bold = false}) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+      const SizedBox(height: 2),
+      Text(value, style: TextStyle(
+        fontSize: 13,
+        fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+        color: bold ? EteraTheme.textPrimary : EteraTheme.textMuted,
+      )),
+    ]);
   }
 }

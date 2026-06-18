@@ -21,8 +21,8 @@ class _AdminProformasTabState extends State<AdminProformasTab> {
   bool _loadingMore = false;
   String? _statusFilter;
 
-  final _statuses = [null, 'pending', 'published', 'closed', 'completed'];
-  final _statusLabels = ['All', 'Pending', 'Published', 'Closed', 'Completed'];
+  final _statuses = [null, 'pending', 'published', 'closed', 'completed', 'rejected'];
+  final _statusLabels = ['All', 'Pending', 'Published', 'Closed', 'Completed', 'Rejected'];
 
   final ScrollController _scroll = ScrollController();
 
@@ -186,6 +186,11 @@ class _AdminProformasTabState extends State<AdminProformasTab> {
                                 item: _items[i],
                                 onFloat: () => _float(_items[i]),
                                 onClose: () => _close(_items[i]),
+                                onTap: () => Navigator.pushNamed(
+                                  context,
+                                  '/admin-proforma-detail',
+                                  arguments: _items[i]['id'] as int,
+                                ).then((_) => _load()),
                               );
                             },
                           ),
@@ -232,8 +237,9 @@ class _ProformaCard extends StatelessWidget {
   final Map<String, dynamic> item;
   final VoidCallback onFloat;
   final VoidCallback onClose;
+  final VoidCallback onTap;
 
-  const _ProformaCard({required this.item, required this.onFloat, required this.onClose});
+  const _ProformaCard({required this.item, required this.onFloat, required this.onClose, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +252,10 @@ class _ProformaCard extends StatelessWidget {
 
     return EteraCard(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Column(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -294,6 +303,14 @@ class _ProformaCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
             ],
           ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.touch_app_outlined, size: 13, color: EteraTheme.textMuted),
+              const SizedBox(width: 4),
+              const Text('Tap to view details', style: TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+            ],
+          ),
           if (canAct) ...[
             const SizedBox(height: 10),
             const Divider(height: 1),
@@ -332,6 +349,7 @@ class _ProformaCard extends StatelessWidget {
             ),
           ],
         ],
+        ),
       ),
     );
   }
@@ -340,8 +358,9 @@ class _ProformaCard extends StatelessWidget {
     switch (s) {
       case 'pending':   return Colors.orange;
       case 'published': return EteraTheme.green;
-      case 'closed':    return EteraTheme.teal;
+      case 'closed':    return Colors.red.shade700;
       case 'completed': return Colors.blue;
+      case 'rejected':  return EteraTheme.error;
       default:          return EteraTheme.textMuted;
     }
   }
