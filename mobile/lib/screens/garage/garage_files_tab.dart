@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../config/api_config.dart';
 import '../../config/theme.dart';
 import '../../models/proforma.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/garage_service.dart';
 import '../../widgets/etera_card.dart';
+import '../shared/received_proforma_detail_screen.dart';
 
 class GarageFilesTab extends StatefulWidget {
   final ValueNotifier<int>? refreshTrigger;
@@ -131,7 +133,7 @@ class _MyFilesListState extends State<_MyFilesList> {
   }
 }
 
-// ─── Received list ────────────────────────────────────────────────
+// ─── Received list ─────────────────────────────────────────────────
 class _ReceivedList extends StatefulWidget {
   const _ReceivedList();
 
@@ -185,7 +187,18 @@ class _ReceivedListState extends State<_ReceivedList> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 12),
           itemCount: _items.length,
-          itemBuilder: (_, i) => _FileCard(item: _items[i]),
+          itemBuilder: (ctx, i) => _FileCard(
+            item: _items[i],
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute(
+                builder: (_) => ReceivedProformaDetailScreen(
+                  proformaId: _items[i].id,
+                  detailUrl: '${ApiConfig.baseUrl}/garage/my-files',
+                ),
+              ),
+            ),
+          ),
         );
       }),
     );
@@ -236,18 +249,20 @@ class _CenteredMsg extends StatelessWidget {
 // ─── File card ────────────────────────────────────────────────────
 class _FileCard extends StatelessWidget {
   final ProformaItem item;
-  const _FileCard({required this.item});
+  final VoidCallback? onTap;
+  const _FileCard({required this.item, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: EteraCard(
-        onTap: () => Navigator.pushNamed(
-          context,
-          '/garage-file-detail',
-          arguments: item.id,
-        ),
+        onTap: onTap ??
+            () => Navigator.pushNamed(
+                  context,
+                  '/garage-file-detail',
+                  arguments: item.id,
+                ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

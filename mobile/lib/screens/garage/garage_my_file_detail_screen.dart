@@ -18,8 +18,6 @@ class _GarageMyFileDetailScreenState extends State<GarageMyFileDetailScreen> {
   bool _closing = false;
   Map<String, dynamic>? _proforma;
   List<dynamic> _parts = [];
-  List<dynamic> _shops = [];
-  List<dynamic> _garages = [];
   Map<String, dynamic>? _invoice;
   String? _error;
   int? _id;
@@ -51,8 +49,6 @@ class _GarageMyFileDetailScreenState extends State<GarageMyFileDetailScreen> {
             ? Map<String, dynamic>.from(data['proforma'] as Map)
             : null;
         _parts = data['parts'] as List? ?? [];
-        _shops = data['shops'] as List? ?? [];
-        _garages = data['garages'] as List? ?? [];
         _invoice = data['invoice'] is Map
             ? Map<String, dynamic>.from(data['invoice'] as Map)
             : null;
@@ -165,26 +161,10 @@ class _GarageMyFileDetailScreenState extends State<GarageMyFileDetailScreen> {
                         ..._parts.map((p) => _PartCard(part: p as Map)),
                         const SizedBox(height: 16),
                       ],
-                      if (_shops.isNotEmpty) ...[
-                        _SectionTitle('Shop Quotes (${_shops.length})'),
-                        ..._shops.map((s) => _ApplicationCard(app: s as Map)),
-                        const SizedBox(height: 16),
-                      ],
-                      if (_garages.isNotEmpty) ...[
-                        _SectionTitle('Garage Quotes (${_garages.length})'),
-                        ..._garages
-                            .map((g) => _ApplicationCard(app: g as Map)),
-                        const SizedBox(height: 16),
-                      ],
-                      if (_shops.isEmpty && _garages.isEmpty)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text('No quotes received yet.',
-                                style:
-                                    TextStyle(color: EteraTheme.textMuted)),
-                          ),
-                        ),
+                      _StatusBanner(
+                        status: _proforma?['status']?.toString() ?? '',
+                        closeRequest: _proforma?['close_request'] == true,
+                      ),
                       const SizedBox(height: 32),
                     ],
                   ),
@@ -381,58 +361,64 @@ class _Chip extends StatelessWidget {
   }
 }
 
-// ─── Application (quote) card ─────────────────────────────────────
-class _ApplicationCard extends StatelessWidget {
-  final Map app;
-  const _ApplicationCard({required this.app});
+// ─── Status info banner ───────────────────────────────────────────
+class _StatusBanner extends StatelessWidget {
+  final String status;
+  final bool closeRequest;
+  const _StatusBanner({required this.status, required this.closeRequest});
 
   @override
   Widget build(BuildContext context) {
-    final applicant = app['applicant'] is Map ? app['applicant'] as Map : {};
-    final name = applicant['name']?.toString() ?? '—';
-    final amount = (app['amount'] ?? app['net_total'] ?? 0).toDouble();
-    final discount = (app['discount'] ?? app['discount_pct'] ?? 0).toDouble();
-    final from = app['from']?.toString() ?? '';
+    late IconData icon;
+    late Color color;
+    late String message;
 
-    return EteraCard(
-      margin: const EdgeInsets.only(bottom: 8),
+    switch (status.toLowerCase()) {
+      case 'pending':
+        icon = Icons.schedule_outlined;
+        color = Colors.orange;
+        message = 'Waiting for admin to review and publish your request.';
+        break;
+      case 'published':
+        icon = Icons.how_to_vote_outlined;
+        color = EteraTheme.green;
+        message = closeRequest
+            ? 'Close requested — admin will finalize shortly.'
+            : 'Active: shops and garages are submitting quotes.';
+        break;
+      case 'closed':
+        icon = Icons.hourglass_empty_outlined;
+        color = EteraTheme.teal;
+        message = 'All quotes received. Waiting for admin to send results.';
+        break;
+      case 'completed':
+        icon = Icons.check_circle_outline;
+        color = EteraTheme.teal;
+        message = 'Done! View your price quotes in the Received tab.';
+        break;
+      default:
+        icon = Icons.info_outline;
+        color = EteraTheme.textMuted;
+        message = status.isNotEmpty ? 'Status: $status' : '';
+    }
+
+    if (message.isEmpty) return const SizedBox.shrink();
+
+    return Container(
       padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: EteraTheme.green.withValues(alpha: 0.1),
-            child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    color: EteraTheme.green, fontWeight: FontWeight.w700)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text(from,
-                    style: const TextStyle(
-                        fontSize: 12, color: EteraTheme.textMuted)),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('${amount.toStringAsFixed(2)} Br',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, color: EteraTheme.green)),
-              if (discount > 0)
-                Text('${discount.toStringAsFixed(0)}% off',
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.orange)),
-            ],
-          ),
-        ],
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
+      child: Row(children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(message,
+              style: TextStyle(fontSize: 13, color: color, height: 1.4)),
+        ),
+      ]),
     );
   }
 }

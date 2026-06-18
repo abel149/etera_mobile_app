@@ -18,6 +18,7 @@ class _GarageBillingScreenState extends State<GarageBillingScreen> {
   String _plan = 'per_invoice';
   Map<String, dynamic>? _currentPeriod;
   List<Map<String, dynamic>> _statements = [];
+  List<Map<String, dynamic>> _recentInvoices = [];
   bool _updatingPlan = false;
 
   @override
@@ -45,6 +46,10 @@ class _GarageBillingScreenState extends State<GarageBillingScreen> {
         final raw = res['statements'];
         _statements = raw is List
             ? raw.map((s) => Map<String, dynamic>.from(s as Map)).toList()
+            : [];
+        final rawInv = res['recent_invoices'];
+        _recentInvoices = rawInv is List
+            ? rawInv.map((i) => Map<String, dynamic>.from(i as Map)).toList()
             : [];
       });
     } else {
@@ -285,6 +290,31 @@ class _GarageBillingScreenState extends State<GarageBillingScreen> {
                                 ),
                               ),
                             )),
+                      const SizedBox(height: 24),
+                      Text('Proforma Invoices',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Individual invoices generated after each completed proforma.',
+                        style: TextStyle(fontSize: 12, color: EteraTheme.textMuted),
+                      ),
+                      const SizedBox(height: 12),
+                      if (_recentInvoices.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: EteraTheme.bgLight,
+                            borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
+                          ),
+                          child: const Row(children: [
+                            Icon(Icons.receipt_outlined, color: EteraTheme.textMuted, size: 20),
+                            SizedBox(width: 12),
+                            Text('No proforma invoices yet.',
+                                style: TextStyle(color: EteraTheme.textMuted)),
+                          ]),
+                        )
+                      else
+                        ..._recentInvoices.map((inv) => _ProformaInvoiceCard(invoice: inv)),
                       const SizedBox(height: 32),
                     ],
                   ),
@@ -631,6 +661,127 @@ class _InvoiceRow extends StatelessWidget {
   }
 
   Widget _Mini(String label, String value, {bool bold = false}) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 10, color: EteraTheme.textMuted)),
+      Text(value,
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+              color: bold ? EteraTheme.green : EteraTheme.textPrimary)),
+    ]);
+  }
+}
+
+// ─── Proforma invoice card (per-invoice / overview invoices section) ──────────
+class _ProformaInvoiceCard extends StatelessWidget {
+  final Map<String, dynamic> invoice;
+  const _ProformaInvoiceCard({required this.invoice});
+
+  @override
+  Widget build(BuildContext context) {
+    final brand       = invoice['brand']?.toString() ?? '';
+    final model       = invoice['car_model']?.toString() ?? '';
+    final file        = invoice['file_number']?.toString() ?? '';
+    final total       = (invoice['total_amount'] ?? 0).toDouble();
+    final vat         = (invoice['vat_amount'] ?? 0).toDouble();
+    final subtotal    = (invoice['subtotal'] ?? (total - vat)).toDouble();
+    final isPaid      = invoice['is_paid'] == true;
+    final date        = invoice['created_at']?.toString() ?? '';
+    final checkoutUrl = invoice['checkout_url']?.toString();
+
+    return EteraCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 38, height: 38,
+            decoration: BoxDecoration(
+              color: isPaid
+                  ? EteraTheme.green.withValues(alpha: 0.1)
+                  : Colors.orange.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isPaid ? Icons.check_circle_outline : Icons.pending_outlined,
+              color: isPaid ? EteraTheme.green : Colors.orange,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                brand.isNotEmpty
+                    ? '$brand${model.isNotEmpty ? ' · $model' : ''}'
+                    : (file.isNotEmpty ? 'File #$file' : invoice['sku']?.toString() ?? ''),
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+              if (file.isNotEmpty)
+                Text('File #$file',
+                    style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+              if (date.isNotEmpty)
+                Text(date.substring(0, 10),
+                    style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+            ]),
+          ),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('${total.toStringAsFixed(2)} Br',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 13,
+                    color: EteraTheme.textPrimary)),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: isPaid
+                    ? EteraTheme.green.withValues(alpha: 0.12)
+                    : Colors.orange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                isPaid ? 'Paid' : 'Pending',
+                style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w600,
+                    color: isPaid ? EteraTheme.green : Colors.orange),
+              ),
+            ),
+          ]),
+        ]),
+        const Divider(height: 18),
+        Row(children: [
+          Expanded(child: _mini('Subtotal', '${subtotal.toStringAsFixed(2)} Br')),
+          Expanded(child: _mini('VAT (15%)', '${vat.toStringAsFixed(2)} Br')),
+          Expanded(child: _mini('Total', '${total.toStringAsFixed(2)} Br', bold: true)),
+        ]),
+        if (!isPaid) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Please pay in person or contact admin.'),
+                  behavior: SnackBarBehavior.floating,
+                ));
+              },
+              icon: const Icon(Icons.payment_outlined, size: 16),
+              label: const Text('Pay Now',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: EteraTheme.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _mini(String label, String value, {bool bold = false}) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: const TextStyle(fontSize: 10, color: EteraTheme.textMuted)),
       Text(value,
