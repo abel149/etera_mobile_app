@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import 'services/notification_service.dart';
 import 'screens/superadmin/admin_proforma_detail_screen.dart';
 import 'screens/shop/shop_proforma_detail_screen.dart';
+import 'screens/insurance/insurance_proforma_detail_screen.dart';
+import 'screens/garage/garage_inbox_detail_screen.dart';
 import 'config/theme.dart';
 import 'providers/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
@@ -20,6 +22,7 @@ import 'screens/business_owner/bo_proforma_detail_screen.dart';
 import 'screens/garage/garage_my_file_detail_screen.dart';
 import 'screens/others/proforma_detail_screen.dart';
 import 'screens/shared/notifications_screen.dart';
+import 'screens/shared/received_proforma_detail_screen.dart';
 
 void main() async {
   final binding = WidgetsFlutterBinding.ensureInitialized();
@@ -39,8 +42,9 @@ void main() async {
   final startRoute =
       (restored && auth.user != null && auth.user!.approved) ? '/home' : '/login';
 
-  // If restored, register FCM token for push notifications
+  // If restored, register FCM token and cache role for notification routing
   if (restored && auth.user != null) {
+    NotificationService.setUserRole(auth.user!.role);
     NotificationService.registerToken();
   }
 
@@ -85,7 +89,23 @@ class EteraApp extends StatelessWidget {
             final id = ModalRoute.of(ctx)!.settings.arguments as int;
             return AdminProformaDetailScreen(proformaId: id);
           },
-          '/admin-approvals':         (_) => const NotificationsScreen(),
+          '/insurance-proforma-detail': (ctx) {
+            final id = ModalRoute.of(ctx)!.settings.arguments as int;
+            return InsuranceProformaDetailScreen(proformaId: id);
+          },
+          '/garage-inbox-detail': (ctx) {
+            final id = ModalRoute.of(ctx)!.settings.arguments as int;
+            return GarageInboxDetailScreen(proformaId: id);
+          },
+          '/admin-approvals': (_) => const NotificationsScreen(),
+          '/received-proforma-detail': (ctx) {
+            final args = ModalRoute.of(ctx)!.settings.arguments
+                as Map<String, dynamic>;
+            return ReceivedProformaDetailScreen(
+              proformaId: args['id'] as int,
+              detailUrl: args['url'] as String,
+            );
+          },
         },
       ),
     );

@@ -23,6 +23,9 @@ class InsuranceService {
   static Future<Map<String, dynamic>> getPartners() =>
       ApiService.get(ApiConfig.insurancePartners, withAuth: true);
 
+  static Future<Map<String, dynamic>> getAvailablePartners() =>
+      ApiService.get(ApiConfig.insuranceAvailablePartners, withAuth: true);
+
   static Future<Map<String, dynamic>> addPartners(List<int> partnerIds) =>
       ApiService.post(ApiConfig.insurancePartners, {'partners': partnerIds}, withAuth: true);
 
@@ -46,6 +49,9 @@ class InsuranceService {
 
   static Future<Map<String, dynamic>> getBillingStatements() =>
       ApiService.get(ApiConfig.insuranceBillingStatements, withAuth: true);
+
+  static Future<Map<String, dynamic>> getStatementDetail(String sku) =>
+      ApiService.get(ApiConfig.insuranceStatementDetail(sku), withAuth: true);
 
   static Future<Map<String, dynamic>> createProforma(Map<String, dynamic> body) =>
       ApiService.post(ApiConfig.insuranceCreateFile, body, withAuth: true);

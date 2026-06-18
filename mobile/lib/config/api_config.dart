@@ -24,6 +24,7 @@ class ApiConfig {
   static String adminInboxShops(int id)           => '$baseUrl/admin-mobile/proformas/$id/inbox-shops';
   static String adminInboxGarages(int id)         => '$baseUrl/admin-mobile/proformas/$id/inbox-garages';
   static String adminSendToOwner(int id)          => '$baseUrl/admin-mobile/proformas/$id/send-to-owner';
+  static String adminRejectProforma(int id)       => '$baseUrl/admin-mobile/proformas/$id/reject';
   static const String adminApprovals       = '$baseUrl/admin-mobile/approvals';
   static String adminApproveUser(int id)   => '$baseUrl/admin-mobile/approvals/$id/approve';
   static String adminRejectUser(int id)    => '$baseUrl/admin-mobile/approvals/$id/reject';
@@ -119,6 +120,7 @@ class ApiConfig {
   static const String businessOwnerBillingPlan = '$baseUrl/business-owner/billing/plan';
   static const String businessOwnerBillingStatements = '$baseUrl/business-owner/billing/statements';
   static String businessOwnerStatementDetail(String sku) => '$baseUrl/business-owner/billing/statements/$sku';
+  static const String businessOwnerBillingInvoices = '$baseUrl/business-owner/billing/invoices';
 
   // Garage role
   static const String garageDashboard = '$baseUrl/garage/dashboard';
@@ -141,6 +143,7 @@ class ApiConfig {
   static const String garageBillingPlan = '$baseUrl/garage/billing/plan';
   static const String garageBillingStatements = '$baseUrl/garage/billing/statements';
   static String garageBillingStatementDetail(String sku) => '$baseUrl/garage/billing/statements/$sku';
+  static const String garageBillingInvoices = '$baseUrl/garage/billing/invoices';
 
   // Shop role
   static const String shopDashboard = '$baseUrl/shop/dashboard';
@@ -165,10 +168,12 @@ class ApiConfig {
   static String insuranceDeletePartner(int id) => '$baseUrl/insurance/partners/$id';
   static const String insuranceEmployees = '$baseUrl/insurance/employees';
   static String insuranceDeleteEmployee(int id) => '$baseUrl/insurance/employees/$id';
+  static const String insuranceAvailablePartners = '$baseUrl/insurance/partners/available';
   static const String insuranceBilling = '$baseUrl/insurance/billing';
   static const String insuranceBillingPlan = '$baseUrl/insurance/billing/plan';
   static const String insuranceBillingStatements = '$baseUrl/insurance/billing/statements';
   static String insuranceStatementDetail(String sku) => '$baseUrl/insurance/billing/statements/$sku';
+  static const String insuranceBillingInvoices = '$baseUrl/insurance/billing/invoices';
 
   // Proforma (role-based endpoints)
   static const String _createProformaOthers = '$baseUrl/others/create-file';
