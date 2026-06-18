@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../config/api_config.dart';
 import '../../config/theme.dart';
 import '../../models/proforma.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/business_owner_service.dart';
 import '../../widgets/etera_card.dart';
+import '../shared/received_proformas_list.dart';
 
 class BOProformasTab extends StatefulWidget {
   final ValueNotifier<int>? refreshTrigger;
@@ -15,20 +17,24 @@ class BOProformasTab extends StatefulWidget {
   State<BOProformasTab> createState() => _BOProformasTabState();
 }
 
-class _BOProformasTabState extends State<BOProformasTab> {
+class _BOProformasTabState extends State<BOProformasTab>
+    with SingleTickerProviderStateMixin {
   bool _loading = true;
   List<ProformaItem> _items = [];
   String? _error;
+  late final TabController _tabCtrl;
 
   @override
   void initState() {
     super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
     widget.refreshTrigger?.addListener(_load);
     _load();
   }
 
   @override
   void dispose() {
+    _tabCtrl.dispose();
     widget.refreshTrigger?.removeListener(_load);
     super.dispose();
   }
@@ -54,10 +60,35 @@ class _BOProformasTabState extends State<BOProformasTab> {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      color: EteraTheme.green,
-      onRefresh: _load,
-      child: _buildBody(),
+    return Column(
+      children: [
+        Material(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: TabBar(
+            controller: _tabCtrl,
+            labelColor: EteraTheme.green,
+            unselectedLabelColor: EteraTheme.textMuted,
+            indicatorColor: EteraTheme.green,
+            tabs: const [Tab(text: 'My Proformas'), Tab(text: 'Received')],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabCtrl,
+            children: [
+              RefreshIndicator(
+                color: EteraTheme.green,
+                onRefresh: _load,
+                child: _buildBody(),
+              ),
+              ReceivedProformasList(
+                listUrl: ApiConfig.businessOwnerReceivedProformas,
+                detailUrl: '${ApiConfig.baseUrl}/business-owner/proformas',
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
