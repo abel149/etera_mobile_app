@@ -416,6 +416,29 @@ class InsuranceController extends Controller
     }
 
     // =========================================================================
+    // GET /api/v1/insurance/available-partners
+    // Fetch approved shops and garages for partner selection
+    // =========================================================================
+    public function availablePartners()
+    {
+        $shops = User::where('role', 'shop')
+            ->where('approved', true)
+            ->get(['id', 'name', 'phone_number', 'location']);
+
+        $garages = User::where('role', 'garage')
+            ->where('approved', true)
+            ->get(['id', 'name', 'phone_number', 'location']);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'shops' => $shops,
+                'garages' => $garages,
+            ],
+        ]);
+    }
+
+    // =========================================================================
     // POST /api/v1/insurance/partners
     // Add partner(s) — Body: { "partners": [1, 5, 9] }
     // =========================================================================

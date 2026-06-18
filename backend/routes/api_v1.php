@@ -199,6 +199,7 @@ Route::middleware(['auth:sanctum', 'role:insurance'])->prefix('insurance')->grou
     Route::get('/received-proformas',                [InsuranceController::class, 'receivedProformas']);
     Route::get('/balance',                           [InsuranceController::class, 'balance']);
     Route::get('/partners',                          [InsuranceController::class, 'listPartners']);
+    Route::get('/partners/available',                [InsuranceController::class, 'availablePartners']);
     Route::post('/partners',                         [InsuranceController::class, 'addPartner']);
     Route::delete('/partners/{id}',                  [InsuranceController::class, 'removePartner']);
     
