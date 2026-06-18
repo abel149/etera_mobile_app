@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\AdminAnalyticsController;
 use App\Http\Controllers\Api\AdminMobileController;
 use App\Http\Controllers\Api\UserBalanceController;
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\AdminSettingsController;
 use Illuminate\Http\Request;
 /*
 |--------------------------------------------------------------------------
