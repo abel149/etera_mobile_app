@@ -28,6 +28,9 @@ class InsuranceController extends Controller
      private function getOwnerId(): int
     {
         $user = auth()->user();
+        if($user->role == insurance){
+            return $user->id;
+        }
         return $user->registered_by ?? $user->id;
     }
     public function dashboard()
