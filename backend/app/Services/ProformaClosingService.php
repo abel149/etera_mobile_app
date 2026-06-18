@@ -268,7 +268,7 @@ class ProformaClosingService
      * Calculate billing amounts for a proforma.
      * Returns ['charge' => float, 'vatAmount' => float, 'total' => float] or null.
      */
-    private function calculateBilling(Proforma $proforma): ?array
+    public function calculateBilling(Proforma $proforma): ?array
     {
         try {
             $latestCost = Cost::latest()->first();

@@ -15,11 +15,13 @@ class BillingController extends Controller
 
     // =====================================================================
     // GET /billing
-    // Returns the current plan, current open-period summary, and last statements
+    // Returns the current plan, current open-period summary, last statements,
+    // and recent invoices (used by per_invoice users and as quick overview)
     // =====================================================================
     public function overview()
     {
-        $owner   = User::find($this->getOwnerId());
+        $ownerId = $this->getOwnerId();
+        $owner   = User::find($ownerId);
         $summary = $this->billing->currentPeriodSummary($owner);
 
         $statements = $owner->billingStatements()
@@ -27,11 +29,52 @@ class BillingController extends Controller
             ->get()
             ->map(fn($s) => $this->formatStatement($s));
 
+        // Collect all poster_ids in this account (owner + employees)
+        $accountIds = User::where(function ($q) use ($ownerId) {
+            $q->where('id', $ownerId)->orWhere('registered_by', $ownerId);
+        })->pluck('id');
+
+        $recentInvoices = ProformaInvoice::with('proforma.brand')
+            ->whereHas('proforma', fn($q) => $q->whereIn('poster_id', $accountIds))
+            ->orderByDesc('created_at')
+            ->take(10)
+            ->get()
+            ->map(fn($inv) => $this->formatInvoice($inv));
+
         return response()->json([
             'success'          => true,
             'billing_plan'     => $owner->billing_plan ?? 'per_invoice',
             'current_period'   => $summary,
             'statements'       => $statements,
+            'recent_invoices'  => $recentInvoices,
+        ]);
+    }
+
+    // =====================================================================
+    // GET /billing/invoices?page=1
+    // Paginated list of all ProformaInvoices for this account
+    // =====================================================================
+    public function invoices(Request $request)
+    {
+        $ownerId    = $this->getOwnerId();
+        $accountIds = User::where(function ($q) use ($ownerId) {
+            $q->where('id', $ownerId)->orWhere('registered_by', $ownerId);
+        })->pluck('id');
+
+        $invoices = ProformaInvoice::with('proforma.brand')
+            ->whereHas('proforma', fn($q) => $q->whereIn('poster_id', $accountIds))
+            ->orderByDesc('created_at')
+            ->paginate(15);
+
+        return response()->json([
+            'success'    => true,
+            'data'       => $invoices->map(fn($inv) => $this->formatInvoice($inv)),
+            'pagination' => [
+                'current_page' => $invoices->currentPage(),
+                'last_page'    => $invoices->lastPage(),
+                'per_page'     => $invoices->perPage(),
+                'total'        => $invoices->total(),
+            ],
         ]);
     }
 
@@ -156,6 +199,29 @@ class BillingController extends Controller
             'payment_method' => $s->payment_method,
             // Chapa field — populated later when payment integration is added
             'checkout_url'   => $s->chapa_checkout_url,
+        ];
+    }
+
+    private function formatInvoice(ProformaInvoice $inv): array
+    {
+        $total    = (float) $inv->total_amount;
+        $subtotal = round($total / 1.15, 2);
+        $vat      = round($total - $subtotal, 2);
+
+        return [
+            'sku'          => $inv->sku,
+            'proforma_id'  => $inv->proforma_id,
+            'file_number'  => $inv->proforma->file_number ?? null,
+            'brand'        => $inv->proforma->brand->name ?? null,
+            'car_model'    => $inv->proforma->model ?? null,
+            'type'         => $inv->type,
+            'subtotal'     => $subtotal,
+            'vat_amount'   => $vat,
+            'total_amount' => $total,
+            'is_paid'      => (bool) $inv->is_paid,
+            'created_at'   => $inv->created_at->toDateTimeString(),
+            // Chapa-ready: checkout_url populated when payment integration is added
+            'checkout_url' => null,
         ];
     }
 }

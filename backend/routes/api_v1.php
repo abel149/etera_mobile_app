@@ -147,6 +147,7 @@ Route::middleware(['auth:sanctum', 'role:business_owner,employee'])->prefix('bus
     Route::put('/billing/plan',                       [BillingController::class, 'updatePlan']);
     Route::get('/billing/statements',                 [BillingController::class, 'statements']);
     Route::get('/billing/statements/{sku}',           [BillingController::class, 'statementDetail']);
+    Route::get('/billing/invoices',                   [BillingController::class, 'invoices']);
 
 });
 
@@ -185,6 +186,7 @@ Route::middleware(['auth:sanctum', 'role:garage,employee'])->prefix('garage')->g
     Route::put('/billing/plan',                       [BillingController::class, 'updatePlan']);
     Route::get('/billing/statements',                 [BillingController::class, 'statements']);
     Route::get('/billing/statements/{sku}',           [BillingController::class, 'statementDetail']);
+    Route::get('/billing/invoices',                   [BillingController::class, 'invoices']);
 
 });
 
@@ -205,6 +207,7 @@ Route::middleware(['auth:sanctum', 'role:insurance'])->prefix('insurance')->grou
     Route::put('/billing/plan',                       [BillingController::class, 'updatePlan']);
     Route::get('/billing/statements',                 [BillingController::class, 'statements']);
     Route::get('/billing/statements/{sku}',           [BillingController::class, 'statementDetail']);
+    Route::get('/billing/invoices',                   [BillingController::class, 'invoices']);
     
     // Employee management
     Route::get('/employees',                          [InsuranceController::class, 'listEmployees']);

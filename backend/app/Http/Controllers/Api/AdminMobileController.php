@@ -394,6 +394,42 @@ class AdminMobileController extends Controller
         $shops   = User::where('role', 'shop')->where('approved', true)->get(['id', 'name', 'phone_number', 'location']);
         $garages = User::where('role', 'garage')->where('approved', true)->get(['id', 'name', 'phone_number', 'location']);
 
+        // Billing amount — shown when status=closed so admin knows what to collect
+        $billingAmount = null;
+        if ($proforma->status === 'closed') {
+            $closer  = new \App\Services\ProformaClosingService();
+            $billing = $closer->calculateBilling($proforma);
+            if ($billing) {
+                $total    = (float) $billing['total'];
+                $subtotal = round($total / 1.15, 2);
+                $billingAmount = [
+                    'subtotal'     => $subtotal,
+                    'vat_amount'   => round($total - $subtotal, 2),
+                    'total_amount' => $total,
+                ];
+            }
+        }
+
+        // Existing invoice — shown when status=completed
+        $invoice = null;
+        if ($proforma->status === 'completed') {
+            $inv = \App\Models\ProformaInvoice::where('proforma_id', $proforma->id)
+                ->orderByDesc('created_at')->first();
+            if ($inv) {
+                $invTotal    = (float) $inv->total_amount;
+                $invSubtotal = round($invTotal / 1.15, 2);
+                $invoice = [
+                    'sku'          => $inv->sku,
+                    'type'         => $inv->type,
+                    'subtotal'     => $invSubtotal,
+                    'vat_amount'   => round($invTotal - $invSubtotal, 2),
+                    'total_amount' => $invTotal,
+                    'is_paid'      => (bool) $inv->is_paid,
+                    'created_at'   => $inv->created_at?->toDateTimeString(),
+                ];
+            }
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -442,6 +478,8 @@ class AdminMobileController extends Controller
                 'inboxed_user_ids'  => $proforma->inboxes->pluck('user_id')->values(),
                 'available_shops'   => $shops->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'phone' => $u->phone_number, 'location' => $u->location]),
                 'available_garages' => $garages->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'phone' => $u->phone_number, 'location' => $u->location]),
+                'billing_amount'    => $billingAmount,
+                'invoice'           => $invoice,
             ],
         ]);
     }
@@ -513,17 +551,24 @@ class AdminMobileController extends Controller
             return response()->json(['success' => false, 'message' => 'Proforma must be closed before sending to owner'], 422);
         }
 
-        $service = new \App\Services\ProformaClosingService();
-        $result  = $service->closeProforma($proforma, auth()->id());
+        try {
+            $verifier = new \App\Services\ProformaVerificationService();
+            $verifier->verify($proforma);
 
-        if ($result['success']) {
-            $proforma->fresh()->update(['status' => 'completed']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Proforma sent to owner successfully',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('sendToOwner verify failed', [
+                'proforma_id' => $proforma->id,
+                'error'       => $e->getMessage(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to send to owner: ' . $e->getMessage(),
+            ], 500);
         }
-
-        return response()->json([
-            'success' => $result['success'],
-            'message' => $result['success'] ? 'Proforma sent to owner successfully' : $result['message'],
-        ], $result['success'] ? 200 : 500);
     }
 
     // =========================================================================
