@@ -520,8 +520,12 @@ class AdminMobileController extends Controller
             return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
         }
 
-        if (in_array($proforma->status, ['closed', 'completed'])) {
-            return response()->json(['success' => false, 'message' => 'Proforma is already closed/completed'], 422);
+        if ($proforma->status === 'completed') {
+            return response()->json(['success' => false, 'message' => 'Results have already been sent to the owner'], 422);
+        }
+
+        if (!in_array($proforma->status, ['closed', 'published'])) {
+            return response()->json(['success' => false, 'message' => 'Proforma must be closed before sending to owner'], 422);
         }
 
         $service = new \App\Services\ProformaClosingService();
@@ -531,6 +535,45 @@ class AdminMobileController extends Controller
             'success' => $result['success'],
             'message' => $result['message'],
         ], $result['success'] ? 200 : 500);
+    }
+
+    // =========================================================================
+    // POST /api/v1/admin-mobile/proformas/{id}/reject
+    // Reject a pending proforma and notify the poster
+    // =========================================================================
+    public function rejectProforma(Request $request, $id)
+    {
+        $proforma = Proforma::with('poster')->find($id);
+        if (!$proforma) {
+            return response()->json(['success' => false, 'message' => 'Proforma not found'], 404);
+        }
+
+        if ($proforma->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'Only pending proformas can be rejected'], 422);
+        }
+
+        $reason = $request->input('reason', 'Your proforma has been rejected by the admin.');
+
+        $proforma->update(['status' => 'rejected']);
+
+        \App\Models\ProformaActivityLog::create([
+            'proforma_id' => $proforma->id,
+            'user_id'     => auth()->id(),
+            'action'      => 'rejected',
+            'details'     => 'Rejected by ' . auth()->user()->name . '. Reason: ' . $reason,
+        ]);
+
+        try {
+            if ($proforma->poster) {
+                $proforma->poster->notify(
+                    new \App\Notifications\ProformaRejectedNotification($proforma, $reason)
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('rejectProforma: notification failed', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Proforma rejected successfully']);
     }
 
     // =========================================================================

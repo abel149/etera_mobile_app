@@ -254,6 +254,7 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->prefix('admin-mobi
     Route::get('/proformas/{id}',                     [AdminMobileController::class, 'showProforma']);
     Route::post('/proformas/{id}/float',              [AdminMobileController::class, 'floatProforma']);
     Route::post('/proformas/{id}/close',              [AdminMobileController::class, 'closeProforma']);
+    Route::post('/proformas/{id}/reject',             [AdminMobileController::class, 'rejectProforma']);
     Route::post('/proformas/{id}/inbox-shops',        [AdminMobileController::class, 'inboxShops']);
     Route::post('/proformas/{id}/inbox-garages',      [AdminMobileController::class, 'inboxGarages']);
     Route::post('/proformas/{id}/send-to-owner',      [AdminMobileController::class, 'sendToOwner']);
