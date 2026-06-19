@@ -278,6 +278,20 @@ class ProformaVerificationService
         $proforma->update(['status' => 'completed']);
         $proforma->verify();
 
+        // Notify the poster that results + billing are ready on mobile
+        try {
+            if ($proforma->poster) {
+                $proforma->poster->notify(
+                    new \App\Notifications\ProformaResultsReadyNotification($proforma)
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send results-ready notification to poster', [
+                'proforma_id' => $proforma->id,
+                'error'       => $e->getMessage(),
+            ]);
+        }
+
         Log::info('Verification completed', ['proforma_id' => $proforma->id]);
     }
 
