@@ -6,8 +6,9 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/etera_card.dart';
 
-/// Full proforma detail WITH ranked price quotes.
-/// Used from the "Received" tab — only shown after admin clicks "Send to Owner".
+/// Formal invoice view of a completed proforma.
+/// Shows per-shop/garage invoice with stamp, parts pricing, subtotal/discount/total.
+/// Also shows the Etera billing invoice card when proforma is completed.
 class ReceivedProformaDetailScreen extends StatefulWidget {
   final int proformaId;
   final String detailUrl;
@@ -60,6 +61,7 @@ class _ReceivedProformaDetailScreenState
           if (data['parts'] is List) j['parts'] = data['parts'];
           if (data['shops'] is List) j['shops'] = data['shops'];
           if (data['garages'] is List) j['garages'] = data['garages'];
+          if (data['invoice'] is Map) j['invoice'] = data['invoice'];
         } else {
           j = data;
         }
@@ -123,64 +125,65 @@ class _ReceivedProformaDetailScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ID + Status row
           Row(children: [
             Text('#${item.fileNumber}',
-                style: const TextStyle(
-                    fontSize: 13, color: EteraTheme.textMuted)),
+                style: const TextStyle(fontSize: 13, color: EteraTheme.textMuted)),
             const Spacer(),
             _StatusBadge(status: item.status),
           ]),
           const SizedBox(height: 16),
 
-          // Vehicle info
           EteraCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Vehicle Information',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15)),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                 const SizedBox(height: 12),
                 _infoRow('Brand', item.brandName),
                 _infoRow('Model', item.model),
                 _infoRow('Year', item.year),
                 _infoRow('Car Type', item.carType),
-                _infoRow('Customer Phone', item.customerPhone),
-                if (item.chassisNumber != null)
-                  _infoRow('Chassis No.', item.chassisNumber!),
+                _infoRow('Customer', item.customerName.isNotEmpty ? item.customerName : item.customerPhone),
+                _infoRow('Phone', item.customerPhone),
+                if (item.chassisNumber != null) _infoRow('Chassis No.', item.chassisNumber!),
                 _infoRow('Submitted', item.shortDate),
-                _infoRow(
-                  'Quotes Requested',
-                  item.numberOfProformas == -1
-                      ? 'Unlimited (Etera-Chereta)'
-                      : '${item.numberOfProformas}',
-                ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-
-          // Parts
-          Text('Spare Parts (${item.parts.length})',
-              style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          if (item.parts.isEmpty)
-            const Text('No parts listed.',
-                style: TextStyle(color: EteraTheme.textMuted))
-          else
-            ...item.parts.asMap().entries.map(
-                  (e) => _PartCard(index: e.key, part: e.value),
-                ),
-
           const SizedBox(height: 24),
 
-          // Price quotes section
-          _QuotesSection(
-            quotes: allQuotes,
-            shopCount: item.shops.length,
-            garageCount: item.garages.length,
-          ),
+          if (allQuotes.isNotEmpty) ...[
+            Row(children: [
+              const Icon(Icons.receipt_long, size: 18, color: EteraTheme.green),
+              const SizedBox(width: 8),
+              Text('Price Quotes (${allQuotes.length})',
+                  style: Theme.of(context).textTheme.titleLarge),
+            ]),
+            const SizedBox(height: 4),
+            const Text('Sorted by price — cheapest first',
+                style: TextStyle(fontSize: 12, color: EteraTheme.textMuted)),
+            const SizedBox(height: 16),
+            ...allQuotes.asMap().entries.map((e) => _InvoiceCard(
+                  rank: e.key + 1,
+                  application: e.value,
+                  parts: item.parts,
+                  isBest: e.key == 0,
+                )),
+          ] else
+            EteraCard(
+              child: const Row(children: [
+                Icon(Icons.hourglass_empty_outlined, color: EteraTheme.textMuted, size: 20),
+                SizedBox(width: 12),
+                Text('No price quotes received yet.',
+                    style: TextStyle(color: EteraTheme.textMuted)),
+              ]),
+            ),
+
+          if (item.invoice != null) ...[
+            const SizedBox(height: 24),
+            _BillingInvoiceCard(invoice: item.invoice!, fileNumber: item.fileNumber),
+          ],
 
           const SizedBox(height: 32),
         ],
@@ -190,111 +193,31 @@ class _ReceivedProformaDetailScreenState
 
   Widget _infoRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 130,
-            child: Text(label,
-                style: const TextStyle(
-                    fontSize: 13, color: EteraTheme.textMuted)),
-          ),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w500)),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: 120,
+          child: Text(label, style: const TextStyle(fontSize: 13, color: EteraTheme.textMuted)),
+        ),
+        Expanded(
+          child: Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+        ),
+      ]),
     );
   }
 }
 
-// ─── Quotes section ───────────────────────────────────────────────
-class _QuotesSection extends StatelessWidget {
-  final List<ProformaApplication> quotes;
-  final int shopCount;
-  final int garageCount;
-
-  const _QuotesSection({
-    required this.quotes,
-    required this.shopCount,
-    required this.garageCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [
-          Text('Price Quotes (${quotes.length})',
-              style: Theme.of(context).textTheme.titleLarge),
-        ]),
-        if (shopCount > 0 || garageCount > 0) ...[
-          const SizedBox(height: 3),
-          Row(children: [
-            if (shopCount > 0) ...[
-              const Icon(Icons.store_outlined,
-                  size: 13, color: EteraTheme.green),
-              const SizedBox(width: 3),
-              Text('$shopCount shop${shopCount > 1 ? 's' : ''}',
-                  style: const TextStyle(
-                      fontSize: 12, color: EteraTheme.textMuted)),
-            ],
-            if (shopCount > 0 && garageCount > 0)
-              const Text('  ·  ',
-                  style: TextStyle(color: EteraTheme.textMuted)),
-            if (garageCount > 0) ...[
-              const Icon(Icons.build_outlined,
-                  size: 13, color: EteraTheme.teal),
-              const SizedBox(width: 3),
-              Text('$garageCount garage${garageCount > 1 ? 's' : ''}',
-                  style: const TextStyle(
-                      fontSize: 12, color: EteraTheme.textMuted)),
-            ],
-          ]),
-        ],
-        const SizedBox(height: 4),
-        const Text('Sorted by final price — cheapest first',
-            style: TextStyle(fontSize: 12, color: EteraTheme.textMuted)),
-        const SizedBox(height: 12),
-        if (quotes.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: EteraTheme.bgLight,
-              borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
-            ),
-            child: const Row(children: [
-              Icon(Icons.hourglass_empty_outlined,
-                  color: EteraTheme.textMuted, size: 20),
-              SizedBox(width: 12),
-              Text('No price quotes received.',
-                  style: TextStyle(color: EteraTheme.textMuted)),
-            ]),
-          )
-        else
-          ...quotes.asMap().entries.map((e) => _QuoteCard(
-                rank: e.key + 1,
-                application: e.value,
-                isBest: e.key == 0,
-              )),
-      ],
-    );
-  }
-}
-
-// ─── Quote card ───────────────────────────────────────────────────
-class _QuoteCard extends StatelessWidget {
+// ─── Formal invoice card per shop/garage ─────────────────────────
+class _InvoiceCard extends StatelessWidget {
   final int rank;
   final ProformaApplication application;
+  final List<ProformaPartItem> parts;
   final bool isBest;
 
-  const _QuoteCard({
+  const _InvoiceCard({
     required this.rank,
     required this.application,
+    required this.parts,
     required this.isBest,
   });
 
@@ -302,233 +225,283 @@ class _QuoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isShop = application.from == 'shop';
     final typeColor = isShop ? EteraTheme.green : EteraTheme.teal;
-    final typeIcon =
-        isShop ? Icons.store_outlined : Icons.build_outlined;
     final typeLabel = isShop ? 'Spare Part Shop' : 'Garage';
+    final typeIcon = isShop ? Icons.store_outlined : Icons.build_outlined;
+    final ap = application.applicant;
+    final hasPricing = application.partsPricing.isNotEmpty;
 
-    return EteraCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            // Rank badge
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: isBest
-                    ? EteraTheme.green.withValues(alpha: 0.15)
-                    : EteraTheme.bgLight,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '#$rank',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color:
-                        isBest ? EteraTheme.green : EteraTheme.textMuted,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    application.applicant.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14),
-                  ),
-                  Row(children: [
-                    Icon(typeIcon, size: 11, color: typeColor),
-                    const SizedBox(width: 3),
-                    Text(typeLabel,
-                        style:
-                            TextStyle(fontSize: 11, color: typeColor)),
-                  ]),
-                ],
-              ),
-            ),
-            // Price pill
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                gradient: isBest ? EteraTheme.primaryGradient : null,
-                color: isBest ? null : EteraTheme.bgLight,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '${application.netTotal.toStringAsFixed(0)} Br',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: isBest ? Colors.white : EteraTheme.textMuted,
-                ),
-              ),
-            ),
-          ]),
-
-          if (application.applicant.phone != null) ...[
-            const SizedBox(height: 6),
-            Row(children: [
-              const Icon(Icons.phone_outlined,
-                  size: 13, color: EteraTheme.textMuted),
-              const SizedBox(width: 4),
-              Text(application.applicant.phone!,
-                  style: const TextStyle(
-                      fontSize: 12, color: EteraTheme.textMuted)),
-            ]),
-          ],
-
-          if (application.discountPct > 0) ...[
-            const SizedBox(height: 6),
-            Row(children: [
-              Text(
-                'Subtotal: ${application.subtotal.toStringAsFixed(0)} Br',
-                style: const TextStyle(
-                    fontSize: 12, color: EteraTheme.textMuted),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: EteraTheme.teal.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '${application.discountPct.toStringAsFixed(0)}% off',
-                  style: const TextStyle(
-                      fontSize: 11,
-                      color: EteraTheme.teal,
-                      fontWeight: FontWeight.w600),
-                ),
-              ),
-            ]),
-          ],
-
-          if (application.applicant.location != null) ...[
-            const SizedBox(height: 4),
-            Row(children: [
-              const Icon(Icons.location_on_outlined,
-                  size: 13, color: EteraTheme.textMuted),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(application.applicant.location!,
-                    style: const TextStyle(
-                        fontSize: 12, color: EteraTheme.textMuted)),
-              ),
-            ]),
-          ],
-
-          if (isBest) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: EteraTheme.green.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.star_rounded,
-                      size: 13, color: EteraTheme.green),
-                  SizedBox(width: 4),
-                  Text('Best price',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: EteraTheme.green,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ],
-        ],
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: EteraTheme.bgLight,
+        borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
+        border: Border.all(
+          color: isBest
+              ? EteraTheme.green.withValues(alpha: 0.5)
+              : Colors.white.withValues(alpha: 0.08),
+          width: isBest ? 1.5 : 1,
+        ),
       ),
+      child: Stack(children: [
+        // Stamp watermark
+        if (ap.stampImageUrl != null)
+          Positioned(
+            bottom: 12, right: 12,
+            child: Opacity(
+              opacity: 0.18,
+              child: ClipOval(
+                child: Image.network(
+                  ap.stampImageUrl!,
+                  width: 80, height: 80, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ),
+
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: isBest ? EteraTheme.primaryGradient : null,
+              color: isBest ? null : EteraTheme.bgLight,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(EteraTheme.radiusMd)),
+            ),
+            child: Row(children: [
+              Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: isBest ? Colors.white.withValues(alpha: 0.2) : EteraTheme.green.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(child: Text('#$rank',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                        color: isBest ? Colors.white : EteraTheme.green))),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(ap.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15,
+                    color: isBest ? Colors.white : null)),
+                Row(children: [
+                  Icon(typeIcon, size: 11, color: isBest ? Colors.white70 : typeColor),
+                  const SizedBox(width: 3),
+                  Text(typeLabel, style: TextStyle(fontSize: 11, color: isBest ? Colors.white70 : typeColor)),
+                ]),
+              ])),
+              if (isBest)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.star_rounded, size: 12, color: Colors.white),
+                    SizedBox(width: 3),
+                    Text('Best', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+            ]),
+          ),
+
+          // Shop info chips
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Wrap(spacing: 20, runSpacing: 6, children: [
+              if (ap.storeId != null) _chip(Icons.badge_outlined, 'Store ID', ap.storeId!),
+              if (ap.tinNumber != null) _chip(Icons.numbers, 'TIN', ap.tinNumber!),
+              if (ap.phone != null) _chip(Icons.phone_outlined, 'Phone', ap.phone!),
+              if (ap.location != null) _chip(Icons.location_on_outlined, 'Location', ap.location!),
+            ]),
+          ),
+
+          // Parts pricing table
+          if (hasPricing) ...[
+            const Padding(padding: EdgeInsets.fromLTRB(16, 8, 16, 4), child: Divider(height: 1)),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: DataTable(
+                headingRowHeight: 36, dataRowMinHeight: 34, dataRowMaxHeight: 44,
+                columnSpacing: 14,
+                headingTextStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: EteraTheme.teal),
+                dataTextStyle: const TextStyle(fontSize: 12),
+                columns: const [
+                  DataColumn(label: Text('#')),
+                  DataColumn(label: Text('Part / No.')),
+                  DataColumn(label: Text('Qty')),
+                  DataColumn(label: Text('Unit Price'), numeric: true),
+                  DataColumn(label: Text('Total'), numeric: true),
+                ],
+                rows: parts.asMap().entries.map((e) {
+                  final part = e.value;
+                  final pricing = application.partsPricing.cast<PartPricing?>().firstWhere(
+                    (p) => p?.carPartId == part.id,
+                    orElse: () => application.partsPricing.length > e.key ? application.partsPricing[e.key] : null,
+                  );
+                  return DataRow(cells: [
+                    DataCell(Text('${e.key + 1}')),
+                    DataCell(Text(part.number.isNotEmpty ? part.number : part.grade, overflow: TextOverflow.ellipsis)),
+                    DataCell(Text('${part.quantity}')),
+                    DataCell(Text(pricing != null ? '${pricing.unitPrice.toStringAsFixed(2)} Br' : '—')),
+                    DataCell(Text(pricing != null ? '${pricing.partTotal.toStringAsFixed(2)} Br' : '—',
+                        style: const TextStyle(fontWeight: FontWeight.w500))),
+                  ]);
+                }).toList(),
+              ),
+            ),
+          ],
+
+          // Totals
+          const Padding(padding: EdgeInsets.fromLTRB(16, 8, 16, 4), child: Divider(height: 1)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(children: [
+              _totalRow('Subtotal', '${application.subtotal.toStringAsFixed(2)} ETB'),
+              if (application.discountPct > 0)
+                _totalRow('Discount (${application.discountPct.toStringAsFixed(0)}%)',
+                    '- ${application.discountAmount.toStringAsFixed(2)} ETB', color: EteraTheme.teal),
+              const Divider(height: 16),
+              _totalRow('GRAND TOTAL', '${application.netTotal.toStringAsFixed(2)} ETB',
+                  isBold: true, color: EteraTheme.green, fontSize: 15),
+              const SizedBox(height: 4),
+              const Text('* Prices exclude VAT',
+                  style: TextStyle(fontSize: 10, color: EteraTheme.textMuted)),
+            ]),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _chip(IconData icon, String label, String value) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: EteraTheme.textMuted),
+      const SizedBox(width: 4),
+      Text('$label: ', style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+      Text(value, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+    ]);
+  }
+
+  Widget _totalRow(String label, String value,
+      {bool isBold = false, Color? color, double fontSize = 13}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(children: [
+        Expanded(child: Text(label, style: TextStyle(fontSize: fontSize,
+            fontWeight: isBold ? FontWeight.w700 : FontWeight.w400,
+            color: color ?? EteraTheme.textMuted))),
+        Text(value, style: TextStyle(fontSize: fontSize,
+            fontWeight: isBold ? FontWeight.w700 : FontWeight.w500, color: color)),
+      ]),
     );
   }
 }
 
-// ─── Part card ────────────────────────────────────────────────────
-class _PartCard extends StatelessWidget {
-  final int index;
-  final ProformaPartItem part;
+// ─── Etera Billing Invoice Card ───────────────────────────────────
+class _BillingInvoiceCard extends StatelessWidget {
+  final Map<String, dynamic> invoice;
+  final String fileNumber;
 
-  const _PartCard({required this.index, required this.part});
+  const _BillingInvoiceCard({required this.invoice, required this.fileNumber});
 
   @override
   Widget build(BuildContext context) {
-    return EteraCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Part #${index + 1}',
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 14)),
-          const SizedBox(height: 8),
-          _row('Part No.', part.number),
-          _row('Condition', part.condition),
-          _row('Grade', part.grade),
-          _row('Country', part.country),
-          _row('Quantity', '${part.quantity}'),
-          _row('Component', part.component),
-          if (part.photos.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 70,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: part.photos.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (_, i) => ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    part.photos[i],
-                    width: 70,
-                    height: 70,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 70,
-                      height: 70,
-                      color: EteraTheme.bgLight,
-                      child: const Icon(
-                          Icons.image_not_supported_outlined,
-                          color: EteraTheme.textMuted),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
+    final type = invoice['type']?.toString() ?? 'regular';
+    final subtotal = (invoice['subtotal'] as num?)?.toDouble() ?? 0.0;
+    final vatAmount = (invoice['vat_amount'] as num?)?.toDouble() ?? 0.0;
+    final totalAmount = (invoice['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final isPaid = invoice['is_paid'] == true;
+    final sku = invoice['sku']?.toString() ?? '';
+    String dateStr = '';
+    try { dateStr = DateTime.parse(invoice['created_at'] ?? '').toLocal().toString().substring(0, 10); } catch (_) {}
+
+    final typeLabel = type == 'etera_chereta' ? 'Etera Chereta Service'
+        : type == 'insurance' ? 'Insurance Proforma Service'
+        : 'Proforma Service';
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
+        border: Border.all(color: EteraTheme.teal.withValues(alpha: 0.4), width: 1.5),
       ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: EteraTheme.teal.withValues(alpha: 0.1),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(EteraTheme.radiusMd)),
+          ),
+          child: Row(children: [
+            const Icon(Icons.receipt_long, color: EteraTheme.teal, size: 20),
+            const SizedBox(width: 10),
+            const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Etera Service Invoice',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: EteraTheme.teal)),
+              Text('Official receipt from Etera',
+                  style: TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+            ])),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: isPaid ? EteraTheme.green.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(isPaid ? 'PAID' : 'PENDING',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                      color: isPaid ? EteraTheme.green : Colors.orange)),
+            ),
+          ]),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(children: [
+            if (sku.isNotEmpty)
+              Row(children: [
+                const Text('SKU: ', style: TextStyle(fontSize: 12, color: EteraTheme.textMuted)),
+                Text(sku, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                if (dateStr.isNotEmpty)
+                  Text(dateStr, style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+              ]),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: EteraTheme.bgLight, borderRadius: BorderRadius.circular(8)),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(typeLabel, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text('Proforma #$fileNumber', style: const TextStyle(fontSize: 11, color: EteraTheme.textMuted)),
+                ])),
+                Text('${subtotal.toStringAsFixed(2)} ETB',
+                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            _row('Subtotal', '${subtotal.toStringAsFixed(2)} ETB'),
+            _row('VAT (15%)', '${vatAmount.toStringAsFixed(2)} ETB'),
+            const Divider(height: 16),
+            _row('TOTAL', '${totalAmount.toStringAsFixed(2)} ETB', isBold: true, color: EteraTheme.teal, fontSize: 15),
+            const SizedBox(height: 8),
+            const Text('TIN: 0094205503  |  Tel: 011-470-7566',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 10, color: EteraTheme.textMuted)),
+          ]),
+        ),
+      ]),
     );
   }
 
-  Widget _row(String label, String value) {
+  Widget _row(String label, String value, {bool isBold = false, Color? color, double fontSize = 13}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(children: [
-        SizedBox(
-          width: 90,
-          child: Text(label,
-              style: const TextStyle(
-                  fontSize: 12, color: EteraTheme.textMuted)),
-        ),
-        Expanded(
-          child: Text(value,
-              style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w500)),
-        ),
+        Expanded(child: Text(label, style: TextStyle(fontSize: fontSize,
+            fontWeight: isBold ? FontWeight.w700 : FontWeight.w400,
+            color: color ?? EteraTheme.textMuted))),
+        Text(value, style: TextStyle(fontSize: fontSize,
+            fontWeight: isBold ? FontWeight.w700 : FontWeight.w500, color: color)),
       ]),
     );
   }

@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/brand.dart';
@@ -41,6 +44,12 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
   // Step 3 — Parts
   final List<_PartEntry> _parts = [_PartEntry()];
 
+  // Voice Note
+  String? _voiceNotePath;
+  bool _isRecording = false;
+  bool _recorderReady = false;
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+
   // Brands
   List<Brand> _brands = [];
 
@@ -48,6 +57,49 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
   void initState() {
     super.initState();
     _loadBrands();
+    _initRecorder();
+  }
+
+  Future<void> _initRecorder() async {
+    final status = await Permission.microphone.request();
+    if (status == PermissionStatus.granted) {
+      await _recorder.openRecorder();
+      if (mounted) setState(() => _recorderReady = true);
+    }
+  }
+
+  Future<void> _startRecording() async {
+    if (!_recorderReady) {
+      await _initRecorder();
+      if (!_recorderReady) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission denied')),
+          );
+        }
+        return;
+      }
+    }
+    try {
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.aac';
+      await _recorder.startRecorder(toFile: path, codec: Codec.aacADTS);
+      setState(() => _isRecording = true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Recording error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    final path = await _recorder.stopRecorder();
+    setState(() {
+      _isRecording = false;
+      _voiceNotePath = path;
+    });
   }
 
   Future<void> _loadBrands() async {
@@ -103,6 +155,7 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
       customerPhoneNumber: _phoneCtrl.text.trim(),
       licensePlateNumber: _plateCtrl.text.trim(),
       chassisNumber: _chassisCtrl.text.trim().isNotEmpty ? _chassisCtrl.text.trim() : null,
+      voiceNotePath: _voiceNotePath,
       parts: _parts
           .map((p) => ProformaPart(
                 condition: p.condition,
@@ -148,6 +201,7 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
 
   @override
   void dispose() {
+    _recorder.closeRecorder();
     _modelCtrl.dispose();
     _phoneCtrl.dispose();
     _plateCtrl.dispose();
@@ -620,6 +674,55 @@ class _CreateProformaScreenState extends State<CreateProformaScreen> {
                 _summaryRow('Phone', _phoneCtrl.text),
                 _summaryRow('Plate', _plateCtrl.text),
                 _summaryRow('Parts', '${_parts.length} part(s)'),
+              ],
+            ),
+          ),
+          // Voice Note
+          EteraCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Voice Note (Optional)', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                const Text('Record a voice description of the issue', style: TextStyle(fontSize: 12, color: EteraTheme.textMuted)),
+                const SizedBox(height: 12),
+                if (_isRecording)
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Recording in progress...', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500))),
+                      ElevatedButton.icon(
+                        onPressed: _stopRecording,
+                        icon: const Icon(Icons.stop, size: 18),
+                        label: const Text('Stop'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                      ),
+                    ],
+                  )
+                else if (_voiceNotePath != null)
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: EteraTheme.green),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Voice note recorded', style: TextStyle(color: EteraTheme.green, fontWeight: FontWeight.w500))),
+                      TextButton.icon(
+                        onPressed: () => setState(() => _voiceNotePath = null),
+                        icon: const Icon(Icons.delete_outline, color: EteraTheme.error, size: 18),
+                        label: const Text('Delete', style: TextStyle(color: EteraTheme.error)),
+                      ),
+                    ],
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: _startRecording,
+                    icon: const Icon(Icons.mic, color: EteraTheme.green),
+                    label: const Text('Start Recording', style: TextStyle(color: EteraTheme.green)),
+                  ),
               ],
             ),
           ),

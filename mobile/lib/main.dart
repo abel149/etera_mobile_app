@@ -7,6 +7,7 @@ import 'services/notification_service.dart';
 import 'screens/superadmin/admin_proforma_detail_screen.dart';
 import 'screens/shop/shop_proforma_detail_screen.dart';
 import 'screens/insurance/insurance_proforma_detail_screen.dart';
+import 'screens/insurance/insurance_create_proforma_screen.dart';
 import 'screens/garage/garage_inbox_detail_screen.dart';
 import 'config/theme.dart';
 import 'providers/auth_provider.dart';
@@ -77,6 +78,7 @@ class EteraApp extends StatelessWidget {
           '/pending': (_) => const PendingApprovalScreen(),
           '/home': (_) => const HomeScreen(),
           '/create-proforma': (_) => const CreateProformaScreen(),
+          '/insurance-create-proforma': (_) => const InsuranceCreateProformaScreen(),
           '/proforma-detail': (_) => const ProformaDetailScreen(),
           '/bo-proforma-detail': (_) => const BOProformaDetailScreen(),
           '/garage-file-detail': (_) => const GarageMyFileDetailScreen(),

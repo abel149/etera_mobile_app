@@ -256,7 +256,7 @@ class _InsuranceHomeScreenState extends State<InsuranceHomeScreen> {
           ? FloatingActionButton.extended(
               heroTag: 'ins_fab',
               onPressed: () async {
-                await Navigator.pushNamed(context, '/create-proforma');
+                await Navigator.pushNamed(context, '/insurance-create-proforma');
                 _refreshNotifier.value++;
               },
               backgroundColor: EteraTheme.green,

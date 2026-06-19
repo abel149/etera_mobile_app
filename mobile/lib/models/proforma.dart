@@ -4,13 +4,17 @@ class ProformaApplicant {
   final String name;
   final String? phone;
   final String? storeId;
+  final String? tinNumber;
   final String? location;
+  final String? stampImageUrl;
 
   ProformaApplicant({
     required this.name,
     this.phone,
     this.storeId,
+    this.tinNumber,
     this.location,
+    this.stampImageUrl,
   });
 
   factory ProformaApplicant.fromJson(Map<String, dynamic> json) {
@@ -18,7 +22,36 @@ class ProformaApplicant {
       name: json['name'] ?? 'Unknown',
       phone: json['phone'],
       storeId: json['store_id'],
+      tinNumber: json['tin_number'],
       location: json['location'],
+      stampImageUrl: json['stamp_image_url'],
+    );
+  }
+}
+
+class PartPricing {
+  final int carPartId;
+  final double unitPrice;
+  final double partTotal;
+
+  PartPricing({
+    required this.carPartId,
+    required this.unitPrice,
+    required this.partTotal,
+  });
+
+  factory PartPricing.fromJson(Map<String, dynamic> json) {
+    final carPartIdRaw = json['car_part_id'];
+    int carPartId = 0;
+    if (carPartIdRaw is int) {
+      carPartId = carPartIdRaw;
+    } else if (carPartIdRaw is String) {
+      carPartId = int.tryParse(carPartIdRaw) ?? 0;
+    }
+    return PartPricing(
+      carPartId: carPartId,
+      unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
+      partTotal: (json['part_total'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -31,6 +64,7 @@ class ProformaApplication {
   final double discountPct;
   final double discountAmount;
   final double netTotal;
+  final List<PartPricing> partsPricing;
 
   ProformaApplication({
     required this.id,
@@ -40,10 +74,12 @@ class ProformaApplication {
     required this.discountPct,
     required this.discountAmount,
     required this.netTotal,
-  });
+    List<PartPricing>? partsPricing,
+  }) : partsPricing = partsPricing ?? [];
 
   factory ProformaApplication.fromJson(Map<String, dynamic> json) {
     final applicantRaw = json['applicant'] as Map<String, dynamic>? ?? {};
+    final pricingRaw = json['parts_pricing'] as List? ?? [];
     return ProformaApplication(
       id: json['id'] ?? 0,
       from: json['from'] ?? 'shop',
@@ -52,6 +88,7 @@ class ProformaApplication {
       discountPct: (json['discount_pct'] as num?)?.toDouble() ?? 0.0,
       discountAmount: (json['discount_amount'] as num?)?.toDouble() ?? 0.0,
       netTotal: (json['net_total'] as num?)?.toDouble() ?? 0.0,
+      partsPricing: pricingRaw.map((p) => PartPricing.fromJson(p as Map<String, dynamic>)).toList(),
     );
   }
 }
@@ -110,6 +147,7 @@ class ProformaItem {
   final String createdAt;
   final bool closeRequest;
   final bool canRequestClose;
+  final Map<String, dynamic>? invoice;
 
   ProformaItem({
     required this.id,
@@ -130,6 +168,7 @@ class ProformaItem {
     required this.createdAt,
     this.closeRequest = false,
     this.canRequestClose = false,
+    this.invoice,
   })  : shops = shops ?? [],
         garages = garages ?? [];
 
@@ -190,6 +229,7 @@ class ProformaItem {
       createdAt: json['created_at'] ?? '',
       closeRequest: json['close_request'] == true,
       canRequestClose: json['can_request_close'] == true,
+      invoice: json['invoice'] as Map<String, dynamic>?,
     );
   }
 
