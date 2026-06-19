@@ -94,8 +94,6 @@ class InsuranceController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-             'number_of_spare_parts' => ['required', 'integer'],
-             'number_of_garages'      => ['required', 'integer'],
              'customer_name'         => ['required', 'string', 'max:255'],
             'customer_phone_number' => ['required', 'string'],
             'customer_email'        => ['nullable', 'email'],
