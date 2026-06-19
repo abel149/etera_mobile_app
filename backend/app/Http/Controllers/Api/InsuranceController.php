@@ -105,6 +105,8 @@ class InsuranceController extends Controller
             'chassis_number'        => ['nullable', 'string'],
             'insured'               => ['nullable', 'boolean'],
             'number_of_proformas'   => ['nullable', 'integer', 'min:-1', 'max:5'],
+            'number_of_spare_parts' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'number_of_garages'     => ['nullable', 'integer', 'min:0', 'max:10'],
             'etera_chereta_hours'   => ['nullable', 'integer', 'in:4,8,12,24,48,72'],
             'spare_part_partners'   => ['nullable', 'array'],
             'spare_part_partners.*' => ['integer', 'exists:users,id'],
@@ -130,8 +132,8 @@ class InsuranceController extends Controller
             $requiredGarages = 0;
             $timerExpiresAt  = now()->addMinutes($timerMinutes);
         } else {
-            $requiredShops   = $validated['number_of_spare_parts'];
-            $requiredGarages = $validated['number_of_garages'];
+            $requiredShops   = $validated['number_of_spare_parts'] ?? $validated['number_of_proformas'] ?? 3;
+            $requiredGarages = $validated['number_of_garages'] ?? 0;
             $timerMinutes    = null;
             $timerExpiresAt  = null;
         }
