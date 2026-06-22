@@ -24,7 +24,7 @@ class ApplicationResource extends JsonResource
                 'tin_number'      => $this->applicationBy->tin_number ?? null,
                 'location'        => $this->applicationBy->location ?? null,
                 'stamp_image_url' => $this->applicationBy->stamp_image
-                    ? asset('storage/' . $this->applicationBy->stamp_image)
+                    ? url('/api/v1/users/' . $this->applicationBy->id . '/stamp')
                     : null,
             ],
             'parts_pricing' => $this->prices->map(fn($p) => [

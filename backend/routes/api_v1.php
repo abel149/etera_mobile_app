@@ -103,6 +103,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/upload/temp',   [\App\Http\Controllers\File\TemporaryFileController::class, 'store']);
     Route::delete('/upload/temp', [\App\Http\Controllers\File\TemporaryFileController::class, 'destroy']);
 
+    // Serve user stamp images through PHP (bypasses missing storage symlink)
+    Route::get('/users/{userId}/stamp', function ($userId) {
+        $user = \App\Models\User::find($userId);
+        if (!$user || !$user->stamp_image) {
+            abort(404);
+        }
+        $path = $user->stamp_image;
+        // Strip 'public/' prefix stored by old-style controllers
+        $path = ltrim(preg_replace('#^public/#', '', $path), '/');
+        if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
+            abort(404);
+        }
+        $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($path);
+        return response(\Illuminate\Support\Facades\Storage::disk('public')->get($path), 200)
+            ->header('Content-Type', $mime ?? 'image/jpeg')
+            ->header('Cache-Control', 'public, max-age=86400');
+    });
+
 });
 
 // -----------------------------------------------------------------------
