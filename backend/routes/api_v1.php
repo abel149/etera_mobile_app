@@ -103,7 +103,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/upload/temp',   [\App\Http\Controllers\File\TemporaryFileController::class, 'store']);
     Route::delete('/upload/temp', [\App\Http\Controllers\File\TemporaryFileController::class, 'destroy']);
 
-    // Serve user stamp images through PHP (bypasses missing storage symlink)
+    // Serve user stamp images — always returns JPEG regardless of original format
+    // (GD converts JPEG/PNG/GIF/WEBP/BMP; Imagick fallback covers TIFF/HEIC)
     Route::get('/users/{userId}/stamp', function ($userId) {
         $user = \App\Models\User::find($userId);
         if (!$user || !$user->stamp_image) {
@@ -115,8 +116,41 @@ Route::middleware('auth:sanctum')->group(function () {
         if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
             abort(404);
         }
+
+        $rawBytes = \Illuminate\Support\Facades\Storage::disk('public')->get($path);
+
+        // ── Try GD first (handles JPEG, PNG, GIF, WEBP, BMP) ──
+        $gdImage = @imagecreatefromstring($rawBytes);
+        if ($gdImage !== false) {
+            ob_start();
+            imagejpeg($gdImage, null, 90);
+            $jpeg = ob_get_clean();
+            imagedestroy($gdImage);
+            return response($jpeg, 200)
+                ->header('Content-Type', 'image/jpeg')
+                ->header('Cache-Control', 'public, max-age=86400');
+        }
+
+        // ── Imagick fallback (handles TIFF, HEIC, and exotic formats) ──
+        if (extension_loaded('imagick')) {
+            try {
+                $im = new \Imagick();
+                $im->readImageBlob($rawBytes);
+                $im->setImageFormat('jpeg');
+                $im->setImageCompressionQuality(90);
+                $jpeg = $im->getImageBlob();
+                $im->destroy();
+                return response($jpeg, 200)
+                    ->header('Content-Type', 'image/jpeg')
+                    ->header('Cache-Control', 'public, max-age=86400');
+            } catch (\Exception $e) {
+                // fall through
+            }
+        }
+
+        // ── Last resort: return raw bytes ──
         $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($path);
-        return response(\Illuminate\Support\Facades\Storage::disk('public')->get($path), 200)
+        return response($rawBytes, 200)
             ->header('Content-Type', $mime ?? 'image/jpeg')
             ->header('Cache-Control', 'public, max-age=86400');
     });
