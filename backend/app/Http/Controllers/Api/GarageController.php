@@ -188,6 +188,20 @@ class GarageController extends Controller
                 if ($garageMet && $shopMet && ($requiredGarages > 0 || $requiredShops > 0)) {
                     $proforma->update(['status' => 'closed']);
                     $proforma->inboxes()->delete();
+
+                    // Notify poster that proforma is closed and billing is ready
+                    try {
+                        if ($proforma->poster) {
+                            $proforma->poster->notify(
+                                new \App\Notifications\ProformaResultsReadyNotification($proforma)
+                            );
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('Failed to send billing notification on auto-close', [
+                            'proforma_id' => $proforma->id,
+                            'error'       => $e->getMessage(),
+                        ]);
+                    }
                 }
             }
 
