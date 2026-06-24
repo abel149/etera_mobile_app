@@ -33,27 +33,6 @@ class ProformaClosingService
             // Send notification to admin
             $this->sendProformaClosedNotification($proforma);
 
-            // Send billing information email (no invoice created)
-            $this->sendBillingInfoEmail($proforma);
-
-            // Send Telegram billing details to the poster
-            try {
-                if ($proforma->poster && !empty($proforma->poster->telegram_chat_id)) {
-                    $billingData = $this->calculateBilling($proforma);
-                    if ($billingData) {
-                        (new TelegramService())->sendBillingDetailsNotification(
-                            $proforma->poster->telegram_chat_id,
-                            $proforma,
-                            $billingData['charge'],
-                            $billingData['vatAmount'],
-                            $billingData['total']
-                        );
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::warning("Failed to send billing Telegram to poster for proforma {$proforma->id}", ['error' => $e->getMessage()]);
-            }
-
             // Send Telegram notification to the processed_by user
             try {
                 if ($proforma->processedBy && !empty($proforma->processedBy->telegram_chat_id)) {
@@ -64,15 +43,6 @@ class ProformaClosingService
                 }
             } catch (\Throwable $e) {
                 Log::warning("Failed to send processed_by Telegram for proforma {$proforma->id}", ['error' => $e->getMessage()]);
-            }
-
-            // Notify the poster in-app that results are ready
-            try {
-                if ($proforma->poster) {
-                    $proforma->poster->notify(new ProformaResultsReadyNotification($proforma));
-                }
-            } catch (\Throwable $e) {
-                Log::warning("Failed to send results-ready notification to poster for proforma {$proforma->id}", ['error' => $e->getMessage()]);
             }
 
             // Log the action

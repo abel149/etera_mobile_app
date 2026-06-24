@@ -155,20 +155,6 @@ class AdminMobileController extends Controller
 
         $proforma->update(['status' => 'closed']);
 
-        // Notify poster that proforma is closed and billing is ready
-        try {
-            if ($proforma->poster) {
-                $proforma->poster->notify(
-                    new \App\Notifications\ProformaResultsReadyNotification($proforma)
-                );
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Failed to send billing notification on close', [
-                'proforma_id' => $proforma->id,
-                'error'       => $e->getMessage(),
-            ]);
-        }
-
         return response()->json(['success' => true, 'message' => 'Proforma closed successfully']);
     }
 

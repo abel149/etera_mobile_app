@@ -103,24 +103,88 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/upload/temp',   [\App\Http\Controllers\File\TemporaryFileController::class, 'store']);
     Route::delete('/upload/temp', [\App\Http\Controllers\File\TemporaryFileController::class, 'destroy']);
 
-    // Serve user stamp images — raw bytes (Flutter's image package handles decoding)
     Route::get('/users/{userId}/stamp', function ($userId) {
         $user = \App\Models\User::find($userId);
         if (!$user || !$user->stamp_image) {
             abort(404);
         }
-        $path = $user->stamp_image;
-        // Strip 'public/' prefix stored by old-style controllers
-        $path = ltrim(preg_replace('#^public/#', '', $path), '/');
+
+        $path = ltrim(preg_replace('#^public/#', '', $user->stamp_image), '/');
         if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
             abort(404);
         }
+
         $rawBytes = \Illuminate\Support\Facades\Storage::disk('public')->get($path);
-        $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($path);
+        $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($path) ?: 'application/octet-stream';
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $gdImage = false;
+
+        if (($mime === 'image/avif' || $extension === 'avif') && function_exists('imagecreatefromavif')) {
+            $tmp = tempnam(sys_get_temp_dir(), 'stamp_avif_');
+            file_put_contents($tmp, $rawBytes);
+            $gdImage = @imagecreatefromavif($tmp);
+            @unlink($tmp);
+        }
+
+        if ($gdImage === false && ($mime === 'image/webp' || $extension === 'webp') && function_exists('imagecreatefromwebp')) {
+            $tmp = tempnam(sys_get_temp_dir(), 'stamp_webp_');
+            file_put_contents($tmp, $rawBytes);
+            $gdImage = @imagecreatefromwebp($tmp);
+            @unlink($tmp);
+        }
+
+        if ($gdImage === false && function_exists('imagecreatefromstring')) {
+            $gdImage = @imagecreatefromstring($rawBytes);
+        }
+
+        if ($gdImage !== false) {
+            ob_start();
+            imagealphablending($gdImage, true);
+            imagesavealpha($gdImage, true);
+            imagepng($gdImage);
+            $png = ob_get_clean();
+            imagedestroy($gdImage);
+
+            return response($png, 200)
+                ->header('Content-Type', 'image/png')
+                ->header('X-Stamp-Conversion', 'gd-png')
+                ->header('X-Original-Content-Type', $mime)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        }
+
+        if (extension_loaded('imagick')) {
+            try {
+                $im = new \Imagick();
+                $im->readImageBlob($rawBytes);
+                $im->setImageFormat('png');
+                $png = $im->getImageBlob();
+                $im->destroy();
+
+                return response($png, 200)
+                    ->header('Content-Type', 'image/png')
+                    ->header('X-Stamp-Conversion', 'imagick-png')
+                    ->header('X-Original-Content-Type', $mime)
+                    ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Stamp conversion failed', [
+                    'user_id' => $user->id,
+                    'path' => $path,
+                    'mime' => $mime,
+                    'extension' => $extension,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return response($rawBytes, 200)
-            ->header('Content-Type', $mime ?? 'image/jpeg')
-            ->header('Cache-Control', 'public, max-age=86400');
+            ->header('Content-Type', $mime)
+            ->header('X-Stamp-Conversion', 'failed')
+            ->header('X-Original-Content-Type', $mime)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     });
+
+    // Send SMS notification via Afromessage
+    Route::post('/send-sms', [\App\Http\Controllers\MessagingNotification::class, 'sendNotification']);
 
 });
 
@@ -395,14 +459,14 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->prefix('admin')->group(f
     //transaction
     Route::get('/transactions', [TransactionController::class, 'index']);
         
-
+    
     //Analytics
     Route::get('/admin/analytics', [AdminAnalyticsController::class, 'index']);
     Route::post('/admin/analytics/mark-paid/{userId}', [AdminAnalyticsController::class, 'markPaid']);
     Route::post('/admin/analytics/receieve/{userId}', [AdminAnalyticsController::class, 'receivePayment']);
     Route::get('/admin/analytics/export/{type}', [AdminAnalyticsController::class, 'exportData']);
     
-
+    
     //settings
      // Admin Settings (Cost + Commission)
     Route::get('/admin/settings', [AdminSettingsController::class, 'index']);
