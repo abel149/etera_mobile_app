@@ -10,6 +10,7 @@ use App\Services\AfroMessageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
@@ -213,7 +214,29 @@ class AuthController extends Controller
         $to = $this->normalizeSmsPhoneNumber($user->phone_number);
         $message = "Your etera password reset code is {$otp}. It expires in 5 minutes.";
 
-        if (!$to || !$afroMessage->send($to, $message)) {
+        if (!$to) {
+            Log::warning('Password reset SMS phone normalization failed.', [
+                'user_id' => $user->id,
+                'identifier' => $request->identifier,
+                'phone_number' => $user->phone_number,
+            ]);
+
+            DB::table('password_reset_tokens')->where('email', $identifier)->delete();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to send reset code. Please try again later.',
+            ], 502);
+        }
+
+        if (!$afroMessage->send($to, $message)) {
+            Log::warning('Password reset SMS provider send failed.', [
+                'user_id' => $user->id,
+                'identifier' => $request->identifier,
+                'phone_number' => $user->phone_number,
+                'normalized_phone_number' => $to,
+            ]);
+
             DB::table('password_reset_tokens')->where('email', $identifier)->delete();
 
             return response()->json([
