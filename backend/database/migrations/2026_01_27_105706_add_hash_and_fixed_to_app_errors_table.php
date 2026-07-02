@@ -8,7 +8,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('app_errors', function (Blueprint $table) {
-            $table->string('hash', 32)->after('trace')->nullable()->index();
+            if (!Schema::hasColumn('app_errors', 'hash')) {
+                $table->string('hash', 32)->after('trace')->nullable()->index();
+            }
+            if (!Schema::hasColumn('app_errors', 'fixed')) {
+                $table->boolean('fixed')->default(false)->after('hash');
+            }
         });
     }
 

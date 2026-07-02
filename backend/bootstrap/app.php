@@ -83,51 +83,60 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($status >= 500) {
 
                 // Log to laravel.log
-                \Log::error('ðŸ”¥ 500 ERROR DETECTED', [
-                    'exception' => $e->getMessage(),
-                    'user'      => auth()->user()?->email ?? 'Guest',
-                    'url'       => request()->fullUrl(),
-                ]);
+                try {
+                    \Log::error('500 ERROR DETECTED', [
+                        'exception' => $e->getMessage(),
+                        'user'      => auth()->user()?->email ?? 'Guest',
+                        'url'       => request()->fullUrl(),
+                    ]);
+                } catch (\Throwable $logErr) {}
 
                 // Hash to prevent duplicate reporting
-                $hash = md5($e->getMessage() . $e->getFile() . $e->getLine());
+                try {
+                    $hash = md5($e->getMessage() . $e->getFile() . $e->getLine());
 
-                if (!AppError::where('hash', $hash)->where('fixed', false)->exists()) {
+                    if (!AppError::where('hash', $hash)->where('fixed', false)->exists()) {
 
-                    // Save to database
-                    AppError::create([
-                        'user_id'     => auth()->id(),
-                        'url'         => request()->fullUrl(),
-                        'method'      => request()->method(),
-                        'status_code' => $status,
-                        'message'     => $e->getMessage(),
-                        'trace'       => $e->getTraceAsString(),
-                        'hash'        => $hash,
-                        'fixed'       => false,
-                    ]);
+                        // Save to database
+                        AppError::create([
+                            'user_id'     => auth()->id(),
+                            'url'         => request()->fullUrl(),
+                            'method'      => request()->method(),
+                            'status_code' => $status,
+                            'message'     => $e->getMessage(),
+                            'trace'       => $e->getTraceAsString(),
+                            'hash'        => $hash,
+                            'fixed'       => false,
+                        ]);
 
-                    // Prepare user array
-                    $userData = ['email' => auth()->user()?->email ?? 'Guest'];
+                        // Prepare user array
+                        $userData = ['email' => auth()->user()?->email ?? 'Guest'];
 
-                    // Email developers
-                    foreach ($developers as $dev) {
-                        try {
-                            Mail::to($dev['email'])->send(new ServerErrorMail([
-                                'errorMessage' => (string)$e->getMessage(),
-                                'status'  => $status,
-                                'url'     => request()->fullUrl(),
-                                'method'  => request()->method(),
-                                'trace'   => (string)$e->getTraceAsString(),
-                                'user'    => $userData,
-                            ]));
-                        } catch (\Throwable $mailError) {
-                            \Log::error('Failed to send server error email', [
-                                'original_exception' => $e->getMessage(),
-                                'mail_exception' => $mailError->getMessage(),
-                                'developer_email' => $dev['email'],
-                            ]);
+                        // Email developers
+                        foreach ($developers as $dev) {
+                            try {
+                                Mail::to($dev['email'])->send(new ServerErrorMail([
+                                    'errorMessage' => (string)$e->getMessage(),
+                                    'status'  => $status,
+                                    'url'     => request()->fullUrl(),
+                                    'method'  => request()->method(),
+                                    'trace'   => (string)$e->getTraceAsString(),
+                                    'user'    => $userData,
+                                ]));
+                            } catch (\Throwable $mailError) {
+                                \Log::error('Failed to send server error email', [
+                                    'original_exception' => $e->getMessage(),
+                                    'mail_exception' => $mailError->getMessage(),
+                                    'developer_email' => $dev['email'],
+                                ]);
+                            }
                         }
                     }
+                } catch (\Throwable $reportErr) {
+                    // Never let error reporting crash the response
+                    try {
+                        \Log::error('AppError reporting failed: ' . $reportErr->getMessage());
+                    } catch (\Throwable $ignored) {}
                 }
             }
 

@@ -17,6 +17,11 @@ class RefreshCsrfToken
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // API routes use Bearer tokens — skip session/CSRF entirely
+        if ($request->is('api/*')) {
+            return $next($request);
+        }
+
         // Only refresh CSRF token if session is still valid
         // Let AuthenticateUser handle expiration and redirects
         if (!$this->isSessionExpired()) {
