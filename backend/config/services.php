@@ -40,4 +40,11 @@ return [
         'credentials_path' => env('FCM_CREDENTIALS_PATH'),
     ],
 
+    'afromessage' => [
+        'token' => env('AFROMESSAGE_TOKEN'),
+        'identifier_id' => env('IDENTIFIER_ID'),
+        'sender_name' => env('SENDER_NAME', 'etera'),
+        'callback' => env('AFROMESSAGE_CALLBACK'),
+    ],
+
 ];

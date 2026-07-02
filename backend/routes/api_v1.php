@@ -56,6 +56,10 @@ use Illuminate\Http\Request;
 // -----------------------------------------------------------------------
 Route::post('/auth/login', [AuthController::class, 'login'])
     ->middleware('throttle:5,1'); // 5 attempts per minute
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])
+    ->middleware('throttle:3,1');
+Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])
+    ->middleware('throttle:5,1');
 
 // -----------------------------------------------------------------------
 // Public: Helpers (cacheable dropdowns)

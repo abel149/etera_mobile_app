@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Helpers\FcmHelper;
+use App\Services\AfroMessageService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -176,6 +179,163 @@ class AuthController extends Controller
     {
         $request->user()->unreadNotifications->markAsRead();
         return response()->json(['success' => true, 'message' => 'Marked as read.']);
+    }
+
+    /**
+     * POST /api/v1/auth/forgot-password
+     * Sends a password reset OTP to the user's phone number via Afromessage.
+     */
+    public function forgotPassword(Request $request, AfroMessageService $afroMessage)
+    {
+        $request->validate([
+            'identifier' => ['required', 'string', 'max:50'],
+        ]);
+
+        $user = $this->findUserForPasswordReset($request->identifier);
+
+        if (!$user) {
+            return response()->json([
+                'success' => true,
+                'message' => 'If an account exists, a reset code has been sent.',
+            ]);
+        }
+
+        $otp = (string) random_int(100000, 999999);
+        $identifier = $user->phone_number;
+
+        DB::table('password_reset_tokens')->where('email', $identifier)->delete();
+        DB::table('password_reset_tokens')->insert([
+            'email' => $identifier,
+            'token' => Hash::make($otp),
+            'created_at' => now(),
+        ]);
+
+        $to = $this->normalizeSmsPhoneNumber($user->phone_number);
+        $message = "Your etera password reset code is {$otp}. It expires in 5 minutes.";
+
+        if (!$to || !$afroMessage->send($to, $message)) {
+            DB::table('password_reset_tokens')->where('email', $identifier)->delete();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to send reset code. Please try again later.',
+            ], 502);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Reset code sent to your phone number.',
+        ]);
+    }
+
+    /**
+     * POST /api/v1/auth/reset-password
+     */
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'identifier' => ['required', 'string', 'max:50'],
+            'otp' => ['required', 'digits:6'],
+            'password' => ['required', 'string', 'min:6', 'max:6', 'confirmed'],
+        ]);
+
+        $user = $this->findUserForPasswordReset($request->identifier);
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or expired reset code.',
+            ], 422);
+        }
+
+        $record = DB::table('password_reset_tokens')
+            ->where('email', $user->phone_number)
+            ->first();
+
+        if (!$record || !Hash::check($request->otp, $record->token)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or expired reset code.',
+            ], 422);
+        }
+
+        if (now()->diffInMinutes($record->created_at) > 5) {
+            DB::table('password_reset_tokens')->where('email', $user->phone_number)->delete();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'This reset code has expired. Please request a new one.',
+            ], 422);
+        }
+
+        $user->update([
+            'password' => Hash::make($request->password),
+        ]);
+
+        DB::table('password_reset_tokens')->where('email', $user->phone_number)->delete();
+        $user->tokens()->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password reset successfully. You can now sign in.',
+        ]);
+    }
+
+    private function findUserForPasswordReset(string $identifier): ?User
+    {
+        $identifier = trim($identifier);
+
+        $query = User::query()->where('store_id', $identifier);
+
+        $phoneCandidates = $this->phoneCandidates($identifier);
+        if (!empty($phoneCandidates)) {
+            $query->orWhereIn('phone_number', $phoneCandidates);
+        }
+
+        return $query->first();
+    }
+
+    private function phoneCandidates(string $phone): array
+    {
+        $raw = preg_replace('/\s+/', '', $phone);
+        $raw = preg_replace('/[^0-9\+]/', '', $raw);
+        $withoutPlus = ltrim($raw, '+');
+
+        $candidates = [$raw, $withoutPlus];
+
+        if (Str::startsWith($withoutPlus, '251')) {
+            $local = '0' . substr($withoutPlus, 3);
+            $candidates[] = $local;
+            $candidates[] = '+' . $withoutPlus;
+        } elseif (Str::startsWith($withoutPlus, '0')) {
+            $intl = '251' . substr($withoutPlus, 1);
+            $candidates[] = $intl;
+            $candidates[] = '+' . $intl;
+        } elseif (preg_match('/^9\d{8}$/', $withoutPlus)) {
+            $candidates[] = '0' . $withoutPlus;
+            $candidates[] = '251' . $withoutPlus;
+            $candidates[] = '+251' . $withoutPlus;
+        }
+
+        return array_values(array_unique(array_filter($candidates)));
+    }
+
+    private function normalizeSmsPhoneNumber(string $phone): ?string
+    {
+        $withoutPlus = ltrim(preg_replace('/[^0-9\+]/', '', $phone), '+');
+
+        if (preg_match('/^2519\d{8}$/', $withoutPlus)) {
+            return $withoutPlus;
+        }
+
+        if (preg_match('/^09\d{8}$/', $withoutPlus)) {
+            return '251' . substr($withoutPlus, 1);
+        }
+
+        if (preg_match('/^9\d{8}$/', $withoutPlus)) {
+            return '251' . $withoutPlus;
+        }
+
+        return null;
     }
 
 }
