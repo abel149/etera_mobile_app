@@ -44,7 +44,19 @@ class AfroMessageService
             }
 
             $data = $response->json();
-            return data_get($data, 'acknowledge') === 'success';
+            if (data_get($data, 'acknowledge') !== 'success') {
+    Log::warning('Afromessage acknowledge failure.', [
+        'status' => $response->status(),
+        'body' => $data,
+        'to' => $to,
+        'from' => $from,
+        'sender' => $sender,
+    ]);
+
+    return false;
+}
+
+return true;
         } catch (\Throwable $e) {
             Log::warning('Afromessage request exception.', [
                 'error' => $e->getMessage(),
