@@ -16,13 +16,18 @@ class Proforma extends Model implements HasMedia
     protected $appends = ['number_of_proformas', 'applicants_remaining', 'remaining_garages', 'remaining_shops'];
 
     protected $guarded = [];
-    
+
+    protected $attributes = [
+        'license_plate_number' => '',
+    ];
+
     protected $casts = [
         'timer_expires_at' => 'datetime',
         'auto_selection_enabled' => 'boolean',
         'auto_selection_count' => 'integer',
         'close_request' => 'boolean',
         'insured' => 'boolean',
+        'call_customer' => 'boolean',
     ];
 
     protected static function booted(): void
@@ -129,6 +134,11 @@ class Proforma extends Model implements HasMedia
         return $this->proforma_type === 'insurance_shop_only';
     }
 
+    public function isShopGarageInsurance(): bool
+    {
+        return $this->proforma_type === 'insurance_shop_garage';
+    }
+
     public function getRemainingShopsAttribute()
     {
         if ($this->isGarageOnlyInsurance()) {
@@ -137,7 +147,7 @@ class Proforma extends Model implements HasMedia
         if ($this->isEteraCheretaMode()) {
             return '∞';
         }
-        return ($this->required_number_of_shops ?? 3) - ($this->numberOfInboxesSentToShops() + $this->applicationsFromShops()->count());
+        return max(0, $this->required_number_of_shops - $this->applicationsFromShops()->count());
     }
 
     public function getRemainingGaragesAttribute()
@@ -145,12 +155,136 @@ class Proforma extends Model implements HasMedia
         if ($this->isShopOnlyInsurance()) {
             return 0;
         }
-        return ($this->required_number_of_garages ?? 3) - ($this->numberOfInboxesSentToGarages() + $this->applicationsFromGarages()->count());
+        return max(0, $this->required_number_of_garages - $this->applicationsFromGarages()->count());
+    }
+
+    // ── Insurance partner quota ─────────────────────────────────────────────────
+    // Returns the number of required-slots insurance has reserved via partner inboxes.
+    // Admin float slots = required_total - insurance_quota - admin_inboxed.
+    // Null (proformas created before this feature) = 0 (no insurance reservation).
+
+    public function shopPartnerQuota(): int
+    {
+        return (int) ($this->insurance_shop_quota ?? 0);
+    }
+
+    public function garagePartnerQuota(): int
+    {
+        return (int) ($this->insurance_garage_quota ?? 0);
+    }
+
+    public function hasPartnerShopApplied(): bool
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('proforma_applications', 'application_source')) {
+            return false;
+        }
+        return $this->applications()->where('from', 'shop')->where('application_source', 'partner')->exists();
+    }
+
+    public function hasPartnerGarageApplied(): bool
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('proforma_applications', 'application_source')) {
+            return false;
+        }
+        return $this->applications()->where('from', 'garage')->where('application_source', 'partner')->exists();
+    }
+
+    // ── Admin inbox quota (each admin inbox entry = 1 dedicated slot) ──
+
+    public function adminShopInboxCount(): int
+    {
+        return $this->inboxes()
+            ->where('source', 'admin')
+            ->whereHas('user', fn($q) => $q->where('role', 'shop'))
+            ->count();
+    }
+
+    public function adminGarageInboxCount(): int
+    {
+        return $this->inboxes()
+            ->where('source', 'admin')
+            ->whereHas('user', fn($q) => $q->where('role', 'garage'))
+            ->count();
+    }
+
+    public function adminShopApplicationsCount(): int
+    {
+        return $this->applications()->where('from', 'shop')->where('application_source', 'admin')->count();
+    }
+
+    public function adminGarageApplicationsCount(): int
+    {
+        return $this->applications()->where('from', 'garage')->where('application_source', 'admin')->count();
+    }
+
+    // ── Float (public) quota ──
+    // = required - partnerQuota - (adminInboxRemaining + adminApplied)
+
+    public function floatShopQuota(): int
+    {
+        return max(0, $this->required_number_of_shops
+            - $this->shopPartnerQuota()
+            - $this->adminShopApplicationsCount()
+            - $this->adminShopInboxCount());
+    }
+
+    public function floatGarageQuota(): int
+    {
+        return max(0, $this->required_number_of_garages
+            - $this->garagePartnerQuota()
+            - $this->adminGarageApplicationsCount()
+            - $this->adminGarageInboxCount());
+    }
+
+    public function publicShopApplicationsCount(): int
+    {
+        return $this->applications()->where('from', 'shop')->where('application_source', 'public')->count();
+    }
+
+    public function publicGarageApplicationsCount(): int
+    {
+        return $this->applications()->where('from', 'garage')->where('application_source', 'public')->count();
     }
 
     public function parts()
     {
         return $this->hasMany(ProformaPart::class)->latest();
+    }
+
+    /**
+     * Calculate parts pricing progress across all shop applications.
+     * Returns ['filled' => int, 'total' => int].
+     *
+     * Example: 3 required shops × 10 parts = 30 total slots.
+     * If 2 shops fully filled (20) + 1 partial with 5 = 25/30.
+     */
+    public function partsPricingProgress(): array
+    {
+        if ($this->isGarageOnlyInsurance()) {
+            return ['filled' => 0, 'total' => 0];
+        }
+
+        $totalParts = $this->parts()->count();
+        if ($totalParts === 0) {
+            return ['filled' => 0, 'total' => 0];
+        }
+
+        $requiredShops   = (int) ($this->required_number_of_shops ?? 0);
+        $requiredGarages = (int) ($this->required_number_of_garages ?? 0);
+        $isEteraChereta  = ($requiredShops + $requiredGarages) === 0;
+
+        if ($isEteraChereta) {
+            $shopAppCount   = $this->applications()->where('from', 'shop')->count();
+            $totalSlots     = $shopAppCount * $totalParts;
+        } else {
+            $totalSlots     = $totalParts * max(1, $requiredShops);
+        }
+
+        $filledParts = (int) $this->applications()
+            ->where('from', 'shop')
+            ->sum('filled_parts_count');
+
+        return ['filled' => $filledParts, 'total' => (int) $totalSlots];
     }
 
     // Removed broken insurance() relationship - insurance_id column doesn't exist
@@ -188,12 +322,12 @@ class Proforma extends Model implements HasMedia
 
     public function isFromInsurance()
     {
-        return $this->poster->role == 'insurance';
+        return in_array($this->poster->role, ['insurance', 'insurance_agent']);
     }
 
     public function isFromOthers()
     {
-        return $this->poster->role != 'insurance';
+        return !in_array($this->poster->role, ['insurance', 'insurance_agent']);
     }
 
     public function applications()
@@ -212,7 +346,29 @@ class Proforma extends Model implements HasMedia
         if ($this->required_number_of_shops == 0) {
             return false;
         }
+        if ($this->isShopGarageInsurance()) {
+            return $this->applications()->where('from', 'shop')->count() < $this->required_number_of_shops;
+        }
         if ($this->isFromInsurance()) {
+            // For group-based proformas: a slot is open when fewer groups are fully priced
+            // than required. Using application count is wrong because partial fills produce
+            // extra applications without claiming new groups.
+            $totalParts = $this->parts()->count();
+            if ($totalParts > 0) {
+                $completePriceGroups = \App\Models\ProformaPartPrice::where('proforma_id', $this->id)
+                    ->whereNotNull('inbox_group')
+                    ->select('inbox_group')
+                    ->groupBy('inbox_group')
+                    ->havingRaw('COUNT(DISTINCT car_part_id) >= ?', [$totalParts])
+                    ->pluck('inbox_group');
+                $pdfGroups = $this->applications()
+                    ->where('from', 'shop')
+                    ->whereNotNull('inbox_group')
+                    ->whereHas('pdf')
+                    ->pluck('inbox_group');
+                $completeGroups = $completePriceGroups->merge($pdfGroups)->unique()->count();
+                return $completeGroups < $this->required_number_of_shops;
+            }
             return ($this->required_number_of_shops - $this->applications()->where('from', 'shop')->count()) > 0;
         }
         return ($this->number_of_proformas - $this->applications()->where('from', 'shop')->count()) > 0;
@@ -231,16 +387,74 @@ class Proforma extends Model implements HasMedia
 
     public function isApplicableBy(User $applicant)
     {
-        $inboxes = $this->inboxes;
-
-        // For Etera-Chereta mode, check if timer has expired
+        // Etera-Chereta timer expiry check
         if ($this->isEteraCheretaMode() && $this->timer_expires_at && now()->isAfter($this->timer_expires_at)) {
             return false;
         }
 
-        return ($applicant?->role == 'shop' && $this->canBeAppliedByShop()  && ($this->remaining_shops === '∞' || $this->remaining_shops > 0)
-        || $applicant?->role == 'garage' && $this->canBeAppliedByGarage()   && $this->remaining_garages > 0
-        );
+        // Etera-Chereta: unlimited applicants
+        if ($this->isEteraCheretaMode()) {
+            return ($applicant->role === 'shop' && $this->canBeAppliedByShop())
+                || ($applicant->role === 'garage' && $this->canBeAppliedByGarage());
+        }
+
+        $isDualGarageAsShop = $this->isShopGarageInsurance()
+            && $applicant->role === 'garage'
+            && $applicant->shop_garage == 1;
+
+        if ($applicant->role === 'shop' || $isDualGarageAsShop) {
+            if ($this->isShopGarageInsurance() && $applicant->shop_garage != 1) return false;
+            if (!$this->canBeAppliedByShop()) return false;
+
+            $isInsuranceInboxed = $this->inboxes()
+                ->where('user_id', $applicant->id)->where('source', 'insurance')->exists();
+            $isAdminInboxed = !$isInsuranceInboxed && $this->inboxes()
+                ->where('user_id', $applicant->id)->where('source', 'admin')->exists();
+
+            if ($isInsuranceInboxed) {
+                // Allow up to insurance_shop_quota partners to apply before slot closes
+                if (!\Illuminate\Support\Facades\Schema::hasColumn('proforma_applications', 'application_source')) {
+                    return !$this->hasPartnerShopApplied();
+                }
+                $appliedCount = $this->applications()
+                    ->where('from', 'shop')->where('application_source', 'partner')->count();
+                $quota = (int) ($this->insurance_shop_quota ?? 1);
+                return $appliedCount < $quota;
+            } elseif ($isAdminInboxed) {
+                // Admin-designated slot: dedicated to this specific user
+                return true;
+            } else {
+                // Public float slot: open if there is still an empty group to claim
+                $groupService = new \App\Services\ProformaGroupService();
+                return $groupService->autoAssignGroup($this) !== null;
+            }
+        }
+
+        if ($applicant->role === 'garage') {
+            if (!$this->canBeAppliedByGarage()) return false;
+
+            $isInsuranceInboxed = $this->inboxes()
+                ->where('user_id', $applicant->id)->where('source', 'insurance')->exists();
+            $isAdminInboxed = !$isInsuranceInboxed && $this->inboxes()
+                ->where('user_id', $applicant->id)->where('source', 'admin')->exists();
+
+            if ($isInsuranceInboxed) {
+                // Allow up to insurance_garage_quota partners to apply before slot closes
+                if (!\Illuminate\Support\Facades\Schema::hasColumn('proforma_applications', 'application_source')) {
+                    return !$this->hasPartnerGarageApplied();
+                }
+                $appliedCount = $this->applications()
+                    ->where('from', 'garage')->where('application_source', 'partner')->count();
+                $quota = (int) ($this->insurance_garage_quota ?? 1);
+                return $appliedCount < $quota;
+            } elseif ($isAdminInboxed) {
+                return true;
+            } else {
+                return ($this->required_number_of_garages - $this->applications()->where('from', 'garage')->count()) > 0;
+            }
+        }
+
+        return false;
     }
 
     public function numberOfInboxesSentToShops()
@@ -288,14 +502,14 @@ class Proforma extends Model implements HasMedia
             $brands = auth()->user()->brands()->pluck('brand_id')->toArray();
     
             return $query->whereHas('poster', function ($query) {
-                $query->where('role', 'insurance');
+                $query->whereIn('role', ['insurance', 'insurance_agent']);
             })->when(!empty($brands), function ($q) use ($brands) {
                 return $q->whereIn('car_brand_id', $brands);
             });
         }
     
         return $query->whereHas('poster', function ($query) {
-            $query->where('role', 'insurance');
+            $query->whereIn('role', ['insurance', 'insurance_agent']);
         });
     }
     
@@ -374,6 +588,11 @@ class Proforma extends Model implements HasMedia
         return $this->hasMany(Inbox::class);
     }
 
+    public function partials()
+    {
+        return $this->hasMany(\App\Models\Partial::class);
+    }
+
     public function selections()
     {
         return $this->hasMany(ProformaSelection::class, 'proforma_id');
@@ -414,7 +633,7 @@ class Proforma extends Model implements HasMedia
 
     /**
      * Check if this proforma is in Etera-Chereta mode.
-     * Etera-Chereta mode requires BOTH shops AND garages to be 0.
+     * Etera-Chereta requires BOTH shops AND garages to be 0.
      * Garage-only insurance (shops=0, garages>0) is NOT Etera-Chereta.
      */
     public function isEteraCheretaMode()
@@ -442,12 +661,55 @@ class Proforma extends Model implements HasMedia
         $requiredShops = (int) ($this->required_number_of_shops ?? 0);
         $requiredGarages = (int) ($this->required_number_of_garages ?? 0);
 
-        // New explicit insurance subtypes always use insurance billing
+        // Explicit insurance subtypes always use insurance billing
         if ($this->proforma_type && str_starts_with($this->proforma_type, 'insurance_')) {
-            return $this->insured ? 0 : (float) ($latestCost->insurance_proforma ?? 0);
+            if ($this->insured) {
+                return 0;
+            }
+
+            $perProformaCost = (float) ($latestCost->insurance_proforma ?? 0);
+            if ($perProformaCost <= 0) {
+                return 0;
+            }
+
+            $filledGroups = \App\Models\ProformaApplication::where('proforma_id', $this->id)
+                ->whereNotNull('inbox_group')
+                ->distinct()
+                ->pluck('inbox_group')
+                ->count();
+            if ($filledGroups <= 0) {
+                $filledGroups = \App\Models\ProformaApplication::where('proforma_id', $this->id)->count();
+            }
+
+            $totalParts = $this->parts()->count();
+            $isGarageOnly = $this->isGarageOnlyInsurance();
+            $isDualService = $this->isShopGarageInsurance();
+
+            if ($isGarageOnly) {
+                return round($perProformaCost * $filledGroups, 2);
+            } elseif ($isDualService && $totalParts > 0) {
+                $partsFilled = (int) \App\Models\ProformaApplication::where('proforma_id', $this->id)
+                    ->where('from', 'shop')
+                    ->sum('filled_parts_count');
+
+                $shopPortion = $perProformaCost * ($partsFilled / $totalParts);
+
+                // Garage is charged per filled group (each group includes a garage application)
+                $garagePortion = $perProformaCost * $filledGroups;
+
+                return round($shopPortion + $garagePortion, 2);
+            } elseif ($totalParts > 0) {
+                $partsFilled = (int) \App\Models\ProformaApplication::where('proforma_id', $this->id)
+                    ->where('from', 'shop')
+                    ->sum('filled_parts_count');
+
+                return round($perProformaCost * ($partsFilled / $totalParts), 2);
+            }
+
+            return round($perProformaCost * $filledGroups, 2);
         }
 
-        // Legacy / standard type determination by counts
+        // Legacy type determination by counts
         if ($requiredShops > 0 && $requiredGarages == 0) {
             $type = 'regular';
         } elseif ($requiredShops == 3 && $requiredGarages == 3) {
@@ -469,10 +731,34 @@ class Proforma extends Model implements HasMedia
                 $totalAmount = (float) ($latestCost->$unitField ?? 0);
             }
         }
-        // ===== INSURANCE TYPE =====
+        // ===== INSURANCE TYPE (legacy 3+3) =====
         elseif ($type === 'insurance') {
             if (!$this->insured) {
-                $totalAmount = (float) ($latestCost->insurance_proforma ?? 0);
+                $perProformaCost = (float) ($latestCost->insurance_proforma ?? 0);
+                $totalParts = $this->parts()->count();
+
+                $filledGroups = \App\Models\ProformaApplication::where('proforma_id', $this->id)
+                    ->whereNotNull('inbox_group')
+                    ->distinct()
+                    ->pluck('inbox_group')
+                    ->count();
+                if ($filledGroups <= 0) {
+                    $filledGroups = \App\Models\ProformaApplication::where('proforma_id', $this->id)->count();
+                }
+
+                if ($totalParts > 0 && $perProformaCost > 0) {
+                    $partsFilled = (int) \App\Models\ProformaApplication::where('proforma_id', $this->id)
+                        ->where('from', 'shop')
+                        ->sum('filled_parts_count');
+
+                    $shopPortion = $perProformaCost * ($partsFilled / $totalParts);
+
+                    // Garage is charged per filled group (each group includes a garage application)
+                    $garagePortion = $perProformaCost * $filledGroups;
+                    $totalAmount = round($shopPortion + $garagePortion, 2);
+                } else {
+                    $totalAmount = $perProformaCost * $filledGroups;
+                }
             }
         }
         // ===== ETERA CHERETA =====

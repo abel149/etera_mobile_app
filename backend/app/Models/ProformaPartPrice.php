@@ -9,9 +9,10 @@ class ProformaPartPrice extends Model
     protected $guarded = [];
 
     protected $casts = [
-        'unit_price' => 'decimal:2',
-        'part_total' => 'decimal:2',
-        'quantity' => 'integer',
+        'unit_price'        => 'decimal:2',
+        'part_total'        => 'decimal:2',
+        'quantity'          => 'integer',
+        'price_is_encrypted'=> 'boolean',
     ];
 
     public function part()

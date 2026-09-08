@@ -493,7 +493,7 @@ class TelegramService
         $text = "✅ <b>Proforma Completed!</b>\n\n"
             . "📋 File: <b>{$proforma->file_number}</b>\n"
             . "🚗 {$proforma->brand?->name} {$proforma->model} ({$proforma->year})\n"
-            . "Your proforma has been completed and returned to you.\n";
+            . "Your proforma has been completed and returned to you Please log in to your account and check your received proformas.\n";
 
         if ($invoiceUrl) {
             $text .= "\n🧾 View Invoice: {$invoiceUrl}";
@@ -587,6 +587,234 @@ class TelegramService
             . "⏳ Pending approval. Please review in the admin panel.";
 
         return $this->sendMessage($chatId, $text);
+    }
+     public function sendProformaFloatedNotification(string $chatId, $user): bool
+    {
+        
+        $text = "🆕 👤 Name: <b>{$user->name}</b>\n\n"
+            . "Your Online Proforma Invoice has been Posted \n"
+            . "You will receive notifications on the status of your request."
+            . "Thank you for using etera!";
+
+        return $this->sendMessage($chatId, $text);
+    }
+    /**
+     * Notify all approved marketers that a new proforma has been floated.
+     * Sends to all marketers with a linked Telegram chat ID.
+     */
+    public function sendProformaFloatedNotificationToMarketers($proforma): void
+    {
+        try {
+            if (!$this->isConfigured()) {
+                return;
+            }
+
+            $marketers = \App\Models\User::where('role', \App\Models\User::ROLE_MARKETER)
+                ->where('approved', true)
+                ->whereNotNull('telegram_chat_id')
+                ->get();
+
+            if ($marketers->isEmpty()) {
+                Log::info('sendProformaFloatedNotificationToMarketers: No marketers with linked Telegram found');
+                return;
+            }
+
+            $brandName = $proforma->brand?->name ?? 'N/A';
+            $fileNumber = $proforma->file_number ?? $proforma->id;
+            $posterName = $proforma->poster?->name ?? 'Unknown';
+
+            $loginUrl = url('/login');
+
+            $text = "📢 <b>New Proforma Floated!</b>\n\n"
+                . "📋 File: <b>{$fileNumber}</b>\n"
+                . "👤 Posted by: <b>{$posterName}</b>\n"
+                . "🚗 Brand: {$brandName}\n"
+                . "📌 Model: {$proforma->model} ({$proforma->year})\n"
+                . "🪪 Plate: {$proforma->license_plate_number}\n"
+                . "🔧 Type: " . ($proforma->isEteraCheretaMode() ? 'Etera Chereta' : 'Regular') . "\n\n"
+                . "A new proforma is now available. Log in to view details.";
+
+            foreach ($marketers as $marketer) {
+                $this->sendMessageWithButton(
+                    (string) $marketer->telegram_chat_id,
+                    $text,
+                    'Go to Login',
+                    $loginUrl
+                );
+            }
+
+            Log::info('sendProformaFloatedNotificationToMarketers: Sent to marketers', [
+                'proforma_id' => $proforma->id ?? null,
+                'file_number' => $proforma->file_number ?? null,
+                'marketer_count' => $marketers->count(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('sendProformaFloatedNotificationToMarketers: Failed', [
+                'proforma_id' => $proforma->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Send a message with a login_url button.
+     * login_url buttons open in the device's EXTERNAL browser (Chrome/Safari),
+     * not Telegram's built-in WebView.
+     * Requires the domain to be registered with BotFather via /setdomain once.
+     */
+    public function sendMessageWithLoginUrlButton(string $chatId, string $text, string $buttonText, string $loginUrl): bool
+    {
+        if (empty($this->botToken) || empty($chatId)) {
+            return false;
+        }
+
+        try {
+            $response = Http::connectTimeout(5)->timeout(10)->post("{$this->apiBase}/sendMessage", [
+                'chat_id'      => $chatId,
+                'text'         => $text,
+                'parse_mode'   => 'HTML',
+                'reply_markup' => json_encode([
+                    'inline_keyboard' => [[
+                        ['text' => $buttonText, 'login_url' => ['url' => $loginUrl]],
+                    ]],
+                ]),
+            ]);
+
+            return $response->successful() && $response->json('ok');
+        } catch (\Throwable $e) {
+            Log::warning('TelegramService: sendMessageWithLoginUrlButton failed', [
+                'chat_id' => $chatId,
+                'error'   => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Send the "How did you hear about us?" survey with a 2×2 inline keyboard.
+     * Buttons use callback_data so responses are tracked when tapped.
+     */
+    public function sendHowDidYouHearSurvey(string $chatId): bool
+    {
+        if (empty($this->botToken) || empty($chatId)) {
+            return false;
+        }
+
+        try {
+            $text = "📣 <b>How did you hear about us?</b>\n\n"
+                  . "We'd love to know how you found Etera! Tap an option below:";
+
+            $keyboard = [
+                [
+                    ['text' => '📘 Facebook',  'callback_data' => 'hear_about_us_facebook'],
+                    ['text' => '📸 Instagram', 'callback_data' => 'hear_about_us_instagram'],
+                ],
+                [
+                    ['text' => '🎵 TikTok',    'callback_data' => 'hear_about_us_tiktok'],
+                    ['text' => '🔗 Others',    'callback_data' => 'hear_about_us_others'],
+                ],
+            ];
+
+            $response = Http::connectTimeout(5)->timeout(10)->post("{$this->apiBase}/sendMessage", [
+                'chat_id'     => $chatId,
+                'text'        => $text,
+                'parse_mode'  => 'HTML',
+                'reply_markup' => json_encode(['inline_keyboard' => $keyboard]),
+            ]);
+
+            if ($response->successful() && $response->json('ok')) {
+                Log::info('TelegramService: How-did-you-hear survey sent', ['chat_id' => $chatId]);
+                return true;
+            }
+
+            Log::warning('TelegramService: sendHowDidYouHearSurvey API error', [
+                'chat_id'  => $chatId,
+                'response' => $response->json(),
+            ]);
+            return false;
+        } catch (\Throwable $e) {
+            Log::warning('TelegramService: sendHowDidYouHearSurvey exception', [
+                'chat_id' => $chatId,
+                'error'   => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Send missed billing/closed notifications for proformas that were closed
+     * while the user had no Telegram linked. Called immediately on first connect.
+     */
+    public function sendMissedBillingNotifications(\App\Models\User $user, string $chatId): void
+    {
+        try {
+            // Only fetch proformas that have never had a Telegram billing notification logged
+            $alreadyNotifiedIds = \App\Models\SentEmail::where('user_id', $user->id)
+                ->where('type', 'telegram_billing')
+                ->whereNotNull('proforma_id')
+                ->pluck('proforma_id')
+                ->toArray();
+
+            $closedProformas = \App\Models\Proforma::where('poster_id', $user->id)
+                ->where('status', 'closed')
+                ->whereNotIn('id', $alreadyNotifiedIds)
+                ->orderBy('updated_at', 'desc')
+                ->get();
+
+            if ($closedProformas->isEmpty()) {
+                return;
+            }
+
+            $latestCost = \App\Models\Cost::latest()->first();
+            $vatRate    = 0.15;
+            $sentCount  = 0;
+
+            foreach ($closedProformas as $proforma) {
+                try {
+                    $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
+                    $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
+
+                    if ($requiredShops > 0 && $requiredGarages == 0) {
+                        $count = \App\Models\ProformaApplication::where('proforma_id', $proforma->id)->count();
+                        $field = "{$count}_proforma_cost";
+                        $total = $latestCost ? (float) ($latestCost->$field ?? 0) : 0;
+                    } elseif ($requiredShops == 3 && $requiredGarages == 3) {
+                        $total = $latestCost ? (float) ($proforma->insured
+                            ? ($latestCost->insured_cost ?? 0)
+                            : ($latestCost->insurance_proforma ?? 0)) : 0;
+                    } elseif ($requiredShops == 0 && $requiredGarages == 0) {
+                        $total = $latestCost ? (float) ($latestCost->etera_chereta_cost ?? 0) : 0;
+                    } else {
+                        $this->sendClosedNotification($chatId, $proforma);
+                        \App\Models\SentEmail::log('telegram_billing', 'via-telegram', $user->name, $user->id, $proforma->id, "Telegram: Closed #{$proforma->file_number}", 'sent');
+                        $sentCount++;
+                        continue;
+                    }
+
+                    if ($total > 0) {
+                        $charge    = $total / (1 + $vatRate);
+                        $vatAmount = $total - $charge;
+                        $this->sendBillingDetailsNotification($chatId, $proforma, $charge, $vatAmount, $total);
+                    } else {
+                        $this->sendClosedNotification($chatId, $proforma);
+                    }
+
+                    // Mark this proforma's Telegram billing as delivered so it is never resent
+                    \App\Models\SentEmail::log('telegram_billing', 'via-telegram', $user->name, $user->id, $proforma->id, "Telegram: Billing #{$proforma->file_number}", 'sent');
+                    $sentCount++;
+                } catch (\Throwable $e) {
+                    Log::warning("sendMissedBillingNotifications: Failed for proforma {$proforma->id}", [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            Log::info("sendMissedBillingNotifications: Sent {$sentCount} missed notification(s) to user {$user->id}");
+        } catch (\Throwable $e) {
+            Log::warning("sendMissedBillingNotifications: Failed for user {$user->id}", [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function sendPasswordResetLink(string $chatId, string $resetUrl, string $rejectAction, bool $rejectIsCallback = false, ?int &$messageId = null): bool

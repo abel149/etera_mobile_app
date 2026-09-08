@@ -80,6 +80,24 @@
                                         <label for="input9" class="form-label">Confirm Password</label>
                                         <input type="password" class="form-control" id="input9" placeholder="Confirm Password">
                                     </div>
+                                    <!-- Dealer Checkbox -->
+                                    <div class="col-md-6">
+                                        <div class="form-check mt-2">
+                                            <input class="form-check-input" type="checkbox" name="dealers" id="dealers" value="1" {{ $shop->dealers ?? 0 ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="dealers">
+                                                Is Dealer
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <!-- Dual Service Checkbox -->
+                                    <div class="col-md-6">
+                                        <div class="form-check mt-2">
+                                            <input class="form-check-input" type="checkbox" name="shop_garage" id="shop_garage" value="1" {{ $shop->shop_garage ?? 0 ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="shop_garage">
+                                                Dual Service (Shop + Garage)
+                                            </label>
+                                        </div>
+                                    </div>
                                     <hr/>
                                     <div class="my-0">
                                         <button type="submit" class="btn btn-primary radius-30 px-4" onclick="notification('Spare Part Shop Updated Successfully')"> Update
@@ -261,15 +279,37 @@
                     @enderror
 
                     <div class="col-md-6">
-                        <label for="multiple-select-clear-field" class="form-label">Car Brands To Serve</label>
-                        <select required name="brands[]" class="form-select" id="multiple-select-clear-field" data-placeholder="Add Brands..." multiple>
+                        <label class="form-label d-flex justify-content-between align-items-center">
+                            <span>Car Brands To Serve</span>
+                            <span id="brands-count" class="badge bg-primary rounded-pill" style="display:none;">0 selected</span>
+                        </label>
+                        <div class="d-flex gap-2 mb-2">
+                            <button type="button" id="brands-clear-all" class="btn btn-sm btn-outline-secondary"><i class="bx bx-x"></i> Clear All</button>
+                        </div>
+                        <select required name="brands[]" id="multiple-select-clear-field" multiple style="width:100%">
                             @foreach ($allBrands as $brand)
-                                <option value="{{ $brand->id }}" 
+                                <option value="{{ $brand->id }}"
                                         @if(in_array($brand->id, $brands)) selected @endif>
                                     {{ $brand->name }}
                                 </option>
                             @endforeach
                         </select>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="dealers" id="dealers" value="1" {{ old('dealers', $shop->dealers ?? 0) ? 'checked' : '' }}>
+                            <label class="form-check-label" for="dealers">
+                                Is Dealer
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="shop_garage" id="shop_garage" value="1" {{ old('shop_garage', $shop->shop_garage ?? 0) ? 'checked' : '' }}>
+                            <label class="form-check-label" for="shop_garage">
+                                Dual Service (Shop + Garage)
+                            </label>
+                        </div>
                     </div>
 
 
@@ -299,7 +339,7 @@
 
                     <div class="col-md-4">
                         <label for="input8" class="form-label">Email</label>
-                        <input name="email" type="email" class="form-control" id="input8" placeholder="Your Email" value="{{ old('email', $shop->email) }}">
+                        <input name="email" type="email" class="form-control" id="input8" placeholder="Your Email" autocomplete="off" value="{{ old('email', filter_var($shop->email, FILTER_VALIDATE_EMAIL) ? $shop->email : '') }}">
                     </div>
                     @error('email')
                     <span class="text-danger">{{ $message }}</span>
@@ -307,29 +347,66 @@
 
                     <hr/>
                     
-                    <!-- File Inputs for Business License and Stamp Images -->
+                    <!-- File Inputs for Business License and Stamp Images (FilePond) -->
                     <div class="col-md-6">
-                        <label for="license_image" class="form-label">Business License Image</label>
-                        <input name="license_image" type="file" class="form-control" id="license_image">
+                        <label class="form-label">Business License Image</label>
                         @if($shop->license_image)
-                            <p>Current Image: 
-                                <a href="{{ asset('storage/' . $shop->license_image) }}" target="_blank">View Image</a></p>
+                            @php $licenseUrl = asset('storage/' . (str_starts_with($shop->license_image, 'public/') ? substr($shop->license_image, 7) : $shop->license_image)); @endphp
+                            <div class="mb-2" id="licensePreview">
+                                <a href="{{ $licenseUrl }}" target="_blank">
+                                    <img src="{{ $licenseUrl }}" alt="Current License" class="img-thumbnail" style="max-height: 120px;">
+                                </a>
+                                <div class="mt-1 d-flex gap-2">
+                                    <a href="{{ $licenseUrl }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="bx bx-show"></i> View
+                                    </a>
+                                    <a href="{{ $licenseUrl }}" download class="btn btn-sm btn-outline-secondary">
+                                        <i class="bx bx-download"></i> Download
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeImage('license')">
+                                        <i class="bx bx-trash"></i> Remove
+                                    </button>
+                                </div>
+                                <small class="d-block text-muted mt-1">Current image (upload new to replace)</small>
+                            </div>
                         @endif
+                        <input type="file" class="filepond-license" accept="image/png, image/jpeg, image/jpg">
+                        <input type="hidden" id="license_image_data" name="license_image_data" value="">
+                        <input type="hidden" id="remove_license_image" name="remove_license_image" value="">
+                        @error('license_image_data')
+                            <span class="text-danger">{{ $message }}</span>
+                        @enderror
                     </div>
-                    @error('business_license_image')
-                    <span class="text-danger">{{ $message }}</span>
-                    @enderror
 
                     <div class="col-md-6">
-                        <label for="stamp_image" class="form-label">Stamp Image</label>
-                        <input name="stamp_image" type="file" class="form-control" id="stamp_image">
+                        <label class="form-label">Stamp Image</label>
                         @if($shop->stamp_image)
-                            <p>Current Image: <a href="{{ asset('storage/' . $shop->stamp_image) }}" target="_blank">View Image</a></p>
+                            @php $stampUrl = asset('storage/' . (str_starts_with($shop->stamp_image, 'public/') ? substr($shop->stamp_image, 7) : $shop->stamp_image)); @endphp
+                            <div class="mb-2" id="stampPreview">
+                                <a href="{{ $stampUrl }}" target="_blank">
+                                    <img src="{{ $stampUrl }}" alt="Current Stamp" class="img-thumbnail" style="max-height: 120px;">
+                                </a>
+                                <div class="mt-1 d-flex gap-2">
+                                    <a href="{{ $stampUrl }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="bx bx-show"></i> View
+                                    </a>
+                                    <a href="{{ $stampUrl }}" download class="btn btn-sm btn-outline-secondary">
+                                        <i class="bx bx-download"></i> Download
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeImage('stamp')">
+                                        <i class="bx bx-trash"></i> Remove
+                                    </button>
+                                </div>
+                                <small class="d-block text-muted mt-1">Current image (upload new to replace)</small>
+                            </div>
                         @endif
+                        <input type="file" class="filepond-stamp" accept="image/png, image/jpeg, image/jpg">
+                        <input type="hidden" id="stamp_image_data" name="stamp_image_data" value="">
+                        <input type="hidden" id="remove_stamp_image" name="remove_stamp_image" value="">
+                        @error('stamp_image_data')
+                            <span class="text-danger">{{ $message }}</span>
+                        @enderror
                     </div>
-                    @error('stamp_image')
-                    <span class="text-danger">{{ $message }}</span>
-                    @enderror
 
                     <div class="my-0">
                         <button type="submit" class="btn btn-primary radius-30 px-4">Update</button>
@@ -342,4 +419,90 @@
     </div>
 </div>
 <!--end page wrapper -->
+
+<style>
+    .filepond--root { margin-bottom: 0; }
+    .filepond--drop-label { min-height: 100px; border-radius: 8px; border: 2px dashed rgba(40,167,69,0.35); background: linear-gradient(135deg, #f9fafb 0%, #f1f8e9 100%); }
+    .filepond--drop-label:hover { border-color: #28a745; background: linear-gradient(135deg, #fff 0%, #e8f5e9 100%); }
+    .filepond--drop-label label { padding: 1em; cursor: pointer; font-size: 0.85rem; color: #6b7280; }
+    .filepond--label-action { text-decoration: none !important; color: #28a745; font-weight: 600; background: rgba(40,167,69,0.08); padding: 4px 12px; border-radius: 20px; }
+    .filepond--panel-root { background: transparent; border-radius: 8px; }
+    .filepond--item-panel { background: linear-gradient(135deg, #28a745, #20c997) !important; border-radius: 8px !important; }
+    .filepond--image-preview-wrapper { border-radius: 6px !important; overflow: hidden; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+    // ── Brands Select2 ───────────────────────────────────────────────────────
+    const $brands = $('#multiple-select-clear-field');
+
+    $brands.select2({
+        placeholder: '🔍 Search and select car brands…',
+        closeOnSelect: false,
+        width: '100%',
+        theme: 'bootstrap-5',
+    });
+
+    function updateBrandsBadge() {
+        const count = ($brands.val() || []).length;
+        const badge = document.getElementById('brands-count');
+        if (!badge) return;
+        badge.textContent = count + ' selected';
+        badge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+    $brands.on('change', updateBrandsBadge);
+    updateBrandsBadge(); // run on load for pre-selected brands
+
+    document.getElementById('brands-clear-all').addEventListener('click', function () {
+        $brands.val(null).trigger('change');
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
+    FilePond.registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType, FilePondPluginFileValidateSize);
+
+    const serverConfig = {
+        process: {
+            url: '{{ route("upload.part.image") }}',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            onload: (response) => { const data = JSON.parse(response); if (data.success && data.files && data.files.length > 0) return data.files[0].temp_path; return 'Upload failed.'; },
+            onerror: (response) => { try { return JSON.parse(response).message || 'Upload error.'; } catch(e) { return 'Upload error.'; } },
+        },
+        revert: {
+            url: '{{ route("upload.part.image.revert") }}',
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        },
+    };
+
+    const pondOptions = {
+        acceptedFileTypes: ['image/png', 'image/jpeg', 'image/jpg'],
+        maxFileSize: '10MB',
+        maxFiles: 1,
+        server: serverConfig,
+        allowRevert: true,
+        imagePreviewHeight: 140,
+        stylePanelLayout: 'compact',
+        stylePanelAspectRatio: '3:2',
+        labelIdle: '📷 Drag & Drop or <span class="filepond--label-action">Browse</span>',
+        name: 'image',
+    };
+
+    const licensePond = FilePond.create(document.querySelector('.filepond-license'), pondOptions);
+    licensePond.on('processfile', (error, file) => { if (!error) { document.getElementById('license_image_data').value = file.serverId; document.getElementById('remove_license_image').value = ''; } });
+    licensePond.on('removefile', () => { document.getElementById('license_image_data').value = ''; });
+
+    const stampPond = FilePond.create(document.querySelector('.filepond-stamp'), pondOptions);
+    stampPond.on('processfile', (error, file) => { if (!error) { document.getElementById('stamp_image_data').value = file.serverId; document.getElementById('remove_stamp_image').value = ''; } });
+    stampPond.on('removefile', () => { document.getElementById('stamp_image_data').value = ''; });
+});
+
+function removeImage(type) {
+    if (!confirm('Remove this image?')) return;
+    const preview = document.getElementById(type + 'Preview');
+    if (preview) preview.style.display = 'none';
+    document.getElementById('remove_' + type + '_image').value = '1';
+}
+</script>
 @endsection

@@ -389,7 +389,63 @@
             <div class="col-12 col-lg-10 col-xl-8">
                 @php $hasShops = false; @endphp
                 @foreach($shops as $application)
-                        @php $hasShops = true; @endphp
+                        @php $hasShops = true; $appPdfOnly = $application->pdf !== null && $application->prices->isEmpty(); @endphp
+                        @if($appPdfOnly)
+                        {{-- PDF-only card --}}
+                        <div class="application-card" style="position:relative;overflow:hidden;">
+                            <div class="stamp-overlay">
+                                @if($application->applicationBy->stamp_image)
+                                    <img src="{{ asset('storage/' . $application->applicationBy->stamp_image) }}" alt="Stamp" />
+                                @else
+                                    <img src="{{ asset('assets/images/stamp.png') }}" alt="No Stamp" />
+                                @endif
+                            </div>
+                            <div class="app-header">
+                                <div class="avatar-circle">{{ strtoupper(substr($application->applicationBy->name, 0, 2)) }}</div>
+                                <div class="shop-info">
+                                    <h6>{{ $application->applicationBy->name }}</h6>
+                                    <small><i class="bx bx-store-alt"></i> Spare Part Shop</small>
+                                </div>
+                            </div>
+                            <div class="info-tags">
+                                <span class="info-tag"><i class="bx bx-phone"></i> {{ $application->applicationBy->phone_number }}</span>
+                                @if($application->applicationBy->store_id)
+                                <span class="info-tag"><i class="bx bx-id-card"></i> Store: {{ $application->applicationBy->store_id }}</span>
+                                @endif
+                                @if($application->applicationBy->tin_number)
+                                <span class="info-tag"><i class="bx bx-receipt"></i> TIN: {{ $application->applicationBy->tin_number }}</span>
+                                @endif
+                                @if($application->applicationBy->location)
+                                <span class="info-tag"><i class="bx bx-map"></i> {{ $application->applicationBy->location }}</span>
+                                @endif
+                            </div>
+                            <div style="margin:0 1.5rem 1rem; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; display:flex; align-items:center; gap:12px;">
+                                <i class="bx bxs-file-pdf" style="font-size:1.8rem;color:#ef4444;flex-shrink:0;"></i>
+                                <div style="flex:1; min-width:0;">
+                                    <div style="font-weight:600; font-size:0.88rem; color:#1e293b;">PDF Quotation</div>
+                                    <div style="font-size:0.78rem; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ $application->pdf->original_filename }}</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary"
+                                        onclick="openPdfViewer(this)"
+                                        data-encrypted="0"
+                                        data-stamp="{{ $application->applicationBy->stamp_image ? asset('storage/' . $application->applicationBy->stamp_image) : asset('assets/images/stamp.png') }}"
+                                        data-serve-url="{{ route('application.pdf.serve', $application->id) }}">
+                                    <i class="bx bx-show"></i> View PDF
+                                </button>
+                            </div>
+                            @if($application->notes)
+                            <div style="margin:0 1.5rem 1rem; background:rgba(16,185,129,0.06); border-left:3px solid #10b981; border-radius:0 8px 8px 0; padding:8px 12px;">
+                                <span style="font-size:0.75rem;font-weight:600;color:#10b981;display:block;margin-bottom:3px;">Applicant Notes</span>
+                                <span style="font-size:0.82rem;color:#475569;white-space:pre-wrap;">{{ $application->notes }}</span>
+                            </div>
+                            @endif
+                            <div class="app-footer">
+                                <button class="btn-select" onclick="openPdfViewer(this.closest('.application-card').querySelector('.btn-outline-primary'))">
+                                    <i class="bx bx-show" style="margin-right:0.3rem;"></i> View PDF & Print
+                                </button>
+                            </div>
+                        </div>
+                        @else
                         <div class="application-card">
                             {{-- Stamp Overlay --}}
                             <div class="stamp-overlay">
@@ -452,10 +508,7 @@
                                     <tbody>
                                         @foreach($proforma->parts as $part)
                                             @php
-                                                $partPrice = $application->prices->where('car_part_id', $part->id)->first();
-                                                if (!$partPrice) {
-                                                    $partPrice = $application->prices->values()->get($loop->index);
-                                                }
+                                                $partPrice = $application->prices->values()->get($loop->index);
                                             @endphp
                                             <tr>
                                                 <td>{{ $loop->index + 1 }}</td>
@@ -465,12 +518,12 @@
                                                 <td>{{ $part->grade }}</td>
                                                 <td>{{ $part->country }}</td>
                                                 <td>{{ $part->quantity }}</td>
-                                                @if($partPrice)
+                                                @if($partPrice && $partPrice->unit_price > 0)
                                                     <td class="price-tag">{{ number_format($partPrice->unit_price, 2) }} ETB</td>
-                                                    <td class="price-tag">{{ number_format($partPrice->part_total ?? ($partPrice->unit_price * ($part->quantity ?? 1)), 2) }} ETB</td>
+                                                    <td class="price-tag">{{ number_format($partPrice->unit_price * $part->quantity, 2) }} ETB</td>
                                                 @else
-                                                    <td class="price-tag">0.00 ETB</td>
-                                                    <td class="price-tag">0.00 ETB</td>
+                                                    <td class="price-tag text-muted fst-italic">— Not available</td>
+                                                    <td class="price-tag text-muted">—</td>
                                                 @endif
                                             </tr>
                                         @endforeach
@@ -478,7 +531,13 @@
                                     <tfoot>
                                         @php
                                             $discountPct = (float)($application->discount ?? 0);
-                                            $subtotalParts = (float) $application->prices->sum('part_total');
+                                            $subtotalParts = 0;
+                                            foreach ($proforma->parts as $index => $part) {
+                                                $price = $application->prices->values()->get($index);
+                                                if ($price) {
+                                                    $subtotalParts += $price->unit_price * $part->quantity;
+                                                }
+                                            }
                                             $usingParts = $subtotalParts > 0;
                                             $subtotal = $usingParts ? $subtotalParts : (float) $application->amount;
                                             $discountAmt = $usingParts ? (($subtotal * $discountPct) / 100) : 0.0;
@@ -499,7 +558,7 @@
                                     </tfoot>
                                 </table>
                                 <div class="vat-note">
-                                    <i class="bx bx-info-circle"></i> All prices not including VAT
+                                    <i class="bx bx-info-circle"></i> All prices including VAT
                                 </div>
                             </div>
 
@@ -510,6 +569,7 @@
                                 </button>
                             </div>
                         </div>
+                        @endif
                 @endforeach
 
                 @if(!$hasShops)
@@ -544,6 +604,36 @@
             </a>
         </div>
     @endif
+</div>
+
+{{-- PDF Viewer Modal --}}
+<div class="modal fade" id="pdfViewerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" style="height:90vh;">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bx bxs-file-pdf fs-5" style="color:#ef4444;"></i>
+                    <h5 class="modal-title mb-0">PDF Quotation</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" onclick="closePdfViewer()"></button>
+            </div>
+            <div class="modal-body p-0" style="position:relative;flex:1;overflow:hidden;">
+                <div id="pdfViewerLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;background:rgba(0,0,0,0.15);">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+                <div id="pdfIframeContainer" style="position:relative;width:100%;height:100%;">
+                    <iframe id="pdfViewerIframe" src="" style="width:100%;height:100%;border:none;" title="PDF Quotation"></iframe>
+                    <div id="pdfStampOverlay" style="position:absolute;bottom:40px;right:30px;width:150px;height:150px;opacity:0.75;pointer-events:none;z-index:5;transform:rotate(10deg);mix-blend-mode:multiply;">
+                        <img id="pdfStampImg" src="" alt="Stamp" style="width:100%;height:100%;object-fit:contain;filter:contrast(1.6) brightness(1.2) saturate(1.3);">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer d-print-none">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" onclick="closePdfViewer()">Close</button>
+                <button type="button" class="btn btn-outline-primary" onclick="printPdfViewer()"><i class="bx bx-printer"></i> Print</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 {{-- Details Modal --}}
@@ -825,7 +915,7 @@
 								</table>
 							</div>
 
-							<p class="text-danger mt-4"><strong>NOTE:</strong> All prices not including VAT</p>
+							<p class="text-danger mt-4"><strong>NOTE:</strong> All prices including VAT</p>
 
 							<div class="card-stamp">
 								<img class="stamp-image" src="${stampImage}" alt="Stamp" />
@@ -833,7 +923,7 @@
 						</main>
 
 						<footer class="text-center mt-4">
-							<p><strong>NOTE:</strong> Price is NOT including 15% VAT.</p>
+							<p><strong>NOTE:</strong> Price is including 15% VAT.</p>
 							<div class="btn-group btn-group-sm d-print-none">
 								<a href="javascript:window.print()" class="btn btn-light border text-black-50 shadow-none">
 									<i class="fa fa-print"></i> Print & Download
@@ -985,5 +1075,38 @@
 			printWindow.document.close();
 		}
 	}
+
+    // ── PDF Viewer ────────────────────────────────────────────────────────────
+    let _pdfBlobUrl = null;
+
+    function closePdfViewer() {
+        const iframe = document.getElementById('pdfViewerIframe');
+        if (iframe) iframe.src = '';
+    }
+
+    function printPdfViewer() {
+        const iframe = document.getElementById('pdfViewerIframe');
+        if (!iframe || !iframe.src) return;
+        try { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
+        catch(e) { window.open(iframe.src, '_blank'); }
+    }
+
+    function openPdfViewer(btn) {
+        const stampSrc = btn.dataset.stamp || '';
+        const serveUrl = btn.dataset.serveUrl || '';
+
+        const modal     = new bootstrap.Modal(document.getElementById('pdfViewerModal'));
+        const loading   = document.getElementById('pdfViewerLoading');
+        const iframe    = document.getElementById('pdfViewerIframe');
+        const stampImg  = document.getElementById('pdfStampImg');
+
+        if (stampImg) stampImg.src = stampSrc;
+        iframe.src = '';
+        loading.style.display = 'flex';
+        modal.show();
+
+        iframe.onload = function() { loading.style.display = 'none'; };
+        iframe.src = serveUrl;
+    }
 </script>
 @endsection

@@ -35,12 +35,7 @@ return [
         ],
     ],
 
-    'fcm' => [
-        'project_id' => env('FCM_PROJECT_ID'),
-        'credentials_path' => env('FCM_CREDENTIALS_PATH'),
-    ],
-
-    'afromessage' => [
+      'afromessage' => [
         'token' => env('AFROMESSAGE_TOKEN'),
         'identifier_id' => env('IDENTIFIER_ID'),
         'sender_name' => env('SENDER_NAME', 'etera'),

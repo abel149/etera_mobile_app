@@ -22,6 +22,7 @@ class GarageProformasList extends Component
         'component' => 'Both',
         'car_type'  => 'All',
         'grade'     => 'All',
+        'damage_severity' => 'All',
     ];
 
     public $sortBy = 'desc';
@@ -46,6 +47,7 @@ class GarageProformasList extends Component
             'component' => 'Both',
             'car_type'  => 'All',
             'grade'     => 'All',
+            'damage_severity' => 'All',
         ];
 
         $this->resetPage();
@@ -62,14 +64,28 @@ class GarageProformasList extends Component
          * Base Query
          * Only published proformas from insurance
          */
+        $isTest = Auth::user()->is_test ?? false;
+
+        $isDualService = Auth::user()->shop_garage == 1;
+
         $query = Proforma::query()
             ->where('status', 'published')
-            ->whereHas('poster', function ($q) {
-                $q->where('role', 'insurance');
+            ->whereHas('poster', function ($q) use ($isTest) {
+                $q->whereIn('role', ['insurance', 'insurance_agent'])
+                  ->where(function ($q2) use ($isTest) {
+                      if ($isTest) {
+                          $q2->where('is_test', true);
+                      } else {
+                          $q2->where(fn($q3) => $q3->where('is_test', false)->orWhereNull('is_test'));
+                      }
+                  });
             })
-            ->where(function ($q) {
+            ->where(function ($q) use ($isDualService) {
+                // Always exclude shop-only proformas (garages never handle these).
+                // Exclude dual-service proformas too, unless this garage is dual-service enabled.
+                $excludedTypes = $isDualService ? ['insurance_shop_only'] : ['insurance_shop_only', 'insurance_shop_garage'];
                 $q->whereNull('proforma_type')
-                  ->orWhere('proforma_type', '!=', 'insurance_shop_only');
+                  ->orWhereNotIn('proforma_type', $excludedTypes);
             });
 
         /**
@@ -121,6 +137,13 @@ class GarageProformasList extends Component
                     ->from('proforma_part')
                     ->where('grade', 'LIKE', '%' . $this->filters['grade'] . '%');
             });
+        }
+
+        /**
+         * Filter: Damage Severity
+         */
+        if ($this->filters['damage_severity'] !== 'All') {
+            $query->where('damage_severity', $this->filters['damage_severity']);
         }
 
         /**

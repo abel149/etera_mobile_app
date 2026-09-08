@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\Partial;
 use App\Models\Proforma;
 use App\Models\ProformaApplication;
 use Livewire\Component;
@@ -50,10 +51,38 @@ class AllProformasList extends Component
         $userId = $user->id;
 
         /**
+         * Pre-fetch Partial proforma IDs for this user before the base query.
+         * Proformas with active Partial records may have status='pending' (closed
+         * after all required shops applied) but still need partial parts filled.
+         */
+        $partialProformaIds = Partial::where('user_id', $userId)
+            ->where('active', true)
+            ->pluck('proforma_id')
+            ->toArray();
+
+        /**
          * Base Query
          */
         $query = Proforma::query()
-            ->where('status', 'published');
+            ->when($user->shop_garage != 1, fn ($q) =>
+                $q->where(fn ($typeQ) =>
+                    $typeQ->whereNull('proforma_type')
+                        ->orWhere('proforma_type', '!=', 'insurance_shop_garage')
+                )
+            )
+            ->where(function ($q) use ($partialProformaIds) {
+                // Normal proformas: must be published
+                $q->where('status', 'published')
+                // Partial proformas: also include pending ones the user was invited to fill
+                  ->orWhere(function ($pq) use ($partialProformaIds) {
+                      $pq->where('status', 'pending')
+                         ->whereIn('id', $partialProformaIds);
+                  });
+            })
+            ->where(function ($q) {
+                $q->whereNull('proforma_type')
+                  ->orWhere('proforma_type', '!=', 'insurance_garage_only');
+            });
 
         /**
          * ✅ Brand filter — ONLY brands accepted by logged-in user
@@ -79,8 +108,49 @@ if (!empty($acceptedBrandIds)) {
             ->toArray();
 
         if (!empty($appliedProformaIds)) {
-            $query->whereNotIn('id', $appliedProformaIds);
+            // Exclude applied proformas, UNLESS the user still has an active Partial
+            // record for a different group of the same proforma.
+            $query->where(function ($q) use ($appliedProformaIds, $userId) {
+                $q->whereNotIn('id', $appliedProformaIds)
+                  ->orWhereHas('partials', fn ($pq) =>
+                      $pq->where('user_id', $userId)->where('active', true)
+                  );
+            });
         }
+
+        /**
+         * Slot availability: show fresh proformas only when empty slots exist,
+         * OR show if this user has an active Partial record for the proforma.
+         */
+        $query->where(function ($q) use ($userId) {
+            $q->where(function ($freshQ) {
+                // Non-insurance proformas (no required groups) are always visible
+                $freshQ->where(function ($inner) {
+                    $inner->where('required_number_of_shops', 0)
+                          ->orWhereNull('required_number_of_shops');
+                })
+                // Insurance proformas: visible only if at least one empty group remains
+                ->orWhere(function ($inner) {
+                    $inner->where('required_number_of_shops', '>', 0)
+                          ->whereRaw(
+                              '(SELECT COUNT(DISTINCT inbox_group)
+                                FROM proforma_part_prices
+                                WHERE proforma_id = proformas.id
+                                AND inbox_group IS NOT NULL)
+                               < proformas.required_number_of_shops'
+                          );
+                });
+            })
+            // Always show if this user is still inboxed (covers partial-fill flow where
+            // the shop needs to fill remaining parts in their assigned group)
+            ->orWhereHas('inboxes', fn ($iq) =>
+                $iq->where('user_id', $userId)
+            )
+            // Always show if this user has an active Partial broadcast record
+            ->orWhereHas('partials', fn ($pq) =>
+                $pq->where('user_id', $userId)->where('active', true)
+            );
+        });
 
         /**
          * Filter: Poster Type
@@ -149,9 +219,18 @@ if (!empty($acceptedBrandIds)) {
             ->orderBy('created_at', $this->sortBy)
             ->paginate(10);
 
+        // Fetch active Partial records for this user, grouped by proforma_id
+        // (Multiple Partials may exist for different groups of the same proforma)
+        $partialsByProformaId = Partial::where('user_id', $userId)
+            ->where('active', true)
+            ->whereIn('proforma_id', $proformas->pluck('id'))
+            ->get()
+            ->groupBy('proforma_id');
+
         return view('livewire.all-proformas-list', [
-            'proformas'  => $proformas,
-            'components' => ['Both', 'Body Parts', 'Mechanical Parts'],
+            'proformas'            => $proformas,
+            'components'           => ['Both', 'Body Parts', 'Mechanical Parts'],
+            'partialsByProformaId' => $partialsByProformaId,
         ]);
     }
 }

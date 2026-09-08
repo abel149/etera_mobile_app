@@ -80,7 +80,7 @@
                     </div>
 
                     <div class="bs-stepper-content">
-                        <form action="{{ route('insurance.create-file') }}" method="POST" enctype="multipart/form-data">
+                        <form id="insuranceProformaForm5" action="{{ route('insurance.create-file') }}" method="POST" enctype="multipart/form-data">
                             @csrf
                             
                             <!-- Step 1: Basic Information -->
@@ -113,10 +113,13 @@
                                     <div class="col-12 col-lg-6">
                                         <label for="car_type" class="form-label">Car Type</label>
                                         <select name="car_type" id="car_type" class="form-select" required>
-                                            <option value="ICE" {{ old('car_type', 'ICE') == 'ICE' ? 'selected' : '' }}>ICE</option>
-                                            <option value="EV" {{ old('car_type') == 'EV' ? 'selected' : '' }}>EV</option>
-                                            <option value="Hybrid" {{ old('car_type') == 'Hybrid' ? 'selected' : '' }}>Hybrid</option>
-                                            <option value="Others" {{ old('car_type') == 'Others' ? 'selected' : '' }}>Others</option>
+                                            <option value="Sedan/S.U.V(GAS)" {{ old('car_type', 'Sedan/S.U.V(GAS)') == 'Sedan/S.U.V(GAS)' ? 'selected' : '' }}>Sedan/S.U.V(GAS)</option>
+                                            <option value="Sedan/S.U.V(EV)" {{ old('car_type') == 'Sedan/S.U.V(EV)' ? 'selected' : '' }}>Sedan/S.U.V(EV)</option>
+                                            <option value="Mini Van(GAS)" {{ old('car_type') == 'Mini Van(GAS)' ? 'selected' : '' }}>Mini Van(GAS)</option>
+                                            <option value="Mini Van(EV)" {{ old('car_type') == 'Mini Van(EV)' ? 'selected' : '' }}>Mini Van(EV)</option>
+                                            <option value="Isuzu/Bus(GAS)" {{ old('car_type') == 'Isuzu/Bus(GAS)' ? 'selected' : '' }}>Isuzu/Bus(GAS)</option>
+                                            <option value="Isuzu/Bus(EV)" {{ old('car_type') == 'Isuzu/Bus(EV)' ? 'selected' : '' }}>Isuzu/Bus(EV)</option>
+                                            <option value="Heavy" {{ old('car_type') == 'Heavy' ? 'selected' : '' }}>Heavy Duty</option>
                                         </select>
 
                                         @error('car_type')
@@ -199,13 +202,7 @@
                                         <span class="text-danger">{{$message}}</span>
                                         @enderror
                                     </div>
-                                    <div class="col-12 col-lg-6">
-                                        <label for="InputPassword" class="form-label">License Plate Number (Code, City & Number)</label>
-                                        <input type="text" name="license_plate_number" value="{{old('license_plate_number')}}" class="form-control required-field" id="InputPassword" value="" placeholder="Example: 3OR-B22662">
-                                        @error('license_plate_number')
-                                        <span class="text-danger">{{$message}}</span>
-                                        @enderror
-                                    </div>
+                                   
                                     <div class="col-12 col-lg-6">
 <label class="form-label">
     VIN Number
@@ -248,9 +245,8 @@
                                         <div class="d-flex align-items-center justify-content-between">
                                             <div>
                                                 <h5 class="mb-1">Spare Parts</h5>
-                                                <p class="mb-4">Add the required spare parts</p>
                                             </div>
-           <button type="button" id="add-repeater" class="btn btn-primary repeater-add-btn px-4">Add another part</button>
+          
                                        </div>
 
                                         <div class="repeater-item">
@@ -259,7 +255,7 @@
                                                 
                                                 <div class="col-12 col-lg-4">
                                                     <label for="inputEmail1" class="form-label">Part Name And Part Number</label>
-                                                    <input type="text" name="parts[0][number]" class="form-control required-field" id="inputEmail1" required />
+                                                    <input type="text" name="parts[0][number]" class="form-control required-field" id="inputEmail1" required oninvalid="this.setCustomValidity('Please enter the part name and number')" oninput="this.setCustomValidity('')" />
                                                     @error('parts.0.number')
                                                         <span class="text-danger small">{{ $message }}</span>
                                                     @enderror
@@ -285,7 +281,7 @@
                                                 </div>
                                                 <div class="col-12 col-lg-2">
                                                     <label for="inputName1" class="form-label">Qty</label>
-                                                    <input name="parts[0][quantity]" type="number" class="form-control required-field" id="inputName1" placeholder="" data-name="name" required min="1">
+                                                    <input name="parts[0][quantity]" type="number" class="form-control required-field" id="inputName1" placeholder="e.g. 1" data-name="name" required min="1" value="{{ old('parts.0.quantity', 1) }}" oninvalid="this.setCustomValidity('Quantity must be at least 1')" oninput="this.setCustomValidity('')">
                                                     @error('parts.0.quantity')
                                                         <span class="text-danger small">{{ $message }}</span>
                                                     @enderror
@@ -306,7 +302,7 @@
                                                 <!-- Component -->
                                                 <div class="col-12 col-lg-2">
                                                     <label for="component" class="form-label">Component</label>
-                                                    <select name="parts[0][component]" id="component" class="form-select required-field" required>
+                                                    <select name="parts[0][component]" id="component" class="form-select required-field" required oninvalid="this.setCustomValidity('Please select a component')" onchange="this.setCustomValidity('')">
                                                         <option value="">Select Component</option>
                                                         <option value="Body Parts">Body Parts</option>
                                                         <option value="Mechanical Parts">Mechanical Parts</option>
@@ -323,10 +319,12 @@
                                                 <hr/>
                                             </div>
                                         </div>
+                                         <button type="button" id="add-repeater" class="btn btn-primary repeater-add-btn px-4">Add another part</button>
                                     </div>
                                 </div>
 
                                 <br>
+                                <p class="mb-2">Add the required spare parts</p>
                                 <div class="row g-3">
                                     <div class="col-12 col-lg-6">
                                         <label for="multiple-select-sparepart" class="form-label">Spare Part Shop Partners (Optional)</label>
@@ -659,7 +657,24 @@ document.addEventListener('click', function (e) {
             }
         });
 
-        if (allFilled && stepper3) {
+        if (!allFilled) return;
+
+        // Validate quantity fields are >= 1
+        const quantityInputs = currentPane.querySelectorAll('input[name*="[quantity]"]');
+        for (let i = 0; i < quantityInputs.length; i++) {
+            const val = parseInt(quantityInputs[i].value);
+            if (!quantityInputs[i].value || val < 1) {
+                quantityInputs[i].classList.add('is-invalid');
+                quantityInputs[i].setCustomValidity('Quantity must be at least 1');
+                quantityInputs[i].reportValidity();
+                return;
+            } else {
+                quantityInputs[i].classList.remove('is-invalid');
+                quantityInputs[i].setCustomValidity('');
+            }
+        }
+
+        if (stepper3) {
             stepper3.next();
         }
     }
@@ -714,6 +729,20 @@ document.addEventListener('click', function (e) {
                     }
                 });
             });
+        }
+    }
+});
+
+// Form submit validation — safety net for quantity
+document.getElementById('insuranceProformaForm5').addEventListener('submit', function(e) {
+    const quantityInputs = document.querySelectorAll('input[name*="[quantity]"]');
+    for (let i = 0; i < quantityInputs.length; i++) {
+        const val = parseInt(quantityInputs[i].value);
+        if (!quantityInputs[i].value || val < 1) {
+            e.preventDefault();
+            quantityInputs[i].setCustomValidity('Quantity must be at least 1');
+            quantityInputs[i].reportValidity();
+            return;
         }
     }
 });

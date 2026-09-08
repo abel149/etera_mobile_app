@@ -196,13 +196,33 @@
                         <label for="input10" class="form-label">Confirm Password</label>
                         <input name="password_confirmation" type="password" class="form-control" id="input10" placeholder="Confirm Password">
                     </div>
-                    
+
+                    <!-- Dealer Checkbox -->
+                    <div class="col-md-6">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="dealers" id="dealers" value="1" {{ $shop->dealers ?? 0 ? 'checked' : '' }}>
+                            <label class="form-check-label" for="dealers">
+                                Is Dealer
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Dual Service Checkbox -->
+                    <div class="col-md-6">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="shop_garage" id="shop_garage" value="1" {{ $shop->shop_garage ?? 0 ? 'checked' : '' }}>
+                            <label class="form-check-label" for="shop_garage">
+                                Dual Service (Shop + Garage)
+                            </label>
+                        </div>
+                    </div>
+
                     <hr/>
 
                     <div class="my-0">
                         <button type="submit" class="btn btn-primary radius-30 px-4">Update</button>
                         &nbsp;
-                        <a href="{{ url('/admin/spare-part-shops') }}" type="button" class="btn btn-outline-secondary radius-30 px-3">Cancel</a>
+                        <a href="{{ url('/marketer/spare-part-shops') }}" type="button" class="btn btn-outline-secondary radius-30 px-3">Cancel</a>
                     </div>
                 </form>
             </div>
@@ -323,39 +343,43 @@
                         <input name="password_confirmation" type="password" class="form-control" id="input10" placeholder="Confirm Password">
                     </div>
 
-                    <!-- Business License Image Upload -->
+                    <!-- Business License Image Upload (FilePond) -->
                     <div class="col-md-6">
-                        <label for="license_image" class="form-label">Business License Image</label>
-                        <input name="license_image" type="file" class="form-control" id="license_image">
+                        <label class="form-label">Business License Image</label>
                         @if($shop->license_image)
-                            <p>Current Image: 
-                                <a href="{{ asset('storage/' . $shop->license_image) }}">View Image</a>
-                            </p>
+                            <div class="mb-2">
+                                <img src="{{ asset('storage/' . $shop->license_image) }}" alt="Current License" class="img-thumbnail" style="max-height: 120px;">
+                                <small class="d-block text-muted mt-1">Current image (upload new to replace)</small>
+                            </div>
                         @endif
+                        <input type="file" class="filepond-license" accept="image/png, image/jpeg, image/jpg">
+                        <input type="hidden" id="license_image_data" name="license_image_data" value="">
+                        @error('license_image_data')
+                            <span class="text-danger">{{ $message }}</span>
+                        @enderror
                     </div>
-                    @error('license_image')
-                    <span class="text-danger">{{ $message }}</span>
-                    @enderror
 
-                    <!-- Stamp Image Upload -->
+                    <!-- Stamp Image Upload (FilePond) -->
                     <div class="col-md-6">
-                        <label for="stamp_image" class="form-label">Stamp Image</label>
-                        <input name="stamp_image" type="file" class="form-control" id="stamp_image">
+                        <label class="form-label">Stamp Image</label>
                         @if($shop->stamp_image)
-                            <p>Current Image: 
-                                <a href="{{ asset('storage/' . $shop->stamp_image) }}">View Image</a>
-                            </p>
+                            <div class="mb-2">
+                                <img src="{{ asset('storage/' . $shop->stamp_image) }}" alt="Current Stamp" class="img-thumbnail" style="max-height: 120px;">
+                                <small class="d-block text-muted mt-1">Current image (upload new to replace)</small>
+                            </div>
                         @endif
+                        <input type="file" class="filepond-stamp" accept="image/png, image/jpeg, image/jpg">
+                        <input type="hidden" id="stamp_image_data" name="stamp_image_data" value="">
+                        @error('stamp_image_data')
+                            <span class="text-danger">{{ $message }}</span>
+                        @enderror
                     </div>
-                    @error('stamp_image')
-                    <span class="text-danger">{{ $message }}</span>
-                    @enderror
                     
                     <hr/>
                     <div class="my-0">
                         <button type="submit" class="btn btn-primary radius-30 px-4">Update</button>
                         &nbsp;
-                        <a href="{{ url('/admin/spare-part-shops') }}" type="button" class="btn btn-outline-secondary radius-30 px-3">Cancel</a>
+                        <a href="{{ url('/marketer/spare-part-shops') }}" type="button" class="btn btn-outline-secondary radius-30 px-3">Cancel</a>
                     </div>
                 </form>
             </div>
@@ -363,4 +387,66 @@
     </div>
 </div>
 <!--end page wrapper -->
+
+{{-- FilePond CSS --}}
+<link href="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css" rel="stylesheet">
+
+{{-- FilePond JS --}}
+<script src="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.js"></script>
+<script src="https://unpkg.com/filepond-plugin-file-validate-type/dist/filepond-plugin-file-validate-type.js"></script>
+<script src="https://unpkg.com/filepond-plugin-file-validate-size/dist/filepond-plugin-file-validate-size.js"></script>
+<script src="https://unpkg.com/filepond@^4/dist/filepond.js"></script>
+
+<style>
+    .filepond--root { margin-bottom: 0; }
+    .filepond--drop-label { min-height: 100px; border-radius: 8px; border: 2px dashed rgba(40,167,69,0.35); background: linear-gradient(135deg, #f9fafb 0%, #f1f8e9 100%); }
+    .filepond--drop-label:hover { border-color: #28a745; background: linear-gradient(135deg, #fff 0%, #e8f5e9 100%); }
+    .filepond--drop-label label { padding: 1em; cursor: pointer; font-size: 0.85rem; color: #6b7280; }
+    .filepond--label-action { text-decoration: none !important; color: #28a745; font-weight: 600; background: rgba(40,167,69,0.08); padding: 4px 12px; border-radius: 20px; }
+    .filepond--panel-root { background: transparent; border-radius: 8px; }
+    .filepond--item-panel { background: linear-gradient(135deg, #28a745, #20c997) !important; border-radius: 8px !important; }
+    .filepond--image-preview-wrapper { border-radius: 6px !important; overflow: hidden; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    FilePond.registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType, FilePondPluginFileValidateSize);
+
+    const serverConfig = {
+        process: {
+            url: '{{ route("upload.part.image") }}',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            onload: (response) => { const data = JSON.parse(response); if (data.success && data.files && data.files.length > 0) return data.files[0].temp_path; return 'Upload failed.'; },
+            onerror: (response) => { try { return JSON.parse(response).message || 'Upload error.'; } catch(e) { return 'Upload error.'; } },
+        },
+        revert: {
+            url: '{{ route("upload.part.image.revert") }}',
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        },
+    };
+
+    const pondOptions = {
+        acceptedFileTypes: ['image/png', 'image/jpeg', 'image/jpg'],
+        maxFileSize: '10MB',
+        maxFiles: 1,
+        server: serverConfig,
+        allowRevert: true,
+        imagePreviewHeight: 140,
+        stylePanelLayout: 'compact',
+        stylePanelAspectRatio: '3:2',
+        labelIdle: '📷 Drag & Drop or <span class="filepond--label-action">Browse</span>',
+        name: 'image',
+    };
+
+    const licensePond = FilePond.create(document.querySelector('.filepond-license'), pondOptions);
+    licensePond.on('processfile', (error, file) => { if (!error) document.getElementById('license_image_data').value = file.serverId; });
+    licensePond.on('removefile', () => { document.getElementById('license_image_data').value = ''; });
+
+    const stampPond = FilePond.create(document.querySelector('.filepond-stamp'), pondOptions);
+    stampPond.on('processfile', (error, file) => { if (!error) document.getElementById('stamp_image_data').value = file.serverId; });
+    stampPond.on('removefile', () => { document.getElementById('stamp_image_data').value = ''; });
+});
+</script>
 @endsection

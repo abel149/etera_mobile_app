@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\Partial;
 use App\Models\Proforma;
 use App\Models\User;
 use App\Models\Cost;
 use App\Models\ProformaApplication;
 use App\Jobs\AutoSelectProformaOffers;
 use App\Notifications\ProformaClosed;
-use App\Notifications\ProformaResultsReadyNotification;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +29,9 @@ class ProformaClosingService
 
             // Clear inbox records
             $proforma->inboxes()->delete();
+
+            // Clear any open Partial broadcast records for this proforma
+            Partial::where('proforma_id', $proforma->id)->delete();
 
             // Send notification to admin
             $this->sendProformaClosedNotification($proforma);
@@ -238,7 +241,7 @@ class ProformaClosingService
      * Calculate billing amounts for a proforma.
      * Returns ['charge' => float, 'vatAmount' => float, 'total' => float] or null.
      */
-    public function calculateBilling(Proforma $proforma): ?array
+    private function calculateBilling(Proforma $proforma): ?array
     {
         try {
             $latestCost = Cost::latest()->first();
@@ -250,18 +253,18 @@ class ProformaClosingService
             $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
             $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
 
+            $isInsurance = false;
+
             if ($proforma->proforma_type && str_starts_with($proforma->proforma_type, 'insurance_')) {
-                $total = (float) ($proforma->insured
-                    ? ($latestCost->insured_cost ?? 0)
-                    : ($latestCost->insurance_proforma ?? 0));
+                $isInsurance = true;
+                $total = \App\Models\InsuranceCost::resolveForPoster($proforma->poster, $latestCost, (bool) $proforma->insured);
             } elseif ($requiredShops > 0 && $requiredGarages == 0) {
                 $count = ProformaApplication::where('proforma_id', $proforma->id)->count();
                 $field = "{$count}_proforma_cost";
                 $total = (float) ($latestCost->$field ?? 0);
             } elseif ($requiredShops == 3 && $requiredGarages == 3) {
-                $total = (float) ($proforma->insured
-                    ? ($latestCost->insured_cost ?? 0)
-                    : ($latestCost->insurance_proforma ?? 0));
+                $isInsurance = true;
+                $total = \App\Models\InsuranceCost::resolveForPoster($proforma->poster, $latestCost, (bool) $proforma->insured);
             } elseif ($requiredShops == 0 && $requiredGarages == 0) {
                 $total = (float) ($latestCost->etera_chereta_cost ?? 0);
             } else {
@@ -272,8 +275,16 @@ class ProformaClosingService
                 return null;
             }
 
-            $charge = $total / (1 + $vatRate);
-            $vatAmount = $total - $charge;
+            if ($isInsurance) {
+                // Cost stored is NET base; VAT is added on top
+                $charge    = $total;
+                $vatAmount = round($total * $vatRate, 2);
+                $total     = $charge + $vatAmount;
+            } else {
+                // Regular/Etera: stored value is VAT-inclusive; extract net
+                $charge    = $total / (1 + $vatRate);
+                $vatAmount = $total - $charge;
+            }
 
             return compact('charge', 'vatAmount', 'total');
         } catch (\Throwable $e) {
@@ -309,18 +320,18 @@ class ProformaClosingService
             $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
 
             // Determine type and total
+            $isInsurance = false;
+
             if ($proforma->proforma_type && str_starts_with($proforma->proforma_type, 'insurance_')) {
-                $total = (float) ($proforma->insured
-                    ? ($latestCost->insured_cost ?? 0)
-                    : ($latestCost->insurance_proforma ?? 0));
+                $isInsurance = true;
+                $total = \App\Models\InsuranceCost::resolveForPoster($proforma->poster, $latestCost, (bool) $proforma->insured);
             } elseif ($requiredShops > 0 && $requiredGarages == 0) {
                 $count = ProformaApplication::where('proforma_id', $proforma->id)->count();
                 $field = "{$count}_proforma_cost";
                 $total = (float) ($latestCost->$field ?? 0);
             } elseif ($requiredShops == 3 && $requiredGarages == 3) {
-                $total = (float) ($proforma->insured
-                    ? ($latestCost->insured_cost ?? 0)
-                    : ($latestCost->insurance_proforma ?? 0));
+                $isInsurance = true;
+                $total = \App\Models\InsuranceCost::resolveForPoster($proforma->poster, $latestCost, (bool) $proforma->insured);
             } elseif ($requiredShops == 0 && $requiredGarages == 0) {
                 $total = (float) ($latestCost->etera_chereta_cost ?? 0);
             } else {
@@ -332,8 +343,16 @@ class ProformaClosingService
                 return;
             }
 
-            $charge = $total / (1 + $vatRate);
-            $vatAmount = $total - $charge;
+            if ($isInsurance) {
+                // Cost stored is NET base; VAT is added on top
+                $charge    = $total;
+                $vatAmount = round($total * $vatRate, 2);
+                $total     = $charge + $vatAmount;
+            } else {
+                // Regular/Etera: stored value is VAT-inclusive; extract net
+                $charge    = $total / (1 + $vatRate);
+                $vatAmount = $total - $charge;
+            }
 
             $recipientEmail = $proforma->customer_email ?? $proforma->poster?->email;
             if (!$recipientEmail) {
@@ -385,9 +404,9 @@ class ProformaClosingService
     private function sendProformaClosedNotification(Proforma $proforma)
     {
         try {
-            // Notify all admin and superadmin users
-            $adminUsers = User::whereIn('role', ['admin', 'superadmin'])->get();
-
+            // Get all admin users
+            $adminUsers = User::where('role', 'admin')->get();
+            
             foreach ($adminUsers as $admin) {
                 $admin->notify(new ProformaClosed($proforma));
             }

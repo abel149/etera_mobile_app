@@ -13,7 +13,7 @@ class RoleMiddleware
             return redirect('/login')->with('error', 'Please login again!');
         }
 
-        if (Auth::user()->role !== 'insurance') {
+        if (!in_array(Auth::user()->role, ['insurance', 'insurance_agent'])) {
             Auth::logout();
             return redirect('/login')->with('error', 'Please login again!');
         }

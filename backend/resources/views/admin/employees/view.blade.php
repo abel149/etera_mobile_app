@@ -192,10 +192,10 @@
 				<h5 class="modal-title">Delete</h5>
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 			</div>
-			<div class="modal-body">Are you sure you want to delete this garage user?</div>
+			<div class="modal-body">Are you sure you want to delete this Operator user?</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-outline-secondary radius-30" data-bs-dismiss="modal">Cancel</button>
-				<button type="button" class="btn btn-danger radius-30">Delete</button>
+				<button type="button" id="confirmSingleDeleteBtn" class="btn btn-danger radius-30">Delete</button>
 			</div>
 		</div>
 	</div>
@@ -242,17 +242,30 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle delete modals
     const singleDeleteModal = document.getElementById('singleDelete');
+    const confirmSingleDeleteBtn = document.getElementById('confirmSingleDeleteBtn');
+    let pendingDeleteForm = null;
+
     if (singleDeleteModal) {
         singleDeleteModal.addEventListener('show.bs.modal', function (event) {
             const button = event.relatedTarget;
-            const employeeId = button.closest('tr').querySelector('input[type="checkbox"]').value || 
-                              button.closest('tr').getAttribute('data-employee-id');
-            // Set up delete form action
+            const employeeId = button.closest('tr').getAttribute('data-employee-id');
+
+            // Build a fresh delete form for this employee
             const deleteForm = document.createElement('form');
             deleteForm.method = 'POST';
             deleteForm.action = '{{ route("admin.employees.destroy", ":id") }}'.replace(':id', employeeId);
             deleteForm.innerHTML = '@csrf @method("DELETE")';
             document.body.appendChild(deleteForm);
+
+            pendingDeleteForm = deleteForm;
+        });
+    }
+
+    if (confirmSingleDeleteBtn) {
+        confirmSingleDeleteBtn.addEventListener('click', function () {
+            if (pendingDeleteForm) {
+                pendingDeleteForm.submit();
+            }
         });
     }
 });

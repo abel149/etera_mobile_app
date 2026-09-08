@@ -128,12 +128,6 @@
                         <h5 class="modal-title">Transactions for {{ $summary->user->name }}</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
-<script>
-    console.log(
-        "Invoices for user {{ $summary->user->id }}:", 
-        JSON.stringify(@json($invoices->toArray()), null, 2)
-    );
-</script>
                     <div class="modal-body">
                         {{-- INVOICES TABLE --}}
                         @if($invoices)

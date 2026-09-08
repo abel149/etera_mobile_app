@@ -22,7 +22,7 @@
                                         <button type="submit" class="btn btn-primary radius-30 px-4" onclick="notification('Brand Added Successfully')"> Add
                                         </button>
                                         &nbsp
-                                        <a href="/brands" type="submit" class="btn btn-outline-secondary radius-30 px-3"> Cancel
+                                        <a href="/admin/brands" type="submit" class="btn btn-outline-secondary radius-30 px-3"> Cancel
                                         </a>
                                     </div>
                                 </form>

@@ -18,13 +18,6 @@
                                         @enderror
                                     </div>
                                     <div class="col-12 col-lg-6">
-                                        <label for="InputPassword" class="form-label">License Plate Number</label>
-                                        <input type="text" name="license_plate_number" value="{{ old('license_plate_number') }}" class="form-control" id="InputPassword" value="">
-                                        @error('license_plate_number')
-                                            <span class="text-danger">{{$message}}</span>
-                                        @enderror
-                                    </div>
-                                    <div class="col-12 col-lg-6">
                                         <label for="InputConfirmPassword" class="form-label">Chassis Number</label>
                                         <input type="text" name="chassis_number" value="{{ old('chassis_number') }}" class="form-control" id="InputConfirmPassword" value="">
                                         @error('chassis_number')

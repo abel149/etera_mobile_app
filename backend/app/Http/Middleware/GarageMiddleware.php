@@ -13,7 +13,7 @@ class GarageMiddleware
             return redirect('/login')->with('error', 'Please login again!');
         }
 
-        if (Auth::user()->role !== 'garage') {
+        if (Auth::user()->role !== 'garage' && Auth::user()->shop_garage != 1) {
             Auth::logout();
             return redirect('/login')->with('error', 'Please login again!');
         }

@@ -50,7 +50,16 @@
                     <!-- Business License Image -->
                     <div class="col-md-6">
                         <label for="license_image_fp" class="form-label">Business License Image</label>
-                        <input type="file" name="license_image" id="license_image_fp" class="filepond" accept="image/*" required>
+                        <input type="file" name="license_image" id="license_image_fp" class="filepond" accept="image/*">
+                        <div id="license_image_fp_progress" style="display:none;" class="mt-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small class="upload-progress-text text-muted">Loading...</small>
+                                <small class="upload-progress-pct text-muted fw-bold">0%</small>
+                            </div>
+                            <div class="progress" style="height:6px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated upload-progress-bar" role="progressbar" style="width:0%"></div>
+                            </div>
+                        </div>
                         @error('license_image')
                             <span class="text-danger">{{ $message }}</span>
                         @enderror
@@ -59,7 +68,16 @@
                     <!-- Stamp Image -->
                     <div class="col-md-6">
                         <label for="stamp_image_fp" class="form-label">Stamp Image</label>
-                        <input type="file" name="stamp_image" id="stamp_image_fp" class="filepond" accept="image/*" required>
+                        <input type="file" name="stamp_image" id="stamp_image_fp" class="filepond" accept="image/*">
+                        <div id="stamp_image_fp_progress" style="display:none;" class="mt-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small class="upload-progress-text text-muted">Loading...</small>
+                                <small class="upload-progress-pct text-muted fw-bold">0%</small>
+                            </div>
+                            <div class="progress" style="height:6px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated upload-progress-bar" role="progressbar" style="width:0%"></div>
+                            </div>
+                        </div>
                         @error('stamp_image')
                             <span class="text-danger">{{ $message }}</span>
                         @enderror
@@ -72,6 +90,16 @@
                         @error('email')
                             <span class="text-danger">{{ $message }}</span>
                         @enderror
+                    </div>
+
+                    <!-- Dual Service Checkbox -->
+                    <div class="col-md-6">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="shop_garage" id="shop_garage" value="1">
+                            <label class="form-check-label" for="shop_garage">
+                                Dual Service (Shop + Garage)
+                            </label>
+                        </div>
                     </div>
 
                     <hr/>
@@ -87,25 +115,68 @@
 </div>
 <!-- end page wrapper -->
 
-<link href="https://unpkg.com/filepond/dist/filepond.css" rel="stylesheet" />
-<link href="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css" rel="stylesheet" />
-
-<script src="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.js"></script>
-<script src="https://unpkg.com/filepond-plugin-file-validate-type/dist/filepond-plugin-file-validate-type.js"></script>
-<script src="https://unpkg.com/filepond/dist/filepond.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     FilePond.registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType);
 
     document.querySelectorAll('.filepond').forEach(el => {
-        FilePond.create(el, {
+        const pond = FilePond.create(el, {
             allowMultiple: false,
             acceptedFileTypes: ['image/*'],
             labelIdle: 'Drag & drop an image or <span class="filepond--label-action">Browse</span>',
+            labelFileProcessing: 'Loading...',
+            labelFileProcessingComplete: '✓ Ready',
             credits: false,
             storeAsFile: true,
             stylePanelLayout: 'compact',
             imagePreviewHeight: 150,
+        });
+
+        const progressWrap = document.getElementById(el.id + '_progress');
+        const bar  = progressWrap && progressWrap.querySelector('.upload-progress-bar');
+        const text = progressWrap && progressWrap.querySelector('.upload-progress-text');
+        const pct  = progressWrap && progressWrap.querySelector('.upload-progress-pct');
+
+        pond.on('addfilestart', () => {
+            if (!progressWrap) return;
+            progressWrap.style.display = 'block';
+            bar.className = 'progress-bar progress-bar-striped progress-bar-animated upload-progress-bar';
+            bar.style.width = '0%';
+            text.textContent = 'Loading...';
+            pct.textContent = '0%';
+            let val = 0;
+            el._uploadInterval = setInterval(() => {
+                val = Math.min(val + 8, 85);
+                bar.style.width = val + '%';
+                pct.textContent = val + '%';
+                if (val >= 85) clearInterval(el._uploadInterval);
+            }, 40);
+        });
+
+        pond.on('addfile', (error) => {
+            if (!progressWrap) return;
+            clearInterval(el._uploadInterval);
+            if (error) {
+                bar.className = 'progress-bar upload-progress-bar bg-danger';
+                bar.style.width = '100%';
+                text.textContent = 'Failed to load';
+                pct.textContent = '';
+            } else {
+                bar.className = 'progress-bar upload-progress-bar bg-success';
+                bar.style.width = '100%';
+                text.textContent = '✓ Image ready';
+                pct.textContent = '100%';
+            }
+        });
+
+        pond.on('removefile', () => {
+            if (!progressWrap) return;
+            clearInterval(el._uploadInterval);
+            progressWrap.style.display = 'none';
+            bar.style.width = '0%';
+            bar.className = 'progress-bar progress-bar-striped progress-bar-animated upload-progress-bar';
+            text.textContent = 'Loading...';
+            pct.textContent = '0%';
         });
     });
 });

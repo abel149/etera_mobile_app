@@ -9,11 +9,13 @@ class LogViewerController extends Controller
 {
         public function index()
     {
+        abort_unless(in_array(auth()->user()->role, ['admin', 'superadmin']), 403);
         return view('admin.logs');
     }
 
     public function fetchLogs()
     {
+        abort_unless(in_array(auth()->user()->role, ['admin', 'superadmin']), 403);
         $path = storage_path('logs/laravel.log');
 
         if (!File::exists($path)) {

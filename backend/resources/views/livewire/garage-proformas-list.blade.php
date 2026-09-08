@@ -1,4 +1,4 @@
-<div>
+<div wire:poll.keep-alive.2m>
     <style>
     /* Layout */
     .sidebar-container {
@@ -138,7 +138,7 @@
                             <h4 class="filter-label">Search by License Plate</h4>
                             <div class="input-with-icon mb-2">
                                 <input
-                                    wire:model.live="filters.license"
+                                    wire:model.live.debounce.300ms="filters.license"
                                     type="text"
                                     class="form-control form-control-sm"
                                     placeholder="Enter license plate">
@@ -149,18 +149,44 @@
                         <!-- Car Type Filter -->
                         <div>
                             <h4 class="filter-label">Car Type</h4>
-                            <div class="btn-group w-100" role="group">
-                                @foreach(['All', 'ICE', 'EV', 'Hybrid'] as $type)
+                            <div class="btn-group w-100 flex-wrap" role="group">
+                                @foreach(['All', 'Sedan/S.U.V(GAS)', 'Sedan/S.U.V(EV)', 'Mini Van(GAS)', 'Mini Van(EV)', 'Isuzu/Bus(GAS)', 'Isuzu/Bus(EV)', 'Heavy'] as $type)
                                     <button
                                         wire:click="$set('filters.car_type', '{{ $type }}')"
-                                        class="btn btn-xs w-100 {{ $filters['car_type'] === $type ? 'btn-primary' : 'btn-outline-primary' }}">
+                                        class="btn btn-xs flex-fill {{ $filters['car_type'] === $type ? 'btn-primary' : 'btn-outline-primary' }}">
                                         {{ $type }}
                                     </button>
                                 @endforeach
                             </div>
                         </div>
 
-                        
+                        <!-- Damage Severity Filter -->
+                        <div>
+                            <h4 class="filter-label">Damage Severity</h4>
+                            <div class="btn-group w-100" role="group">
+                                <button
+                                    wire:click="$set('filters.damage_severity', 'All')"
+                                    class="btn btn-xs w-100 {{ $filters['damage_severity'] === 'All' ? 'btn-primary' : 'btn-outline-primary' }}">
+                                    All
+                                </button>
+                                <button
+                                    wire:click="$set('filters.damage_severity', 'minor')"
+                                    class="btn btn-xs w-100 {{ $filters['damage_severity'] === 'minor' ? 'btn-primary' : 'btn-outline-primary' }}">
+                                    Minor - ቀላል
+                                </button>
+                                <button
+                                    wire:click="$set('filters.damage_severity', 'major')"
+                                    class="btn btn-xs w-100 {{ $filters['damage_severity'] === 'major' ? 'btn-primary' : 'btn-outline-primary' }}">
+                                    Major - ከባድ
+                                </button>
+                                <button
+                                    wire:click="$set('filters.damage_severity', 'severe')"
+                                    class="btn btn-xs w-100 {{ $filters['damage_severity'] === 'severe' ? 'btn-primary' : 'btn-outline-primary' }}">
+                                    Severe - ከፍተኛ
+                                </button>
+                            </div>
+                        </div>
+
 
                         <!-- Component Filter -->
                         <div>

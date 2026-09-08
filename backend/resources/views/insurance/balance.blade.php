@@ -83,6 +83,72 @@
 
 </div>
 
+{{-- ================= CLAIM OFFICERS & COMPANY TOTALS ================= --}}
+@if($user->role === 'insurance')
+<div class="card shadow-sm mb-4">
+<div class="card-body">
+<h5 class="mb-3">Claim Officers Balance (Owed TO Etera)</h5>
+
+<div class="table-responsive">
+<table class="table align-middle mb-0">
+<thead class="table-light">
+<tr>
+<th>Claim Officer</th>
+<th>Phone</th>
+<th class="text-end">Pending TO Etera</th>
+<th class="text-end">Paid TO Etera</th>
+</tr>
+</thead>
+<tbody>
+@forelse($agents as $agent)
+<tr>
+<td>{{ $agent['name'] }}</td>
+<td>{{ $agent['phone_number'] ?? 'N/A' }}</td>
+<td class="text-end text-warning fw-bold">{{ number_format($agent['pending_to_etera'], 2) }} ETB</td>
+<td class="text-end text-success fw-bold">{{ number_format($agent['paid_to_etera'], 2) }} ETB</td>
+</tr>
+@empty
+<tr>
+<td colspan="4" class="text-center text-muted">No claim officers found.</td>
+</tr>
+@endforelse
+</tbody>
+<tfoot class="table-light">
+<tr class="fw-bold">
+<td colspan="2">Insurance Company Total</td>
+<td class="text-end text-warning">{{ number_format($companyTotals['pending_to_etera'], 2) }} ETB</td>
+<td class="text-end text-success">{{ number_format($companyTotals['paid_to_etera'], 2) }} ETB</td>
+</tr>
+</tfoot>
+</table>
+</div>
+
+<div class="row text-center mt-4">
+<div class="col-md-6 mb-3">
+<div class="card shadow-sm border-start border-danger border-4">
+<div class="card-body">
+<h6 class="text-muted">Total Pending TO Etera</h6>
+<h4 class="text-danger">{{ number_format($companyTotals['pending_to_etera'], 2) }} ETB</h4>
+<small class="text-muted">Company + All Claim Officers (Unpaid)</small>
+</div>
+</div>
+</div>
+
+<div class="col-md-6 mb-3">
+<div class="card shadow-sm border-start border-success border-4">
+<div class="card-body">
+<h6 class="text-muted">Total Paid TO Etera</h6>
+<h4 class="text-success">{{ number_format($companyTotals['paid_to_etera'], 2) }} ETB</h4>
+<small class="text-muted">Company + All Claim Officers (Paid)</small>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+@endif
+
 {{-- ================= TRANSACTIONS ================= --}}
 <div class="row" id="transactionCards"></div>
 

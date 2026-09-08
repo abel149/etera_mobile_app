@@ -222,13 +222,6 @@
         © <script>document.write(new Date().getFullYear())</script>. All rights reserved.
     </p>
 
-    <p class="mb-0">
-        <!--Made by -->
-        <!--<a href="https://www.primetechplc.com" target="_blank" rel="noopener">-->
-        <!--    Prime Software-->
-        <!--</a> -->
-        <!--in collaboration with <strong>Beemnet Abraham</strong>.-->
-    </p>
 </footer>
 	</div>
 	<!--end wrapper-->

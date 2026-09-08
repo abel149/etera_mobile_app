@@ -168,9 +168,13 @@ class="current"
                                   <div class="col-12 col-lg-6">
     <label for="car_type" class="form-label">Car Type</label>
     <select name="car_type" id="car_type" required aria-label="Default select example">
-        <option value="ICE" {{ old('car_type', 'ICE') == 'ICE' ? 'selected' : '' }}>ICE(Gas)</option>
-        <option value="EV" {{ old('car_type') == 'EV' ? 'selected' : '' }}>EV</option>
-        <option value="Hybrid" {{ old('car_type') == 'Hybrid' ? 'selected' : '' }}>Hybrid</option>
+        <option value="Sedan/S.U.V(GAS)" {{ old('car_type', 'Sedan/S.U.V(GAS)') == 'Sedan/S.U.V(GAS)' ? 'selected' : '' }}>Sedan/S.U.V(GAS)</option>
+        <option value="Sedan/S.U.V(EV)" {{ old('car_type') == 'Sedan/S.U.V(EV)' ? 'selected' : '' }}>Sedan/S.U.V(EV)</option>
+        <option value="Mini Van(GAS)" {{ old('car_type') == 'Mini Van(GAS)' ? 'selected' : '' }}>Mini Van(GAS)</option>
+        <option value="Mini Van(EV)" {{ old('car_type') == 'Mini Van(EV)' ? 'selected' : '' }}>Mini Van(EV)</option>
+        <option value="Isuzu/Bus(GAS)" {{ old('car_type') == 'Isuzu/Bus(GAS)' ? 'selected' : '' }}>Isuzu/Bus(GAS)</option>
+        <option value="Isuzu/Bus(EV)" {{ old('car_type') == 'Isuzu/Bus(EV)' ? 'selected' : '' }}>Isuzu/Bus(EV)</option>
+        <option value="Heavy" {{ old('car_type') == 'Heavy' ? 'selected' : '' }}>Heavy Duty</option>
     </select>
 
     @error('car_type')
@@ -225,14 +229,11 @@ class="current"
                                     <label for="InputEmail2" class="form-label">Phone Number</label>
                                     <input type="text" name="customer_phone_number" class="form-control" id="InputEmail2" required placeholder="Example: +251900000000 or 0900000000" value="{{old('customer_phone_number')}}">
                                 </div>
-                                <div class="col-12 col-lg-6">
-                                    <label for="InputPassword" class="form-label">License Plate Number (Code, City & Number)/please note this will be used as your file number/</label>
-                                    <input type="text"  name="license_plate_number"class="form-control" id="InputPassword" required value="{{old('license_plate_number')}}" placeholder="Example: 2AA-12345">
-                                </div>
+                                
                                 <div class="col-12 col-lg-6">
     <label class="form-label">
         Chassis Number
-        <small class="text-muted">(Optional)</small>
+        
     </label>
 
     <div class="vin-single-wrapper position-relative">
@@ -241,6 +242,7 @@ class="current"
                id="vin_input"
                name="chassis_number"
                maxlength="17"
+               required
                placeholder="Enter Chassis Number"
                value="{{ old('chassis_number') }}">
         <span class="vin-counter" id="vin_counter"></span>
@@ -269,7 +271,7 @@ class="current"
                                             <h3 class="mb-4">Add the required spare parts</h3>
                                             <br>
                                         </div>
-                                        <button type="button" id="add-repeater" class="button radius-30">Add another part</button>
+                                        
                                     </div>
                                     <div id="repeater-items">
                                         <div class="repeater-item">
@@ -279,7 +281,7 @@ class="current"
                                                 </div>
                                                 <div class="col-12 col-lg-4">
                                                     <label for="inputName1" class="form-label">Condition</label>
-                                                    <select class="form-select" name="parts[condition][]" aria-label="Default select example" required>
+                                                    <select class="form-select" name="parts[condition][]" aria-label="Default select example" required oninvalid="this.setCustomValidity('Please select a condition')" onchange="this.setCustomValidity('')">
                                                         <option value="">Select Condition</option>
                                                         <option value="New" selected>New</option>
                                                         <option value="Used" disabled>Used</option>
@@ -287,7 +289,7 @@ class="current"
                                                 </div>
                                                 <div class="col-12 col-lg-4">
                                                     <label for="inputEmail1" class="form-label">Part name and (Part Number)</label>
-                                                    <input name="parts[number][]" value="{{old('parts[number][]')}}" type="text" required class="form-control" id="inputEmail1" placeholder="Axel: 0001" data-skip-name="true" data-name="email">
+                                                    <input name="parts[number][]" value="{{old('parts[number][]')}}" type="text" required class="form-control" id="inputEmail1" placeholder="Axel: 0001" data-skip-name="true" data-name="email" oninvalid="this.setCustomValidity('Please enter the part name and number')" oninput="this.setCustomValidity('')">
                                                 </div>
                                                 <div class="col-12 col-lg-4">
                                                     <label for="inputName1" class="form-label">Parts Grade</label>
@@ -300,15 +302,15 @@ class="current"
                                                 </div>
                                                 <div class="col-12 col-lg-3">
                                                     <label for="inputName1" class="form-label">Country Part is Manufactured</label>
-                                                    <input name="parts[country][]" value="{{old('parts[country][]')}}" type="text" class="form-control" id="inputName1" placeholder="" data-name="name" required>
+                                                    <input name="parts[country][]" value="{{old('parts[country][]')}}" type="text" class="form-control" id="inputName1" placeholder="" data-name="name" required oninvalid="this.setCustomValidity('Please enter the country')" oninput="this.setCustomValidity('')">
                                                 </div>
                                                 <div class="col-12 col-lg-2">
                                                     <label for="inputName1" class="form-label">Qty</label>
-                                                    <input name="parts[quantity][]" value="{{old('parts[quantity][]')}}" type="number" class="form-control" id="inputName1" placeholder="" data-name="name">
+                                                    <input name="parts[quantity][]" value="{{ old('parts[quantity][]', 1) }}" type="number" class="form-control" id="inputName1" placeholder="e.g. 1" data-name="name" min="1" required oninvalid="this.setCustomValidity('Quantity must be at least 1')" oninput="this.setCustomValidity('')">
                                                 </div>
                                                 <div class="col-12 col-lg-2">
                                                     <label for="component" class="form-label">Component</label>
-                                                    <select name="parts[component][]" id="component" class="form-select" required>
+                                                    <select name="parts[component][]" id="component" class="form-select" required oninvalid="this.setCustomValidity('Please select a component')" onchange="this.setCustomValidity('')">
                                                         <option value="">Select Component</option>
                                                         <option value="Body Parts">Body Parts</option>
                                                         <option value="Mechanical Parts">Mechanical Parts</option>
@@ -320,7 +322,7 @@ class="current"
                                                 </div>
                                                 <div class="repeater-remove-btn remove-repeater col-12 col-lg-1">
                                                     <label for="inputEmail1" class="form-label"> &nbsp</label>
-                                                    <button type="button" class="remove-repeater btn btn-danger button red radius-30"><i class="icon-feather-trash-2"></i></button>
+                                                    <button type="button" class="remove-repeater btn btn-danger button red radius-30"><i class="bx bx-trash"></i></button>
                                                 </div>
                                                 <div class="col-12">
                                                     <hr/>
@@ -328,6 +330,7 @@ class="current"
                                             </div>
                                         </div>
                                     </div>
+                                    <button type="button" id="add-repeater" class="button radius-30">Add another part</button>
                                 </div>
                             </div>
                             <div >
@@ -571,7 +574,7 @@ function initializeRepeater() {
                 </div>
                 <div class="col-12 col-lg-4">
                     <label class="form-label">Condition</label>
-                    <select class="form-select" name="parts[condition][]" required>
+                    <select class="form-select" name="parts[condition][]" required oninvalid="this.setCustomValidity('Please select a condition')" onchange="this.setCustomValidity('')">
                         <option value="">Select Condition</option>
                         <option value="New" selected>New</option>
                         <option value="Used" disabled>Used</option>
@@ -579,7 +582,7 @@ function initializeRepeater() {
                 </div>
                 <div class="col-12 col-lg-4">
                     <label class="form-label">Part name and (Part Number)</label>
-                    <input name="parts[number][]" type="text" required class="form-control" placeholder="Axel: 0001">
+                    <input name="parts[number][]" type="text" required class="form-control" placeholder="Axel: 0001" oninvalid="this.setCustomValidity('Please enter the part name and number')" oninput="this.setCustomValidity('')">
                 </div>
                 <div class="col-12 col-lg-4">
                     <label class="form-label">Grade</label>
@@ -593,15 +596,15 @@ function initializeRepeater() {
                 </div>
                 <div class="col-12 col-lg-3">
                     <label class="form-label">Country Part is Manufactured</label>
-                    <input name="parts[country][]" type="text" class="form-control" required>
+                    <input name="parts[country][]" type="text" class="form-control" required oninvalid="this.setCustomValidity('Please enter the country')" oninput="this.setCustomValidity('')">
                 </div>
                 <div class="col-12 col-lg-2">
                     <label class="form-label">Qty</label>
-                    <input name="parts[quantity][]" type="number" class="form-control">
+                    <input name="parts[quantity][]" type="number" class="form-control" min="1" value="1" required oninvalid="this.setCustomValidity('Quantity must be at least 1')" oninput="this.setCustomValidity('')">
                 </div>
                 <div class="col-12 col-lg-2">
                     <label class="form-label">Component</label>
-                    <select name="parts[component][]" class="form-select" required>
+                    <select name="parts[component][]" class="form-select" required oninvalid="this.setCustomValidity('Please select a component')" onchange="this.setCustomValidity('')">
                         <option value="">Select Component</option>
                         <option value="Body Parts">Body Parts</option>
                         <option value="Mechanical Parts">Mechanical Parts</option>
@@ -620,7 +623,7 @@ function initializeRepeater() {
                 <div class="col-12 col-lg-1">
                     <label class="form-label">&nbsp;</label>
                     <button type="button" class="remove-repeater btn btn-danger radius-30">
-                        <i class="icon-feather-trash-2"></i>
+                        <i class="bx bx-trash"></i>
                     </button>
                 </div>
                 <div class="col-12"><hr/></div>
@@ -908,6 +911,18 @@ function initializeVoiceRecording() {
                 alert('Please stop the voice recording before submitting the form.');
                 return false;
             }
+
+            // Validate quantity fields are >= 1
+            const quantityInputs = document.querySelectorAll('input[name="parts[quantity][]"]');
+            for (let i = 0; i < quantityInputs.length; i++) {
+                const val = parseInt(quantityInputs[i].value);
+                if (!quantityInputs[i].value || val < 1) {
+                    e.preventDefault();
+                    quantityInputs[i].setCustomValidity('Quantity must be at least 1');
+                    quantityInputs[i].reportValidity();
+                    return false;
+                }
+            }
             
             const submitText = submitButton.querySelector('.submit-text');
             const loadingText = submitButton.querySelector('.loading-text');
@@ -979,7 +994,6 @@ function validateStep1() {
 
 function validateStep2() {
     const phoneNumber = document.querySelector('input[name="customer_phone_number"]');
-    const licensePlate = document.querySelector('input[name="license_plate_number"]');
     const chassisNumber = document.querySelector('input[name="chassis_number"]');
     
     if (!phoneNumber || !phoneNumber.value.trim()) {
@@ -987,13 +1001,6 @@ function validateStep2() {
         if (phoneNumber) phoneNumber.focus();
         return false;
     }
-    
-    if (!licensePlate || !licensePlate.value.trim()) {
-        alert('Please enter the license plate number.');
-        if (licensePlate) licensePlate.focus();
-        return false;
-    }
-    
     
     stepper1.next();
 }
@@ -1011,22 +1018,45 @@ function validateStep3() {
         const partNumber = partRow ? partRow.querySelector('input[name="parts[number][]"]') : null;
         const component = partRow ? partRow.querySelector('select[name="parts[component][]"]') : null;
         
+        const country = partRow ? partRow.querySelector('input[name="parts[country][]"]') : null;
+
         if (!conditionSelect.value || conditionSelect.value !== 'New') {
-            alert('Please select "New" condition for all spare parts.');
-            conditionSelect.focus();
+            conditionSelect.setCustomValidity('Please select "New" condition');
+            conditionSelect.reportValidity();
             return false;
-        }
-        
+        } else { conditionSelect.setCustomValidity(''); }
+
         if (!partNumber || !partNumber.value.trim()) {
-            alert('Please enter part number for all spare parts.');
-            if (partNumber) partNumber.focus();
+            if (partNumber) {
+                partNumber.setCustomValidity('Please enter the part name and number');
+                partNumber.reportValidity();
+            }
             return false;
-        }
-        
+        } else if (partNumber) { partNumber.setCustomValidity(''); }
+
+        if (country && !country.value.trim()) {
+            country.setCustomValidity('Please enter the country');
+            country.reportValidity();
+            return false;
+        } else if (country) { country.setCustomValidity(''); }
+
         if (!component || !component.value) {
-            alert('Please select component for all spare parts.');
-            if (component) component.focus();
+            if (component) {
+                component.setCustomValidity('Please select a component');
+                component.reportValidity();
+            }
             return false;
+        } else if (component) { component.setCustomValidity(''); }
+
+        const quantity = partRow ? partRow.querySelector('input[name="parts[quantity][]"]') : null;
+        if (!quantity || !quantity.value || parseInt(quantity.value) < 1) {
+            if (quantity) {
+                quantity.setCustomValidity('Quantity must be at least 1');
+                quantity.reportValidity();
+            }
+            return false;
+        } else if (quantity) {
+            quantity.setCustomValidity('');
         }
     }
     

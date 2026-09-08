@@ -68,14 +68,11 @@ public function updateSelf(Request $request)
             'license_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
-        $user->update($request->only([
-            'name',
-            'phone_number',
-            'email',
-            'tin_number',
-            // 'business_license_number',
-            // 'license_expire_date',
-        ]));
+        $updateData = $request->only(['name', 'phone_number', 'tin_number']);
+        if ($email !== null) {
+            $updateData['email'] = $email;
+        }
+        $user->update($updateData);
 
         if ($request->hasFile('stamp_image')) {
             try {

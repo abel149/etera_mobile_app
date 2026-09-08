@@ -57,6 +57,26 @@
                         <input name="email" type="email" class="form-control">
                     </div>
 
+                    <!-- Dealer Checkbox -->
+                    <div class="col-md-6">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="dealers" id="dealers" value="1">
+                            <label class="form-check-label" for="dealers">
+                                Is Dealer
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Dual Service Checkbox -->
+                    <div class="col-md-6">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="shop_garage" id="shop_garage" value="1">
+                            <label class="form-check-label" for="shop_garage">
+                                Dual Service (Shop + Garage)
+                            </label>
+                        </div>
+                    </div>
+
                     <hr>
 
                     <button class="btn btn-primary">Add</button>

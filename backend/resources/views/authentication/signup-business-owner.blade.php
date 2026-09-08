@@ -65,17 +65,6 @@
             @error('name')<div class="etera-error-text">{{ $message }}</div>@enderror
         </div>
 
-        {{-- Email --}}
-        <div class="etera-input-group">
-            <label>Email Address <span style="color:var(--etera-text-muted); font-weight:400;">(optional)</span></label>
-            <input type="email"
-                   class="etera-input {{ $errors->has('email') ? 'error' : '' }}"
-                   name="email"
-                   placeholder="john@example.com"
-                   value="{{ old('email') }}">
-            @error('email')<div class="etera-error-text">{{ $message }}</div>@enderror
-        </div>
-
         {{-- Phone Number --}}
         <div class="etera-input-group">
             <label>Phone Number <span style="color:#dc3545">*</span></label>
@@ -305,8 +294,8 @@
                 showErr($(this), 'You reached 10 digits.');
                 return;
             }
-            if (digits.length >= 2 && !digits.startsWith('09')) {
-                showErr($(this), 'Phone number should start with 09.');
+            if (digits.length >= 2 && !(digits.startsWith('09') || digits.startsWith('07'))) {
+                showErr($(this), 'Phone number should start with 09 or 07.');
                 return;
             }
             clearErr($(this));
@@ -314,13 +303,12 @@
 
         // Blur validation
         $('input[name="name"]').on('blur', function(){ $(this).val().trim() === '' ? showErr($(this), 'Full name is required.') : clearErr($(this)); });
-        $('input[name="email"]').on('blur', function(){ const v = $(this).val().trim(); if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) showErr($(this), 'Please enter a valid email.'); else clearErr($(this)); });
         $('#inputPhone').on('blur', function(){
             const v = (this.value || '').trim();
             const digits = (v || '').replace(/\D/g, '');
             if (!digits) { showErr($(this), 'Phone is required.'); return; }
             if (digits.length !== 10) { showErr($(this), 'Phone number must be 10 digits.'); return; }
-            if (!digits.startsWith('09')) { showErr($(this), 'Phone number should start with 09.'); return; }
+            if (!(digits.startsWith('09') || digits.startsWith('07') )) { showErr($(this), 'Phone number should start with 09 or 07.'); return; }
             clearErr($(this));
         });
 
@@ -328,7 +316,6 @@
         $('#businessRegisterForm').on('submit', function(e){
             let err = false;
             const $n = $('input[name="name"]'); if ($n.val().trim() === '') { showErr($n, 'Full name is required.'); err = true; } else clearErr($n);
-            const $em = $('input[name="email"]'), ev = $em.val().trim(); if (ev && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ev)) { showErr($em, 'Please enter a valid email.'); err = true; } else clearErr($em);
             const $ph = $('#inputPhone'); if (!$ph.val().trim()) { showErr($ph, 'Phone is required.'); err = true; } else clearErr($ph);
             $('#password').trigger('blur'); $('#password_confirmation').trigger('blur');
             if ($('#passwordError').is(':visible') || $('#confirmPasswordError').is(':visible')) err = true;

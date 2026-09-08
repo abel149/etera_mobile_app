@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -23,34 +22,16 @@ class NewProformaFile extends Notification
 
     public function via($notifiable)
     {
-        $channels = ['database'];
-        if (!empty($notifiable->device_token)) {
-            $channels[] = FcmChannel::class;
-        }
-        return $channels;
-    }
-
-    public function toFcm($notifiable): array
-    {
-        return [
-            'New Proforma Available',
-            "New proforma for {$this->brand->name} — tap to view and apply.",
-            [
-                'type'        => 'new_proforma',
-                'proforma_id' => (string) $this->proforma->id,
-            ],
-        ];
+        return ['database']; // Add 'mail' if you want to send emails as well
     }
 
     public function toArray($notifiable)
     {
         return [
-            'type'       => 'new_proforma',
-            'title'      => 'New Proforma Created',
-            'brand_id'   => $this->brand->id,
+            'brand_id' => $this->brand->id,
             'brand_name' => $this->brand->name,
-            'proforma_id'=> $this->proforma->id,
-            'message'    => 'New proforma for brand: ' . $this->brand->name,
+            'proforma_id' => $this->proforma->id,
+            'message' => 'A new proforma has been created for the brand you serve: ' . $this->brand->name,
         ];
     }
 

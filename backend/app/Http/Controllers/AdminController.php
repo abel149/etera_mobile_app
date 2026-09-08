@@ -151,7 +151,6 @@ class AdminController extends Controller
             'brand',
             'parts',
             'applications.applicationBy',
-            'applications.prices.part',
             'inboxes.user',
         ])
             ->findOrFail($id);
@@ -165,11 +164,92 @@ class AdminController extends Controller
             $applications = $applications->take($requiredShops);
         }
 
-        // Shops and garages for the send-to-inbox form
-        $shops = \App\Models\User::where('role', 'shop')->where('approved', true)->orderBy('name')->get();
-        $garages = \App\Models\User::where('role', 'garage')->where('approved', true)->orderBy('name')->get();
+        $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
 
-        return view('admin.proforma.details', compact('proforma', 'applications', 'shops', 'garages'));
+        // Shops and garages for the send-to-inbox form
+        // For insurance_shop_garage type, only show users with shop_garage = 1
+        if ($proforma->proforma_type === 'insurance_shop_garage') {
+            $shops   = \App\Models\User::where('role', 'shop')->where('shop_garage', 1)->where('approved', true)->orderBy('name')->get();
+            $garages = \App\Models\User::where('role', 'garage')->where('shop_garage', 1)->where('approved', true)->orderBy('name')->get();
+        } else {
+            $shops   = \App\Models\User::where('role', 'shop')->where('approved', true)->orderBy('name')->get();
+            $garages = \App\Models\User::where('role', 'garage')->where('approved', true)->orderBy('name')->get();
+        }
+
+        // IDs locked by active applications (cannot be replaced)
+        $activeApplicationShopIds = $proforma->applications
+            ->where('from', 'shop')->pluck('application_by')
+            ->map(fn($id) => (int)$id)->unique()->values()->toArray();
+        $activeApplicationGarageIds = $proforma->applications
+            ->where('from', 'garage')->pluck('application_by')
+            ->map(fn($id) => (int)$id)->unique()->values()->toArray();
+
+        // Existing admin inboxes (pre-populate the modal)
+        $adminShopInboxes = $proforma->inboxes
+            ->filter(fn($i) => ($i->source ?? '') === 'admin' && ($i->user?->role === 'shop'))
+            ->sortBy('created_at')->values();
+        $adminGarageInboxes = $proforma->inboxes
+            ->filter(fn($i) => ($i->source ?? '') === 'admin' && ($i->user?->role === 'garage'))
+            ->sortBy('created_at')->values();
+
+        // Insurance-inboxed entries — shown as locked slots in the modal
+        $insuranceShopInboxes = $proforma->inboxes
+            ->filter(fn($i) => ($i->source ?? '') === 'insurance' && ($i->user?->role === 'shop'))
+            ->sortBy('created_at')->values();
+        $insuranceGarageInboxes = $proforma->inboxes
+            ->filter(fn($i) => ($i->source ?? '') === 'insurance' && ($i->user?->role === 'garage'))
+            ->sortBy('created_at')->values();
+
+        // Effective quota: use the stored column value when available, otherwise fall back
+        // to the count of actual insurance inboxes (handles proformas created before the
+        // insurance_shop/garage_quota column was added by migration).
+        $effectiveShopQuota   = $proforma->shopPartnerQuota()   > 0
+            ? $proforma->shopPartnerQuota()
+            : $insuranceShopInboxes->count();
+        $effectiveGarageQuota = $proforma->garagePartnerQuota() > 0
+            ? $proforma->garagePartnerQuota()
+            : $insuranceGarageInboxes->count();
+
+        // Admin-manageable slot caps (total required minus effective insurance quota).
+        $adminShopSlotCap   = $requiredShops   > 0 ? max(0, $requiredShops   - $effectiveShopQuota)   : 0;
+        $adminGarageSlotCap = $requiredGarages > 0 ? max(0, $requiredGarages - $effectiveGarageQuota) : 0;
+
+        // Hard-lock the irrelevant side based on proforma_type, regardless of stored column values.
+        // This handles legacy proformas where required_number columns may not match the type.
+        if ($proforma->isShopOnlyInsurance()) {
+            $adminGarageSlotCap   = 0;
+            $effectiveGarageQuota = 0;
+        }
+        if ($proforma->isGarageOnlyInsurance()) {
+            $adminShopSlotCap   = 0;
+            $effectiveShopQuota = 0;
+        }
+        if ($proforma->isShopGarageInsurance()) {
+            $adminGarageSlotCap   = 0;
+            $effectiveGarageQuota = 0;
+        }
+
+        // IDs already inboxed (any source) — excluded from dropdown options
+        $alreadyInboxedShopIds   = $proforma->inboxes
+            ->filter(fn($i) => $i->user?->role === 'shop')->pluck('user_id')
+            ->map(fn($id) => (int)$id)->unique()->values()->toArray();
+        $alreadyInboxedGarageIds = $proforma->inboxes
+            ->filter(fn($i) => $i->user?->role === 'garage')->pluck('user_id')
+            ->map(fn($id) => (int)$id)->unique()->values()->toArray();
+
+        // Legacy variable kept for blade compatibility
+        $availableInboxSlots = $adminShopSlotCap;
+
+        return view('admin.proforma.details', compact(
+            'proforma', 'applications', 'shops', 'garages',
+            'activeApplicationShopIds', 'activeApplicationGarageIds',
+            'adminShopSlotCap', 'adminGarageSlotCap',
+            'adminShopInboxes', 'adminGarageInboxes',
+            'insuranceShopInboxes', 'insuranceGarageInboxes',
+            'effectiveShopQuota', 'effectiveGarageQuota',
+            'alreadyInboxedShopIds', 'alreadyInboxedGarageIds',
+            'availableInboxSlots', 'requiredGarages'
+        ));
     }
 
     /**
@@ -201,12 +281,20 @@ class AdminController extends Controller
 
         // Notify shops whose brands match this proforma's brand (skip for garage-only)
         try {
+            $matchingShops = collect();
             if ($proforma->proforma_type !== 'insurance_garage_only') {
-                $matchingShops = User::where('role', 'shop')
+                $shopQuery = User::where('role', 'shop')
                     ->where('approved', true)
                     ->whereHas('brands', function ($q) use ($proforma) {
                         $q->where('brand_id', $proforma->car_brand_id);
-                    })->get();
+                    });
+
+                // For insurance_shop_garage type, only notify users with shop_garage = 1
+                if ($proforma->proforma_type === 'insurance_shop_garage') {
+                    $shopQuery->where('shop_garage', 1);
+                }
+
+                $matchingShops = $shopQuery->get();
 
                 if ($matchingShops->isNotEmpty()) {
                     Notification::send($matchingShops, new ProformaFloatedNotification($proforma));
@@ -215,8 +303,16 @@ class AdminController extends Controller
 
             // Notify garages if proforma is from insurance AND not shop-only
             if ($proforma->poster && $proforma->poster->role === 'insurance'
-                && $proforma->proforma_type !== 'insurance_shop_only') {
-                $garages = User::where('role', 'garage')->where('approved', true)->get();
+                && !in_array($proforma->proforma_type, ['insurance_shop_only'], true)) {
+
+                $garageQuery = User::where('role', 'garage')->where('approved', true);
+
+                // For insurance_shop_garage type, only notify garages with shop_garage = 1
+                if ($proforma->proforma_type === 'insurance_shop_garage') {
+                    $garageQuery->where('shop_garage', 1);
+                }
+
+                $garages = $garageQuery->get();
                 if ($garages->isNotEmpty()) {
                     Notification::send($garages, new ProformaFloatedNotification($proforma));
                 }
@@ -237,6 +333,14 @@ class AdminController extends Controller
             }
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Telegram float notification failed', ['error' => $e->getMessage()]);
+        }
+
+        // Telegram: notify all marketers
+        try {
+            $telegram = $telegram ?? new TelegramService();
+            $telegram->sendProformaFloatedNotificationToMarketers($proforma);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Telegram marketer float notification failed', ['error' => $e->getMessage()]);
         }
 
         // Broadcast via Reverb to all listening clients
@@ -327,29 +431,11 @@ class AdminController extends Controller
         }
 
         $proforma = Proforma::findOrFail($id);
-        $proforma->update(['status' => 'closed']);
-
-        // Notify poster via database + Telegram
-        try {
-            if ($proforma->poster) {
-                $proforma->poster->notify(new \App\Notifications\ProformaSentToOwnerNotification($proforma));
-
-                if (!empty($proforma->poster->telegram_chat_id)) {
-                    (new TelegramService())->sendClosedNotification($proforma->poster->telegram_chat_id, $proforma);
-                }
-
-                // Broadcast close event
-                event(new ProformaStatusChanged($proforma, 'closed', $proforma->poster_id));
-                event(new NotificationSent($proforma->poster->id, [
-                    'message' => 'Proforma #' . $proforma->file_number . ' has been closed',
-                    'type' => 'proforma_closed',
-                    'file_number' => $proforma->file_number,
-                    'proforma_id' => $proforma->id,
-                ], $proforma->poster->unreadNotifications()->count()));
-            }
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('Failed to send close notification', ['error' => $e->getMessage()]);
+        $updateData = ['status' => 'closed'];
+        if (empty($proforma->processed_by)) {
+            $updateData['processed_by'] = auth()->id();
         }
+        $proforma->update($updateData);
 
         // Notify the admin who floated this proforma via Telegram
         try {
@@ -363,7 +449,7 @@ class AdminController extends Controller
             \Illuminate\Support\Facades\Log::warning('Failed to send floater close notification', ['error' => $e->getMessage()]);
         }
 
-        return response()->json(['success' => true, 'message' => 'Proforma closed successfully']);
+        return redirect()->back()->with('success', 'Proforma closed successfully');
     }
 
     /**

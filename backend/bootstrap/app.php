@@ -44,6 +44,12 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\NoCacheAuthenticated::class
         );
 
+        // Force Terms & Conditions agreement, then Telegram connect, for all users
+        $middleware->web(append: [
+            \App\Http\Middleware\TermsMiddleware::class,
+            \App\Http\Middleware\TelegramConnectMiddleware::class,
+        ]);
+
         // Route middleware aliases
         $middleware->alias([
             'auth.user' => \App\Http\Middleware\AuthenticateUser::class,
@@ -74,6 +80,11 @@ return Application::configure(basePath: dirname(__DIR__))
         |--------------------------------------------------------------------------
         */
         $exceptions->renderable(function (\Throwable $e, $request) use ($developers) {
+
+            // Validation errors must be handled by Laravel's default redirect-back-with-errors.
+            if ($e instanceof \Illuminate\Validation\ValidationException) {
+                return null;
+            }
 
             $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
 
@@ -183,6 +194,7 @@ return Application::configure(basePath: dirname(__DIR__))
         */
         $exceptions->dontReport([
             TokenMismatchException::class,
+            \Illuminate\Validation\ValidationException::class,
         ]);
     })
 

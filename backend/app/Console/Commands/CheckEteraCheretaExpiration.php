@@ -376,7 +376,7 @@ class CheckEteraCheretaExpiration extends Command
             // Load applications with eager loading for performance
             $applications = $proforma->applications()
                 ->with(['prices' => function ($query) {
-                    $query->select('id', 'application_id', 'part_total');
+                    $query->select('id', 'application_id', 'unit_price');
                 }, 'applicationBy:id,name,rating'])
                 ->get();
 
@@ -388,12 +388,18 @@ class CheckEteraCheretaExpiration extends Command
             $this->info("🔄 Processing auto-selection for proforma {$proforma->id} with {$applications->count()} applications");
 
             // Calculate total price for each application efficiently
-            $scoredApplications = $applications->map(function ($application) {
+            $scoredApplications = $applications->map(function ($application) use ($proforma) {
                 $totalPrice = $application->amount ?? 0;
                 
-                // If application has per-part pricing, calculate total
+                // If application has per-part pricing, calculate total from current quantities
                 if ($application->prices && $application->prices->count() > 0) {
-                    $totalPrice = $application->prices->sum('part_total');
+                    $totalPrice = 0;
+                    foreach ($proforma->parts as $idx => $part) {
+                        $price = $application->prices->values()->get($idx);
+                        if ($price) {
+                            $totalPrice += $price->unit_price * ($part->quantity ?? 1);
+                        }
+                    }
                 }
 
                 return [

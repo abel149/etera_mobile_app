@@ -48,7 +48,8 @@ class RedirectIfAuthenticated
     {
         return match ($role) {
             'admin', 'superadmin' => '/admin',
-            'insurance' => '/insurance',
+            'insurance'       => '/insurance',
+            'insurance_agent' => '/insurance',
             'others' => '/business-owner',
             'business_owner' => '/business-owner',
             'garage' => '/garage/proformas',

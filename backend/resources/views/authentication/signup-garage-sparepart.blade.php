@@ -175,13 +175,6 @@
             </div>
         </div>
 
-        {{-- Email --}}
-        <div class="etera-input-group">
-            <label>Email Address <span style="color:var(--etera-text-muted); font-weight:400;">(optional)</span></label>
-            <input type="email" class="etera-input {{ $errors->has('email') ? 'error' : '' }}" name="email" placeholder="business@example.com" value="{{ old('email') }}">
-            @error('email')<div class="etera-error-text">{{ $message }}</div>@enderror
-        </div>
-
         {{-- TIN & Location --}}
         <div class="form-grid-2">
             <div class="etera-input-group">
@@ -266,7 +259,6 @@
                 <div class="etera-input-group">
                     <label>Car Brands To Serve</label>
                     <select name="brands[]" id="brands-select" multiple>
-                        <option value="all">Select All</option>
                         @foreach($brands as $brand)
                             <option value="{{ $brand->id }}">{{ $brand->name }}</option>
                         @endforeach
@@ -505,11 +497,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Blur validation
     document.querySelector('input[name="name"]').addEventListener('blur', function(){ !this.value.trim() ? showErr(this, 'Name is required.') : clearErr(this); });
-    document.querySelector('input[name="email"]').addEventListener('blur', function(){
-        const v = this.value.trim();
-        if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) showErr(this, 'Enter a valid email.');
-        else clearErr(this);
-    });
     document.querySelector('input[name="tin_number"]').addEventListener('blur', function(){ !this.value.trim() ? showErr(this, 'TIN is required.') : clearErr(this); });
     document.querySelector('input[name="location"]').addEventListener('blur', function(){ !this.value.trim() ? showErr(this, 'Location is required.') : clearErr(this); });
     document.getElementById('password').addEventListener('blur', function(){
@@ -538,8 +525,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 showErr(this, 'You reached 10 digits.');
                 return;
             }
-            if (digits.length >= 2 && !digits.startsWith('09')) {
-                showErr(this, 'Phone number should start with 09.');
+            if (digits.length >= 2 && !(digits.startsWith('09') || digits.startsWith('07'))) {
+                showErr(this, 'Phone number should start with 09 or 07.');
                 return;
             }
             clearErr(this);
@@ -549,7 +536,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const digits = (this.value || '').replace(/\D/g, '');
             if (!digits) { showErr(this, 'Phone is required.'); return; }
             if (digits.length !== 10) { showErr(this, 'Phone number must be 10 digits.'); return; }
-            if (!digits.startsWith('09')) { showErr(this, 'Phone number should start with 09.'); return; }
+            if (!digits.startsWith('09')) { showErr(this, 'Phone number should start with 09 or 07.'); return; }
             clearErr(this);
         });
     }
@@ -564,14 +551,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const digits = (phoneEl.value || '').replace(/\D/g, '');
         if (!digits) { showErr(phoneEl, 'Phone is required.'); hasError = true; }
         else if (digits.length !== 10) { showErr(phoneEl, 'Phone number must be 10 digits.'); hasError = true; }
-        else if (!digits.startsWith('09')) { showErr(phoneEl, 'Phone number should start with 09.'); hasError = true; }
+        else if (!digits.startsWith('09')) { showErr(phoneEl, 'Phone number should start with 09 or 07.'); hasError = true; }
         else clearErr(phoneEl);
-
-        // Email — optional, only validate format
-        const emailEl = document.querySelector('input[name="email"]');
-        const ev = emailEl.value.trim();
-        if (ev && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ev)) { showErr(emailEl, 'Enter a valid email.'); hasError = true; }
-        else clearErr(emailEl);
 
         const tinEl = document.querySelector('input[name="tin_number"]');
         if (!tinEl.value.trim()) { showErr(tinEl, 'TIN is required.'); hasError = true; } else clearErr(tinEl);
@@ -648,15 +629,6 @@ document.addEventListener('DOMContentLoaded', function() {
 $(document).ready(function () {
     const $select = $('#brands-select');
     $select.select2({ placeholder: "Select car brands", closeOnSelect: false, width: '100%' });
-    $select.on('change', function () {
-        let values = $select.val() || [];
-        if (values.includes('all')) {
-            values = values.filter(v => v !== 'all');
-            const allVals = $select.find('option').not('[value="all"]').map(function(){ return this.value; }).get();
-            if (values.length === allVals.length) $select.val([]).trigger('change.select2');
-            else $select.val(allVals).trigger('change.select2');
-        }
-    });
 });
 </script>
 

@@ -9,45 +9,27 @@
 			<div class="col-12">
 				<div class="card">
 					<div class="card-body">
-						<div class="row align-items-right">
-							<div class="col-lg-9 col-xl-10">
-								<form class="">
-									<div class="row row-cols-auto g-2">
-										<div class="col">
-											<div class="position-relative">
-												<input type="text" class="form-control ps-5 radius-30 " placeholder="Search Spare Part Shop..."> 
-												<span class="position-absolute top-50 product-show translate-middle-y"><i class="bx bx-search"></i></span>
-											</div>
-										</div>
-										<div class="col">
-											<div class="btn-group" role="group" aria-label="Button group with nested dropdown">
-												<button type="button" class="btn btn-white radius-30">
-												<i class="bx bx-filter"></i> Filter</button>
-												<div class="btn-group" role="group">
-												  <button id="btnGroupDrop1" type="button" class="btn btn-white radius-30 dropdown-toggle dropdown-toggle-nocaret px-1" data-bs-toggle="dropdown" aria-expanded="false">
-													<i class='bx bx-chevron-down'></i>
-												  </button>
-												  <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
-													<li><a class="dropdown-item" href="#">Name</a></li>
-													<li><a class="dropdown-item" href="#">Tin #</a></li>
-													<li><a class="dropdown-item" href="#">Date Modified</a></li>
-												  </ul>
-												</div>
-											  </div>
-										</div>
-										<div class="col">
-											<div class="position-relative">
-												<a href="/admin/add-spare-part-shop" type="button" class="btn btn-primary radius-30 "><i class="bx bx-plus me-0"></i> Spare Part Shop</a>
-											</div>
-										</div>
-										{{-- <div class="col">
-											<button type="button" class="btn btn-danger radius-30" data-bs-toggle="modal" data-bs-target="#selectedDelete"><i class="bx bx-trash me-0"></i> Delete</button>
-										</div> --}}
-									</div>
-								</form>
+						<form id="searchForm" method="GET" action="{{ url('/admin/spare-part-shops') }}" class="row align-items-end mb-3 g-2">
+							<div class="col-lg-3 col-md-4">
+								<div class="position-relative">
+									<input type="text" name="search" id="tableSearch" class="form-control ps-5 radius-30" placeholder="Search by name, phone or TIN..." value="{{ request('search') }}">
+									<span class="position-absolute top-50 product-show translate-middle-y"><i class="bx bx-search"></i></span>
+								</div>
 							</div>
-						</div>
+							<div class="col-lg-3 col-md-4">
+								<select name="brand_id" id="brandFilter" class="form-select radius-30">
+									<option value="">All Brands</option>
+									@foreach($brands as $brand)
+										<option value="{{ $brand->id }}" @selected(request('brand_id') == $brand->id)>{{ $brand->name }}</option>
+									@endforeach
+								</select>
+							</div>
+							<div class="col-auto ms-auto">
+								<a href="/admin/add-spare-part-shop" type="button" class="btn btn-primary radius-30"><i class="bx bx-plus me-0"></i> Spare Part Shop</a>
+							</div>
+						</form>
 
+						<div id="searchableTable">
 						<div class="table-responsive lead-table">
 							<table class="table mb-0 align-middle">
 								<thead class="table-light">
@@ -117,7 +99,7 @@
 						
 
 <!-- Table Row with Clickable Modal -->
-<tr >
+<tr data-brand-ids="{{ $shop->brands->pluck('id')->implode(',') }}">
     <td><input class="form-check-input" type="checkbox" value="" id="flexCheckDefault"></td>
     <td>
         <div class="d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#shopDetailModal{{$shop->id}}">
@@ -129,6 +111,7 @@
     </td>
     <td>{{$shop->phone_number}}</td>
     <td>{{$shop->tin_number}}</td>
+    
     <td>No one</td>
     <td>{{$shop->created_at}}</td>
     <td>
@@ -141,9 +124,12 @@
         @endif
     </td>
     <td>
-        <a href="{{ route('edit-shop', $shop->id) }}" class="btn radius-10 p-1">
+        <a href="{{ route('edit-shop', $shop->id) }}" class="btn radius-10 p-1" title="Edit">
             <i class="bx bx-edit me-0"></i>
         </a>
+        <button type="button" class="btn radius-10 p-1 text-info" data-bs-toggle="modal" data-bs-target="#shopBrandsModal{{$shop->id}}" title="View Brands">
+            <i class="bx bx-purchase-tag me-0"></i>
+        </button>
         <button type="button" class="btn radius-10 p-1 text-danger" data-bs-toggle="modal" data-bs-target="#singleDelete{{$shop->id}}">
             <i class="bx bx-trash me-0"></i>
         </button>
@@ -236,6 +222,32 @@
     </div>
 </div>
 
+<!-- Modal for Shop Brands -->
+<div class="modal fade" id="shopBrandsModal{{$shop->id}}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0 rounded-4">
+            <div class="modal-header" style="background: #17a2b8; color: white; border-top-left-radius: 10px; border-top-right-radius: 10px;">
+                <h5 class="modal-title fw-bold" style="color: white;"><i class="bx bx-purchase-tag me-1"></i> Brands — {{ $shop->name }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                @if($shop->brands->count())
+                    <div class="d-flex flex-wrap gap-2">
+                        @foreach($shop->brands as $brand)
+                            <span class="badge bg-primary rounded-pill px-3 py-2" style="font-size: 0.9rem;">{{ $brand->name }}</span>
+                        @endforeach
+                    </div>
+                @else
+                    <p class="text-muted mb-0">No brands assigned to this shop.</p>
+                @endif
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary radius-30 px-4" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 										</td>
 									</tr>
 									
@@ -246,10 +258,67 @@
 								
 							</table>
 
-
-
-							
+						</div>{{-- /table-responsive --}}
+						@if($shops->hasPages() || $shops->total() > 0)
+						<div class="d-flex flex-column flex-sm-row align-items-center justify-content-between mt-3 px-1 gap-2">
+							<div class="text-muted" style="font-size:0.875rem;">
+								Showing <strong>{{ $shops->firstItem() ?? 0 }}</strong>
+								to <strong>{{ $shops->lastItem() ?? 0 }}</strong>
+								of <strong>{{ $shops->total() }}</strong> shops
+							</div>
+							@if($shops->hasPages())
+							@php
+								$cur   = $shops->currentPage();
+								$last  = $shops->lastPage();
+								$range = collect();
+								for ($p = 1; $p <= $last; $p++) {
+									if ($p === 1 || $p === $last || abs($p - $cur) <= 1) {
+										$range->push(['type' => 'page', 'n' => $p]);
+									} elseif (abs($p - $cur) === 2) {
+										$range->push(['type' => 'dots']);
+									}
+								}
+								$pages = collect();
+								$prevDot = false;
+								foreach ($range as $item) {
+									if ($item['type'] === 'dots') {
+										if (!$prevDot) $pages->push($item);
+										$prevDot = true;
+									} else {
+										$pages->push($item);
+										$prevDot = false;
+									}
+								}
+							@endphp
+							<nav aria-label="Shops pagination">
+								<ul class="pagination mb-0" style="gap:4px;">
+									<li class="page-item {{ $shops->onFirstPage() ? 'disabled' : '' }}">
+										<a class="page-link px-3" href="{{ $shops->appends(['search' => request('search'), 'brand_id' => request('brand_id')])->previousPageUrl() ?? '#' }}" style="border-radius:30px!important;">
+											<i class="bx bx-chevron-left"></i> Prev
+										</a>
+									</li>
+									@foreach($pages as $item)
+										@if($item['type'] === 'dots')
+											<li class="page-item disabled"><span class="page-link" style="border-radius:30px!important;">…</span></li>
+										@else
+											<li class="page-item {{ $item['n'] === $cur ? 'active' : '' }}">
+												<a class="page-link" href="{{ $shops->appends(['search' => request('search'), 'brand_id' => request('brand_id')])->url($item['n']) }}" style="border-radius:30px!important;">{{ $item['n'] }}</a>
+											</li>
+										@endif
+									@endforeach
+									<li class="page-item {{ $shops->hasMorePages() ? '' : 'disabled' }}">
+										<a class="page-link px-3" href="{{ $shops->appends(['search' => request('search'), 'brand_id' => request('brand_id')])->nextPageUrl() ?? '#' }}" style="border-radius:30px!important;">
+											Next <i class="bx bx-chevron-right"></i>
+										</a>
+									</li>
+								</ul>
+							</nav>
+							@endif
 						</div>
+						@endif
+						</div>{{-- /searchableTable --}}
+
+					</div>
 					</div>
 				</div>
 			</div>
@@ -278,4 +347,79 @@
 	</div>
 </div>
 <!-- End Selected Delete Modal -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('searchForm');
+    const searchInput = document.getElementById('tableSearch');
+    const brandFilter = document.getElementById('brandFilter');
+    const searchableTable = document.getElementById('searchableTable');
+    if (!form || !searchInput || !searchableTable) return;
+
+    // Restore cursor to end of input after AJAX navigation
+    if (searchInput.value) {
+        searchInput.focus();
+        const len = searchInput.value.length;
+        searchInput.setSelectionRange(len, len);
+    }
+
+    function clientFilterRows() {
+        const query = searchInput.value.toLowerCase().trim();
+        const selectedBrand = brandFilter ? brandFilter.value : '';
+        const rows = searchableTable.querySelectorAll('tbody tr');
+        rows.forEach(function (row) {
+            const name = (row.querySelector('td:nth-child(2)')?.textContent || '').toLowerCase();
+            const phone = (row.querySelector('td:nth-child(3)')?.textContent || '').toLowerCase();
+            const tin = (row.querySelector('td:nth-child(4)')?.textContent || '').toLowerCase();
+            const brandIds = (row.getAttribute('data-brand-ids') || '').split(',');
+            const matchesText = !query || name.includes(query) || phone.includes(query) || tin.includes(query);
+            const matchesBrand = !selectedBrand || brandIds.includes(selectedBrand);
+            row.style.display = (matchesText && matchesBrand) ? '' : 'none';
+        });
+    }
+
+    async function fetchTable(url) {
+        try {
+            const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!res.ok) throw new Error('fetch failed');
+            const html = await res.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const newContent = doc.getElementById('searchableTable');
+            if (newContent) {
+                searchableTable.innerHTML = newContent.innerHTML;
+                history.pushState({}, '', url);
+                bindPaginationLinks();
+            }
+        } catch (e) {
+            form.submit();
+        }
+    }
+
+    function getSearchUrl() {
+        const params = new URLSearchParams(new FormData(form));
+        return form.action + '?' + params.toString();
+    }
+
+    let debounceTimer;
+    searchInput.addEventListener('input', function () {
+        clientFilterRows();
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function () { fetchTable(getSearchUrl()); }, 700);
+    });
+
+    if (brandFilter) {
+        brandFilter.addEventListener('change', function () { fetchTable(getSearchUrl()); });
+    }
+
+    function bindPaginationLinks() {
+        searchableTable.querySelectorAll('nav a.page-link[href]:not([href="#"])').forEach(function (link) {
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                fetchTable(this.href);
+            });
+        });
+    }
+
+    bindPaginationLinks();
+});
+</script>
 @endsection

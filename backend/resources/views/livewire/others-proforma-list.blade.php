@@ -127,12 +127,12 @@
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td>{{ $proforma->license_plate_number }}</td>
+                                            <td>{{ $proforma->license_plate_number ?? 'N/A' }}</td>
                                             <td>
                                                 <!--<div class="badge rounded-pill bg-{{ $proforma->status === 'pending' ? 'primary' : ($proforma->status === 'published' ? 'success' : 'danger') }} w-100">-->
                                                 <!--    {{ $proforma->status === 'pending' && $proforma->selected() ? "File Assigned": ucfirst($proforma->status) }}-->
                                                 <!--</div>-->
-                                                @if($proforma->close_request && $proforma->status == 'published')
+                                                @if($proforma->close_request && in_array($proforma->status, ['published', 'pending', 'opened']))
                                                 <span class="badge bg-danger fw-bold">Close Requested</span>
                                                 @elseif($proforma->status == 'completed')
                									<div class="badge rounded-pill bg-secondary w-100">{{ucfirst($proforma->status)}}</div>
@@ -164,40 +164,72 @@
                                                 </a>
                                             </td>
                                             @endif
-                                            @if(($proforma->status == 'pending' || $proforma->status == 'opened') && !$proforma?->selected() && auth()->user()->role == 'admin')
-                                              <td>
+                                            @if(auth()->user()->role == 'admin')
+                                            @php
+                                                $reqShops = (int)($proforma->required_number_of_shops ?? 0);
+                                                $allSlotsInboxed = !$proforma->isEteraCheretaMode()
+                                                    && $reqShops > 0
+                                                    && $proforma->floatShopQuota() <= 0;
+                                            @endphp
+                                            @if(($proforma->status == 'pending' || $proforma->status == 'opened') && !$proforma?->selected() && !$allSlotsInboxed)
+                                            <td>
                                                 <a href="/float?proforma_id={{ $proforma->id }}" class="btn btn-primary">
                                                     Float
                                                 </a>
                                             </td>
                                             @endif
-                                     
-                                            @if(($proforma->status == 'closed') && auth()->user()->role == 'admin')
+                                            @if($proforma->status === 'pending')
+                                            <td>
+                                                <button type="button" class="btn btn-danger btn-sm"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#rejectModal{{ $proforma->id }}">
+                                                    Reject
+                                                </button>
+                                                <div class="modal fade" id="rejectModal{{ $proforma->id }}" tabindex="-1" aria-hidden="true">
+                                                    <div class="modal-dialog modal-dialog-centered">
+                                                        <div class="modal-content">
+                                                            <form action="{{ route('proformas.reject', $proforma->id) }}" method="POST">
+                                                                @csrf
+                                                                <div class="modal-header">
+                                                                    <h5 class="modal-title text-danger">Reject Proforma #{{ $proforma->file_number }}</h5>
+                                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                                </div>
+                                                                <div class="modal-body">
+                                                                    <p>To confirm rejection, type <strong>reject</strong> below:</p>
+                                                                    <input type="text" name="confirmation" class="form-control" placeholder="Type 'reject' here" required autocomplete="off">
+                                                                </div>
+                                                                <div class="modal-footer">
+                                                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                                    <button type="submit" class="btn btn-danger">Reject</button>
+                                                                </div>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            @endif
+                                            @if($proforma->status == 'closed')
                                             <td>
                                                 <a href="/admin/verify/{{ $proforma->id }}" class="btn btn-primary">
                                                     Send To Owner
                                                 </a>
                                             </td>
                                             @endif
-
-
-
                                             <td>
-                                                @if(auth()->user()->role == 'admin' && $proforma->status !== 'closed' && $proforma->status !== 'completed')
-                                                    @if($proforma->applications->isEmpty())
-                                                        <!-- If there are no applications, disable the button -->
-                                                    @else
-                                                        <form action="{{ route('proforma.close', $proforma->id) }}" method="POST">
+                                                @if($proforma->status !== 'closed' && $proforma->status !== 'completed')
+                                                    @if(!$proforma->applications->isEmpty())
+                                                        <form action="{{ route('admin.proforma.close', $proforma->id) }}" method="POST">
                                                             @csrf
                                                             @method('PATCH')
                                                             <button type="submit" class="btn btn-primary btn-sm"
-                                                                @if($proforma->status === 'pending' || $proforma->status === 'opened') hidden @endif>
+                                                                @if(($proforma->status === 'pending' || $proforma->status === 'opened') && !$allSlotsInboxed) hidden @endif>
                                                                 Close
                                                             </button>
                                                         </form>
                                                     @endif
                                                 @endif
                                             </td>
+                                            @endif
                                         </tr>
                                     @empty
                                         <tr class="mx-auto">

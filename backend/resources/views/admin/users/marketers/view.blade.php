@@ -139,38 +139,15 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">
-                        <div class="row align-items-right">
-                            <div class="col-lg-9 col-xl-10">
-                                <form class="">
-                                    <div class="row row-cols-auto g-2">
-                                        <div class="col">
-                                            <div class="position-relative">
-                                                <input type="text" class="form-control ps-5 radius-30 " placeholder="Search Marketer..."> <span class="position-absolute top-50 product-show translate-middle-y"><i class="bx bx-search"></i></span>
-                                            </div>
-                                        </div>
-                                        <div class="col">
-                                            <div class="btn-group" role="group" aria-label="Button group with nested dropdown">
-                                                <button type="button" class="btn btn-white radius-30">
-                                                    <i class="bx bx-filter"></i> Filter</button>
-                                                <div class="btn-group" role="group">
-                                                    <button id="btnGroupDrop1" type="button" class="btn btn-white radius-30 dropdown-toggle dropdown-toggle-nocaret px-1" data-bs-toggle="dropdown" aria-expanded="false">
-                                                        <i class='bx bx-chevron-down'></i>
-                                                    </button>
-                                                    <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
-                                                        <li><a class="dropdown-item" href="#">Name</a></li>
-                                                        <li><a class="dropdown-item" href="#">Date Modified</a></li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col">
-                                            <div class="position-relative">
-                                                <a href="/admin/add-marketer" type="button" class="btn btn-primary radius-30 "><i class="bx bx-plus me-0"></i> Marketer</a>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </form>
+                        <div class="row align-items-center mb-3">
+                            <div class="col-lg-6 col-xl-5">
+                                <div class="position-relative">
+                                    <input type="text" id="tableSearch" class="form-control ps-5 radius-30" placeholder="Search by name or phone...">
+                                    <span class="position-absolute top-50 product-show translate-middle-y"><i class="bx bx-search"></i></span>
+                                </div>
+                            </div>
+                            <div class="col-auto ms-auto">
+                                <a href="/admin/add-marketer" type="button" class="btn btn-primary radius-30"><i class="bx bx-plus me-0"></i> Marketer</a>
                             </div>
                         </div>
 
@@ -322,4 +299,21 @@
     </div>
 </div> --}}
 {{-- @endforeach --}}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('tableSearch');
+    if (!searchInput) return;
+    const table = document.querySelector('.lead-table table tbody');
+    if (!table) return;
+    searchInput.addEventListener('input', function () {
+        const query = this.value.toLowerCase().trim();
+        const rows = table.querySelectorAll('tr');
+        rows.forEach(function (row) {
+            const name = (row.querySelector('td:nth-child(2)')?.textContent || '').toLowerCase();
+            const phone = (row.querySelector('td:nth-child(3)')?.textContent || '').toLowerCase();
+            row.style.display = (!query || name.includes(query) || phone.includes(query)) ? '' : 'none';
+        });
+    });
+});
+</script>
 @endsection

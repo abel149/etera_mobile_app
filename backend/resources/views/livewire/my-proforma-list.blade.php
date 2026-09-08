@@ -99,7 +99,7 @@
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td>{{ $selection->proforma->license_plate_number }}</td>
+                                            <td>{{ $selection->proforma->license_plate_number ?? 'N/A' }}</td>
                                             <td>
                                                 <div class="badge rounded-pill bg-{{ $selection->proforma->status === 'pending' ? 'warning' : ($selection->proforma->status === 'published' ? 'info' : 'success') }} w-100">
                                                     {{ ucfirst($selection->proforma->status) }}

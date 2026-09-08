@@ -5,41 +5,62 @@
 <div class="page-content">
 <h2 class="mb-4">Transactions & Activities</h2>
 
-{{-- Filters --}}
+{{-- Server-side filter form --}}
 <div class="card mb-4 shadow-sm">
 <div class="card-body">
+<form method="GET" action="{{ route('admin.transactions.index') }}" id="filterForm">
 <div class="row g-3 align-items-end">
-<div class="col-md-3">
-<label class="form-label">From</label>
-<input type="datetime-local" id="fromDate" class="form-control">
+
+    <div class="col-md-2">
+        <label class="form-label">From</label>
+        <input type="date" name="from" id="fromDate" class="form-control"
+               value="{{ $filters['from'] }}">
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">To</label>
+        <input type="date" name="to" id="toDate" class="form-control"
+               value="{{ $filters['to'] }}">
+    </div>
+
+    <div class="col-md-4">
+        <label class="form-label">Search by name or phone</label>
+        <input type="text" name="search" id="searchInput" class="form-control"
+               placeholder="Name or phone number…"
+               value="{{ $filters['search'] }}">
+    </div>
+
+    <div class="col-md-4 d-flex gap-2 align-items-end flex-wrap">
+        <button type="submit" class="btn btn-primary">Search</button>
+        <a href="{{ route('admin.transactions.index') }}" class="btn btn-outline-secondary">Clear</a>
+
+        <div class="btn-group ms-auto">
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="setPreset('today')">Today</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="setPreset('month')">This Month</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="setPreset('year')">This Year</button>
+        </div>
+    </div>
+
 </div>
-<div class="col-md-3">
-<label class="form-label">To</label>
-<input type="datetime-local" id="toDate" class="form-control">
-</div>
-<div class="col-md-6 text-md-end">
-<label class="form-label d-block">Quick Filters</label>
-<div class="btn-group">
-<button class="btn btn-outline-primary" onclick="setPreset('all')">All</button>
-<button class="btn btn-outline-primary" onclick="setPreset('today')">Today</button>
-<button class="btn btn-outline-primary" onclick="setPreset('month')">This Month</button>
-<button class="btn btn-outline-primary" onclick="setPreset('year')">This Year</button>
+</form>
 </div>
 </div>
+
+@if($filters['from'] || $filters['to'] || $filters['search'])
+<div class="alert alert-info py-2 mb-3">
+    Showing filtered results
+    @if($filters['from']) from <strong>{{ $filters['from'] }}</strong>@endif
+    @if($filters['to']) to <strong>{{ $filters['to'] }}</strong>@endif
+    @if($filters['search']) matching <strong>"{{ $filters['search'] }}"</strong>@endif
+    — <strong>{{ count($transactions) }}</strong> record(s) found.
 </div>
-</div>
-</div>
+@endif
 
 {{-- Summary --}}
 <div class="row mb-4" id="summaryCards"></div>
 
 {{-- Transactions --}}
 <div class="row" id="transactionCards"></div>
-<hr>
-<h6 class="mt-4">Debug: Raw Transactions</h6>
-<pre id="debugOutput"
-     style="max-height:400px; overflow:auto; background:#111; color:#0f0; padding:10px; font-size:12px;">
-</pre>
 
 </div>
 </div>
@@ -89,35 +110,25 @@ Phone: <span id="uPhone"></span>
 const transactions = @json($transactions);
 let filteredTransactions = [...transactions];
 
-function startOfDay(d){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()); }
-function endOfDay(d){ return new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59); }
-
-function applyFilter(){
-const from = fromDate.value;
-const to = toDate.value;
-
-filteredTransactions = transactions.filter(t=>{
-const d = new Date(t.date);
-if(from && d < new Date(from)) return false;
-if(to && d > new Date(to)) return false;
-return true;
-});
-renderSummary(filteredTransactions);
-renderTransactionCards(filteredTransactions);
+function toDateInputValue(d){
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
 function setPreset(type){
-const now = new Date();
-let from = null, to = endOfDay(now);
+    const now = new Date();
+    let from = null;
+    const to = toDateInputValue(now);
 
-if(type==='today') from=startOfDay(now);
-else if(type==='month') from=new Date(now.getFullYear(),now.getMonth(),1);
-else if(type==='year') from=new Date(now.getFullYear(),0,1);
-else { fromDate.value=''; toDate.value=''; applyFilter(); return; }
+    if(type==='today')      from = toDateInputValue(now);
+    else if(type==='month') from = toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1));
+    else if(type==='year')  from = toDateInputValue(new Date(now.getFullYear(), 0, 1));
 
-fromDate.value = from.toISOString().slice(0,16);
-toDate.value = to.toISOString().slice(0,16);
-applyFilter();
+    if(from !== null){
+        fromDate.value = from;
+        toDate.value   = to;
+    }
+
+    document.getElementById('filterForm').submit();
 }
 
 function renderSummary(data){
@@ -210,13 +221,8 @@ w.print();
 w.close();
 }
 
-fromDate.addEventListener('change',applyFilter);
-toDate.addEventListener('change',applyFilter);
-
 renderSummary(filteredTransactions);
 renderTransactionCards(filteredTransactions);
-document.getElementById('debugOutput').textContent =
-    JSON.stringify(filteredTransactions, null, 2);
 
 </script>
 

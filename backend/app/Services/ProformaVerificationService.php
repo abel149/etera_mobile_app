@@ -36,7 +36,7 @@ class ProformaVerificationService
         $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
         $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
 
-        // Explicit insurance subtypes (set via proforma_type column) always use insurance billing
+        // Explicit insurance subtypes always use insurance billing
         if ($proforma->proforma_type && str_starts_with($proforma->proforma_type, 'insurance_')) {
             $type = 'insurance';
         } elseif ($requiredShops > 0 && $requiredGarages == 0) {
@@ -124,11 +124,38 @@ class ProformaVerificationService
                 $user = $app->applicationBy;
                 if (!$user) continue;
 
-                $role = $user->role ?? 'unknown';
+                $role = $app->from ?? ($user->role ?? 'unknown');
                 $amount = 0;
 
-                if ($role === 'garage') $amount = $garagePay;
-                if ($role === 'shop') $amount = $shopPay;
+                if ($role === 'garage') {
+                    $amount = $garagePay;
+                } elseif ($role === 'shop') {
+                    // Pro-rata: scale by parts filled / total parts (collaborative filling)
+                    $totalParts  = (int) ($app->total_parts_count ?? 0);
+                    $filledParts = (int) ($app->filled_parts_count ?? 0);
+
+                    // Fall back to actual data if the tracked counters are missing (0)
+                    if ($totalParts <= 0) {
+                        $totalParts = $proforma->parts()->count();
+                    }
+
+                    if ($filledParts <= 0 && $totalParts > 0) {
+                        $filledParts = $app->prices()
+                            ->where(function ($q) {
+                                $q->where('unit_price', '>', 0)
+                                  ->orWhere('price_is_encrypted', true);
+                            })
+                            ->count();
+                    }
+
+                    if ($totalParts > 0 && $filledParts > 0) {
+                        $amount = round($shopPay * ($filledParts / $totalParts), 2);
+                    } elseif ($totalParts > 0) {
+                        $amount = 0; // Recorded no actual part prices, no commission
+                    } else {
+                        $amount = $shopPay; // Legacy record: no parts/pro-rata data — full pay
+                    }
+                }
 
                 if ($amount > 0) {
                     $this->createCommissionRecord($user, $amount, $proforma, $app, ucfirst($role) . ' commission');
@@ -278,20 +305,6 @@ class ProformaVerificationService
         $proforma->update(['status' => 'completed']);
         $proforma->verify();
 
-        // Notify the poster that results + billing are ready on mobile
-        try {
-            if ($proforma->poster) {
-                $proforma->poster->notify(
-                    new \App\Notifications\ProformaResultsReadyNotification($proforma)
-                );
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Failed to send results-ready notification to poster', [
-                'proforma_id' => $proforma->id,
-                'error'       => $e->getMessage(),
-            ]);
-        }
-
         Log::info('Verification completed', ['proforma_id' => $proforma->id]);
     }
 
@@ -306,6 +319,27 @@ class ProformaVerificationService
     private function createCommissionRecord(User $user, float $amount, Proforma $proforma, ?ProformaApplication $app, string $description)
     {
         try {
+            // 0. Idempotency guard: never create the same commission twice.
+            // verify() can run more than once per proforma (re-approval), and
+            // duplicated PaidUser rows inflate balances and analytics totals.
+            $alreadyExists = PaidUser::where('user_id', $user->id)
+                ->where('proforma_id', $proforma->id)
+                ->when(
+                    $app,
+                    fn($q) => $q->where('application_id', $app->id),
+                    fn($q) => $q->whereNull('application_id')
+                )
+                ->exists();
+
+            if ($alreadyExists) {
+                Log::info("Skipped duplicate {$description}", [
+                    'user_id' => $user->id,
+                    'proforma_id' => $proforma->id,
+                    'application_id' => $app->id ?? null,
+                ]);
+                return;
+            }
+
             // 1. Create PaidUser record (tracks payment status)
             $paid = PaidUser::create([
                 'user_id' => $user->id,

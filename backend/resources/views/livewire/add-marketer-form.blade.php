@@ -22,7 +22,7 @@
 
             <!-- Email Field -->
             <div class="col-md-6">
-                <label for="email" class="form-label">Email</label>
+                <label for="email" class="form-label">Email (optional)</label>
                 <input wire:model.live="email" type="email" class="form-control" id="email" placeholder="Your Email">
                 @error('email') <span class="text-danger">{{ $message }}</span> @enderror
             </div>

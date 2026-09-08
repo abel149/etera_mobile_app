@@ -84,6 +84,19 @@
 		.bg-dark-green { background-color: #068f28; }
 		.bg-dark-primary { background-color: #3B5998; }
 		.circle { height: 80px; width: 80px; }
+
+		/* Mobile hamburger notification dot */
+		.mobile-notif-dot {
+			position: absolute;
+			top: 2px;
+			right: 2px;
+			width: 9px;
+			height: 9px;
+			border-radius: 50%;
+			background: #dc3545;
+			border: 1.5px solid #fff;
+			pointer-events: none;
+		}
 	</style>
 	<title>etera - Insurances</title>
 @include('partials.green-theme')
@@ -133,11 +146,28 @@
 				</a>
 
 				</li>
+				@if(auth()->user()->role === 'insurance')
 				<li>
-					<a href="/insurance/partners">
-						<div class="parent-icon"><i class="bx bx-user"></i>
+					<a href="{{ route('insurance.agents') }}">
+						<div class="parent-icon"><i class='bx bx-group'></i></div>
+						<div class="menu-title">My Claim Officers
+							@php $agentCount = auth()->user()->agents()->count(); @endphp
+							@if($agentCount > 0)
+							<span class="badge bg-light text-dark ms-1 small">{{ $agentCount }}</span>
+							@endif
 						</div>
-						<div class="menu-title">Partners</div>
+					</a>
+				</li>
+				@endif
+				<li>
+					<a href="{{ route('insurance.encryption.setup') }}">
+						<div class="parent-icon"><i class='bx bx-lock-alt'></i></div>
+						<div class="menu-title">
+							Encryption Setup
+							@if(!auth()->user()->has_encryption)
+							<span class="badge bg-warning text-dark ms-1" style="font-size:10px;">Off</span>
+							@endif
+						</div>
 					</a>
 				</li>
 
@@ -208,8 +238,11 @@
     <nav class="navbar navbar-expand gap-3 w-100">
 
       <!-- Mobile hamburger -->
-      <button type="button" class="mobile-toggle-menu btn btn-link p-0">
+      <button type="button" class="mobile-toggle-menu btn btn-link p-0 position-relative">
         <i class="bx bx-menu fs-4"></i>
+        @if(auth()->user()->getReceivedProformasCount() > 0)
+          <span class="mobile-notif-dot"></span>
+        @endif
       </button>
 
       <!-- Right side icons -->
@@ -309,13 +342,6 @@
         © <script>document.write(new Date().getFullYear())</script>. All rights reserved.
     </p>
 
-    <p class="mb-0">
-        <!--Made by -->
-        <!--<a href="https://www.primetechplc.com" target="_blank" rel="noopener">-->
-        <!--    Prime Software-->
-        <!--</a> -->
-        <!--in collaboration with <strong>Beemnet Abraham</strong>.-->
-    </p>
 </footer>
 	</div>
 	<!--end wrapper-->
@@ -470,6 +496,7 @@
 	<!--end switcher-->
 	<!-- Bootstrap JS -->
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 	<!-- Bootstrap JS -->
 	<script src="{{asset('assets/js/bootstrap.bundle.min.js')}}"></script>

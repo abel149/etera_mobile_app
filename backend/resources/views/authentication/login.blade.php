@@ -95,7 +95,7 @@
                     <input type="hidden" name="_token" value={data.csrfToken} />
 
                     <div className="etera-input-group">
-                        <label>Email or Phone Number</label>
+                        <label>Phone Number</label>
                         <input
                             type="text"
                             name="email_or_phone"

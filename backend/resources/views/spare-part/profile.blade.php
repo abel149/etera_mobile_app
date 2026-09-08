@@ -346,7 +346,7 @@
 										<div class="col-xl-6">
 											<div class="submit-field">
 												<h5>Email</h5>
-												<input value="{{auth()->user()->email}}" type="text" name="email" class="with-border" >
+												<input value="{{ filter_var(auth()->user()->email, FILTER_VALIDATE_EMAIL) ? auth()->user()->email : '' }}" type="email" name="email" class="with-border" autocomplete="off">
 												@error('email')
 													<span class="text-danger">{{$message}}</span>
 												@enderror

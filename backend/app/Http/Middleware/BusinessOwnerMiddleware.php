@@ -13,7 +13,7 @@ class BusinessOwnerMiddleware
             return redirect('/login')->with('error', 'Please login again!');
         }
 
-        if (Auth::user()->role !== 'others') {
+        if (Auth::user()->role !== \App\Models\User::ROLE_BUSINESS_OWNER) {
             Auth::logout();
             return redirect('/login')->with('error', 'Please login again!');
         }

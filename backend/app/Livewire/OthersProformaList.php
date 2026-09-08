@@ -50,7 +50,10 @@ class OthersProformaList extends Component
                 $q->where('file_number', 'like', '%'.$this->search.'%')
                   ->orWhere('customer_name', 'like', '%'.$this->search.'%')
                   ->orWhere('customer_phone_number', 'like', '%'.$this->search.'%')
-                  ->orWhere('license_plate_number', 'like', '%'.$this->search.'%');
+                  ->orWhere('license_plate_number', 'like', '%'.$this->search.'%')
+                  ->orWhereHas('poster', function($pq) {
+                      $pq->where('name', 'like', '%'.$this->search.'%');
+                  });
             });
         }
 
@@ -61,7 +64,19 @@ class OthersProformaList extends Component
         $query->orderBy('created_at', $this->sortBy);
 
         return view('livewire/others-proforma-list', [
-            'proformas' => $query->with(['poster', 'brand'])->paginate(10),
+            'proformas' => $query
+                ->with(['poster', 'brand'])
+                ->withCount([
+                    'inboxes as shop_inboxes_count' => function ($q) {
+                        $q->whereHas('user', function ($u) {
+                            $u->where('role', 'shop');
+                        });
+                    },
+                    'applications as shop_applications_count' => function ($q) {
+                        $q->where('from', 'shop');
+                    },
+                ])
+                ->paginate(10),
         ]);
     }
 }

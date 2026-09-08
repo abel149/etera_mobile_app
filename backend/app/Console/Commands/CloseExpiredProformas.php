@@ -55,13 +55,16 @@ class CloseExpiredProformas extends Command
 
         try {
             if ($proforma->isEteraCheretaMode()) {
-                // For Etera-Chereta mode, trigger auto-selection
-                $this->info("Proforma {$proforma->id} is in Etera-Chereta mode, triggering auto-selection");
-                
-                // Dispatch the auto-selection job immediately
+                // For Etera-Chereta mode, close the proforma immediately then dispatch auto-selection
+                $this->info("Proforma {$proforma->id} is in Etera-Chereta mode, closing it now");
+
+                $proforma->update(['status' => 'closed']);
+                $proforma->inboxes()->delete();
+
+                // Dispatch auto-selection so top applicants get selected (job handles its own logic)
                 AutoSelectProformaOffers::dispatch($proforma->id);
-                
-                Log::info("Auto-selection job dispatched for expired Etera-Chereta proforma {$proforma->id}");
+
+                Log::info("Etera-Chereta proforma {$proforma->id} closed automatically on timer expiry; auto-selection dispatched");
             } else {
                 // For regular proformas, just close them
                 $this->info("Proforma {$proforma->id} is a regular proforma, closing it");

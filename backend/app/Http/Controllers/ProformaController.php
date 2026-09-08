@@ -54,15 +54,23 @@ class ProformaController extends Controller
     }
   public function reject(Request $request, $proformaId)
 {
+    if (!in_array(auth()->user()->role, ['admin', 'superadmin'])) {
+        abort(403);
+    }
+
     $request->validate([
-        'confirmation' => ['required', 'in:reject'], // Must type "reject"
+        'confirmation' => ['required', 'in:reject'],
     ]);
 
     $proforma = \App\Models\Proforma::findOrFail($proformaId);
-    $proforma->status = 'rejected';
-    $proforma->save();
 
-    return redirect()->back()->with('success', 'Proforma rejected successfully.');
+    DB::transaction(function () use ($proforma) {
+        \App\Models\Inbox::where('proforma_id', $proforma->id)->delete();
+        $proforma->status = 'rejected';
+        $proforma->save();
+    });
+
+    return redirect('/admin/proforma')->with('success', 'Proforma #' . $proforma->file_number . ' rejected successfully.');
 }
 
 

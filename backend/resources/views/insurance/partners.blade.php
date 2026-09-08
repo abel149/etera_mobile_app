@@ -1,216 +1,253 @@
 @extends('layouts.insurance')
 @section('content')
-<h3 class="">Partners List</h3>
-		<div class="row">
-			<div class="col-12">
-				<div class="card">
-					<div class="card-body">
-						<div class="row align-items-right">
-							<div class="col-lg-9 col-xl-10">
-								<form class="">
-									<div class="row row-cols-auto g-2">
-										<div class="col">
-											<div class="position-relative">
-												<input type="text" class="form-control ps-5 radius-30 " placeholder="Search Partner..."> <span class="position-absolute top-50 product-show translate-middle-y"><i class="bx bx-search"></i></span>
-											</div>
-										</div>
-										<div class="col">
-											<div class="btn-group" role="group" aria-label="Button group with nested dropdown">
-												<button type="button" class="btn btn-white radius-30">
-												<i class="bx bx-filter"></i> Filter</button>
-												<div class="btn-group" role="group">
-												  <button id="btnGroupDrop1" type="button" class="btn btn-white radius-30 dropdown-toggle dropdown-toggle-nocaret px-1" data-bs-toggle="dropdown" aria-expanded="false">
-													<i class='bx bx-chevron-down'></i>
-												  </button>
-												  <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
-													<li><a class="dropdown-item" href="#">Name</a></li>
-													<li><a class="dropdown-item" href="#">Tin #</a></li>
-													<li><a class="dropdown-item" href="#">Date Modified</a></li>
-												  </ul>
-												</div>
-											  </div>
-										</div>
-										<div class="col">
-										<div class="position-relative">
-											<button type="button" class="btn btn-primary radius-30" data-bs-toggle="modal" data-bs-target="#add"> Add Partner</button>
-										</div>
-									</div>
-										
-									</div>
-								</form>
-							</div>
-						</div>
-
-				<div class="table-responsive lead-table">
-					<table class="table mb-0 align-middle">
-						<thead class="table-light">
-							<tr>
-								<th>Name</th>
-								<th>Store Number</th>
-								<th>Role</th>
-								<th>Tin #</th>
-								<th>Phone Number</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-            @foreach (auth()->user()->partners ?? [] as $partner)
-							<tr>
-								<td>
-									<div class="d-flex align-items-center">
-										<div>
-											<h6 class="mb-0 font-14">{{$partner->partner->name}}</h6>
-											<p class="mb-0 font-13 text-secondary">{{$partner->partner->email}}</p>
-										</div>
-									</div>
-								</td>
-								<td class="font-bold"">{{$partner->partner->store_id}}</td>
-								<td>{{ucfirst($partner->partner->role)}}</td>
-								<td>{{ucfirst($partner->partner->tin_number)}}</td>
-								<td>{{$partner->partner->phone_number}}</td>
-								<td>
-                <form action="partners/{{$partner->id}}" method="POST">
-                    @method('DELETE')
-                    @csrf
-                    				  
-									  <button type="submit" class="btn radius-10 p-1 text-danger"><i class="bx bx-trash me-0">Remove</i></button>
-                  </form>
-								</td>
-							</tr>
-            @endforeach
-						</tbody>
-					</table>
-				</div>
-			</div>
-		</div>
-		<!--end row-->
-
-
-	</div>
-</div>
 
 @php
-$partners = auth()->user()->partners;
-$partnerIds = $partners ? $partners->pluck('partner_id') : collect();
-$availablePartners = \App\Models\User::whereIn('role', ['shop','garage'])->whereNotIn('id', $partnerIds)->get();
+    $partners   = auth()->user()->partners;
+    $partnerIds = $partners ? $partners->pluck('partner_id') : collect();
+
+    $availableShopPartners = \App\Models\User::where('role', 'shop')
+        ->whereNotIn('id', $partnerIds)
+        ->where('is_test', 0)
+        ->orderBy('name', 'asc')
+        ->get();
+
+    $availableGaragePartners = \App\Models\User::where('role', 'garage')
+        ->whereNotIn('id', $partnerIds)
+        ->where('is_test', 0)
+        ->orderBy('name', 'asc')
+        ->get();
+
+    $sortedPartners = $partners
+        ? $partners
+            ->filter(fn($p) => $p->partner && !$p->partner->is_test)
+            ->sortBy(fn($p) => strtolower($p->partner->name ?? ''))
+            ->values()
+        : collect();
 @endphp
-<!-- Add Modal -->
-<div class="modal fade" id="add" tabindex="-1" aria-hidden="true">
-	<div class="modal-dialog modal-dialog-centered">
-		<div class="modal-content">
-			<div class="modal-header">
-				<h5 class="modal-title">Add Partners</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-			</div>
-      <form action="{{route('partners.add')}}" method="POST">
-        @csrf
-        @method('POST')
-			<div class="modal-body">
-				<label for="multiple-select-garage" class="form-label">Select Your Partners</label>
-								<select class="form-select" name="partners[]" id="multiple1" data-placeholder="Choose anything" multiple>
-                  @foreach($availablePartners as $partner)
-                    <option value="{{$partner->id}}">{{$partner->store_id}} - {{$partner->name}}</option>
-                    @endforeach
-								</select>
-			</div>
-			<div class="modal-footer">
-				<button type="button" class="btn btn-outline-secondary radius-30" data-bs-dismiss="modal">Cancel</button>
-				<button type="submit" class="btn btn-primary radius-30">Add</button>
-			</div>
-      </form>
-		</div>
-	</div>
-</div>
-<!-- End Add Modal -->
 
-<!-- Modal -->
-<div class="modal fade" id="details" tabindex="-1" aria-hidden="true">
-	<div class="modal-dialog modal-lg modal-dialog-scrollable">
-		<div class="modal-content">
-			<div class="modal-header">
-				<h5 class="modal-title">Modal title</h5>
-				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-			</div>
-			<div class="modal-body">
-				<div class="row g-3">
-				<div class="col-lg-6">
-                    <label for="input1" class="form-label">Name</label>
-                    <input name="name" type="text" class="form-control" id="input1" placeholder="Your Company">
-                </div>
-                <div class="col-lg-6">
-                    <label for="input7" class="form-label">Email</label>
-                    <input name="email" type="email" class="form-control" id="input7" placeholder="Your Email">
-                </div>
-                <div class="col-lg-6">
-                    <label for="input2" class="form-label">Phone Number</label>
-                    <input name="phone_number" type="text" class="form-control" id="input2" placeholder="09...">
-                </div>
-                <div class="col-lg-6">
-                    <label for="input3" class="form-label">Tin #</label>
-                    <input name="tin_number" type="text" class="form-control" id="input3" placeholder="Your Company Tin #">
-                </div>
-                <div class="col-lg-6">
-                    <label for="input4" class="form-label">Location / Address</label>
-                    <input name="location" type="text" class="form-control" id="input4" placeholder="">
-                </div>
-                <div class="col-lg-6">
-                    <label for="multiple-select-clear-field" class="form-label">Car Brands To Serve</label>
-                    <select required name="brands[]" class="form-select" id="multiple-select-clear-field" data-placeholder="Add Brands..." multiple>
-                        <option value="">...</option>
-                    </select>
-                </div>
-                <div class="col-lg-6">
-                    <label for="input6" class="form-label">Business License Proc. Number</label>
-                    <input name="business_license_number" type="text" class="form-control" id="input6" placeholder="Proclamation Number">
-                </div>
-                <div class="col-lg-6">
-                    <label for="input6" class="form-label">Business License Expiry Date</label>
-                    <input name="license_expire_date" type="date" class="form-control" id="input6" placeholder="Select Date">
-                </div>
-                <div class="col-lg-8">
-                    <label for="input6" class="form-label">Business License Image</label>
-                    <div class="text-center"><img src="{{asset('assets/images/avatars/avatar-1.png')}}"></div>
-                </div>
-                <div class="col-lg-4">
-                    <label for="input6" class="form-label">Stamp Image</label>
-                    <div class="text-center"><img src="{{asset('assets/images/avatars/avatar-1.png')}}"></div>
+<h3 class="mb-3">Partners List</h3>
 
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+
+                {{-- Toolbar --}}
+                <div class="d-flex flex-wrap align-items-center gap-3 mb-4 me-4">
+                    <div class="position-relative flex-shrink-0" style="width:280px; max-width:100%;">
+                        <input type="text" id="partnerSearch" class="form-control ps-5 radius-30" placeholder="Search partners...">
+                        <span class="position-absolute top-50 translate-middle-y ps-3" style="left:0; pointer-events:none;">
+                            <i class="bx bx-search text-secondary"></i>
+                        </span>
+                    </div>
+                    <button type="button" class="btn btn-primary radius-30 flex-shrink-0" data-bs-toggle="modal" data-bs-target="#addShopModal">
+                        <i class="bx bx-store me-1"></i> Add Shop Partner
+                    </button>
+                    <button type="button" class="btn btn-primary radius-30 flex-shrink-0" data-bs-toggle="modal" data-bs-target="#addGarageModal">
+                        <i class="bx bx-wrench me-1"></i> Add Garage Partner
+                    </button>
                 </div>
-            	</div>
-			</div>
-			<div class="modal-footer">
-				<button type="button" class="btn btn-outline-secondary radius-30" data-bs-dismiss="modal">Close</button>
-				<button type="button" class="btn btn-danger radius-30">Remove</button>
-			</div>
-		</div>
-	</div>
+
+                {{-- Partners Table --}}
+                <div class="table-responsive">
+                    <table class="table mb-0 align-middle" id="partnersTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Name</th>
+                                <th>Store Number</th>
+                                <th>Role</th>
+                                <th>TIN #</th>
+                                <th>Phone Number</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($sortedPartners as $index => $partner)
+                            <tr>
+                                <td class="text-secondary">{{ $index + 1 }}</td>
+                                <td>
+                                    <h6 class="mb-0 font-14">{{ $partner->partner->name }}</h6>
+                                    <p class="mb-0 font-13 text-secondary">{{ $partner->partner->email }}</p>
+                                </td>
+                                <td class="fw-semibold">{{ $partner->partner->store_id }}</td>
+                                <td>
+                                    @if($partner->partner->role === 'shop')
+                                        <span class="badge bg-primary text-white px-2 py-1">Shop</span>
+                                    @elseif($partner->partner->role === 'garage')
+                                        <span class="badge bg-success text-white px-2 py-1">Garage</span>
+                                    @else
+                                        <span class="badge bg-secondary text-white px-2 py-1">{{ ucfirst($partner->partner->role) }}</span>
+                                    @endif
+                                </td>
+                                <td>{{ $partner->partner->tin_number ?? '—' }}</td>
+                                <td>{{ $partner->partner->phone_number }}</td>
+                                <td>
+                                    <form action="partners/{{ $partner->id }}" method="POST"
+                                          onsubmit="return confirm('Remove {{ addslashes($partner->partner->name) }} from your partners?')">
+                                        @method('DELETE')
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-outline-danger radius-10">
+                                            <i class="bx bx-trash me-1"></i>Remove
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            @empty
+                            <tr id="emptyRow">
+                                <td colspan="7" class="text-center text-secondary py-4">
+                                    <i class="bx bx-group fs-4 d-block mb-1 text-secondary opacity-50"></i>
+                                    No partners added yet.
+                                </td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="noSearchResults" class="text-center text-secondary py-4" style="display:none;">
+                    <i class="bx bx-search-alt fs-4 d-block mb-1 opacity-50"></i>
+                    No partners match your search.
+                </div>
+
+            </div>
+        </div>
+    </div>
 </div>
-<!-- Add Modal -->
-<div class="modal fade" id="add" tabindex="-1" aria-hidden="true">
-	<div class="modal-dialog modal-dialog-centered">
-		<div class="modal-content">
-			<div class="modal-header">
-				<h5 class="modal-title">Add Partners</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-			</div>
-      <form action="{{route('partners.add')}}" method="POST">
-        @csrf
-        @method('POST')
-			<div class="modal-body">
-				<label for="multiple-select-garage" class="form-label">Select Your Partners</label>
-								<select class="form-select" name="partners[]" id="multiple1" data-placeholder="Choose anything" multiple>
-                  @foreach($availablePartners as $partner)
-                    <option value="{{$partner->id}}">{{$partner->store_id}} - {{$partner->name}}</option>
-                    @endforeach
-								</select>
-			</div>
-			<div class="modal-footer">
-				<button type="button" class="btn btn-outline-secondary radius-30" data-bs-dismiss="modal">Cancel</button>
-				<button type="submit" class="btn btn-primary radius-30">Add</button>
-			</div>
-      </form>
-		</div>
-	</div>
+
+{{-- ===================== Add Shop Partner Modal ===================== --}}
+<div class="modal fade" id="addShopModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bx bx-store me-2 text-primary"></i>Add Shop Partners</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ route('partners.add') }}" method="POST">
+                @csrf
+                <div class="modal-body">
+                    @if($availableShopPartners->isEmpty())
+                        <div class="text-center text-secondary py-3">
+                            <i class="bx bx-check-circle fs-3 d-block mb-2 text-success opacity-75"></i>
+                            All available shop partners have already been added.
+                        </div>
+                    @else
+                        <div class="mb-3">
+                            <div class="position-relative">
+                                <input type="text" class="form-control ps-5" id="shopSearch"
+                                       placeholder="Search shops..."
+                                       oninput="filterOptions('shopList', this.value)">
+                                <span class="position-absolute top-50 translate-middle-y ps-3" style="left:0; pointer-events:none;">
+                                    <i class="bx bx-search text-secondary"></i>
+                                </span>
+                            </div>
+                        </div>
+                        <p class="text-secondary small mb-2">Hold <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> to select multiple.</p>
+                        <select class="form-select" name="partners[]" id="shopList"
+                                multiple style="min-height:200px; max-height:320px; overflow-y:auto;">
+                            @foreach($availableShopPartners as $p)
+                                <option value="{{ $p->id }}">{{ $p->name }} — {{ $p->store_id }}</option>
+                            @endforeach
+                        </select>
+                    @endif
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary radius-30" data-bs-dismiss="modal">Cancel</button>
+                    @if(!$availableShopPartners->isEmpty())
+                        <button type="submit" class="btn btn-primary radius-30">Add Selected</button>
+                    @endif
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
-<!-- End Add Modal -->
+
+{{-- ===================== Add Garage Partner Modal ===================== --}}
+<div class="modal fade" id="addGarageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bx bx-wrench me-2 text-success"></i>Add Garage Partners</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ route('partners.add') }}" method="POST">
+                @csrf
+                <div class="modal-body">
+                    @if($availableGaragePartners->isEmpty())
+                        <div class="text-center text-secondary py-3">
+                            <i class="bx bx-check-circle fs-3 d-block mb-2 text-success opacity-75"></i>
+                            All available garage partners have already been added.
+                        </div>
+                    @else
+                        <div class="mb-3">
+                            <div class="position-relative">
+                                <input type="text" class="form-control ps-5" id="garageSearch"
+                                       placeholder="Search garages..."
+                                       oninput="filterOptions('garageList', this.value)">
+                                <span class="position-absolute top-50 translate-middle-y ps-3" style="left:0; pointer-events:none;">
+                                    <i class="bx bx-search text-secondary"></i>
+                                </span>
+                            </div>
+                        </div>
+                        <p class="text-secondary small mb-2">Hold <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> to select multiple.</p>
+                        <select class="form-select" name="partners[]" id="garageList"
+                                multiple style="min-height:200px; max-height:320px; overflow-y:auto;">
+                            @foreach($availableGaragePartners as $p)
+                                <option value="{{ $p->id }}">{{ $p->name }} — {{ $p->store_id }}</option>
+                            @endforeach
+                        </select>
+                    @endif
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary radius-30" data-bs-dismiss="modal">Cancel</button>
+                    @if(!$availableGaragePartners->isEmpty())
+                        <button type="submit" class="btn btn-outline-primary radius-30">Add Selected</button>
+                    @endif
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Live search on the partners table ──────────────────────────────────────
+document.getElementById('partnerSearch').addEventListener('input', function () {
+    const query = this.value.toLowerCase().trim();
+    const rows  = document.querySelectorAll('#partnersTable tbody tr:not(#emptyRow)');
+    let visible = 0;
+
+    rows.forEach(row => {
+        const match = row.textContent.toLowerCase().includes(query);
+        row.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+
+    document.getElementById('noSearchResults').style.display =
+        (visible === 0 && query !== '') ? 'block' : 'none';
+});
+
+// ── Filter options inside a modal select ──────────────────────────────────
+function filterOptions(selectId, query) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const lq = query.toLowerCase();
+    Array.from(select.options).forEach(opt => {
+        opt.style.display = opt.text.toLowerCase().includes(lq) ? '' : 'none';
+    });
+}
+
+// ── Reset modal state on close ────────────────────────────────────────────
+['addShopModal', 'addGarageModal'].forEach(id => {
+    document.getElementById(id).addEventListener('hidden.bs.modal', function () {
+        const input  = this.querySelector('input[type="text"]');
+        const select = this.querySelector('select');
+        if (input)  input.value = '';
+        if (select) {
+            Array.from(select.options).forEach(o => o.style.display = '');
+            select.selectedIndex = -1;
+        }
+    });
+});
+</script>
+
 @endsection

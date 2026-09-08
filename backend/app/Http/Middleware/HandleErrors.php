@@ -21,6 +21,11 @@ class HandleErrors
                 throw $e;
             }
 
+            // Let validation exceptions bubble up so Laravel redirects back with errors
+            if ($e instanceof \Illuminate\Validation\ValidationException) {
+                throw $e;
+            }
+
             \Illuminate\Support\Facades\Log::error('HandleErrors middleware caught: ' . $e->getMessage(), [
                 'url'   => $request->fullUrl(),
                 'trace' => $e->getTraceAsString(),

@@ -59,14 +59,14 @@
 									<td> {{ $myApplicationsCount }}/{{ $proforma->required_number_of_shops == 0 ? '∞' : $proforma->required_number_of_shops }}</td>
 								<td>
 								   
-									@if($proforma->status === 'published' && !$proforma->close_request &&  $myApplicationsCount > 0)
+									@if(in_array($proforma->status, ['published', 'pending', 'opened']) && !$proforma->close_request &&  $myApplicationsCount > 0)
 									<form action="{{ route('business-owner.proforma.request-close', ['proforma' => $proforma->id]) }}" method="POST">
 									   @csrf
 									<button class="btn btn-sm btn-primary">
 									    Request Close Proforma
                                     </button>
                                     </form>
-                                    @elseif($proforma->close_request && $proforma->status === 'published')
+                                    @elseif($proforma->close_request && in_array($proforma->status, ['published', 'pending', 'opened']))
                                     <span class="fw-bold">Close Requested</span>
                                     @else
                                     <span class="text-muted">No Action Required</span>

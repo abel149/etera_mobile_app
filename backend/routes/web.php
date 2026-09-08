@@ -40,6 +40,7 @@ use App\Services\AudioService;
 use App\Services\ImageService;
 use App\Services\TelegramService;
 use App\Services\VideoService;
+use App\Services\ProformaGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -70,9 +71,28 @@ use App\Events\ProformaCreated;
 
 use App\Http\Controllers\LogViewerController;
 
-Route::get('/logs', [LogViewerController::class, 'index']);
+// Terms & Conditions agreement (shown to admin-created users on first login)
+Route::middleware('auth.user')->group(function () {
+    Route::get('/terms-agree', function () {
+        if (Auth::user()->terms_agreed_at !== null) {
+            return redirect('/');
+        }
+        return view('terms-agree');
+    });
 
-Route::get('/logs/fetch', [LogViewerController::class, 'fetchLogs']);
+    Route::post('/terms-agree', function (Request $request) {
+        $request->validate(['agreed' => 'required|accepted'], [
+            'agreed.required' => 'You must accept the Terms & Conditions to continue.',
+            'agreed.accepted'  => 'You must accept the Terms & Conditions to continue.',
+        ]);
+        Auth::user()->update(['terms_agreed_at' => now()]);
+        return redirect(Session::pull('url.intended', '/'));
+    });
+});
+
+Route::get('/logs', [LogViewerController::class, 'index'])->middleware('auth.user');
+
+Route::get('/logs/fetch', [LogViewerController::class, 'fetchLogs'])->middleware('auth.user');
 
 // 🔹 CSRF Token Refresh (prevents 419 errors on long sessions)
 Route::get('/csrf-token', function () {
@@ -204,7 +224,7 @@ Route::middleware(['guest'])->group(function () {
 Route::post('/login', function (Request $request) {
     // Validate the password field
     $request->validate([
-        'password' => 'required|min:6|max:10',
+        'password' => 'required|min:6',
         'email_or_phone' => 'required',
     ]);
     
@@ -255,41 +275,8 @@ Route::post('/login', function (Request $request) {
 
         $user = Auth::user();
 
-        // ⭐ Check if user has an active session on another device (spare-part shops only)
-        if ($user->role === 'shop' && $user->session_id && $user->session_id !== Session::getId()) {
-            $storedSession = DB::table('sessions')
-                ->where('id', $user->session_id)
-                ->where('user_id', $user->id)
-                ->first();
-
-            if ($storedSession) {
-                // Check if the old session is from the SAME browser (user cleared cache)
-                $currentUserAgent = $request->header('User-Agent', '');
-                $oldUserAgent = $storedSession->user_agent ?? '';
-                $isSameBrowser = ($currentUserAgent === $oldUserAgent);
-
-                // Check if the old session has expired
-                $sessionLifetime = config('session.lifetime', 120) * 60; // in seconds
-                $isExpired = (time() - $storedSession->last_activity) > $sessionLifetime;
-
-                if ($isSameBrowser || $isExpired) {
-                    // Same browser (cleared cache) or expired session — clean up and allow login
-                    DB::table('sessions')->where('id', $user->session_id)->delete();
-                    $user->session_id = null;
-                    $user->save();
-                } else {
-                    // Truly different device/browser with an active session — block
-                    Auth::logout();
-                    return back()->withErrors([
-                        'email_or_phone' => 'You are already logged in on another device or browser.'
-                    ])->with('session_blocked', true)->withInput();
-                }
-            } else {
-                // The stored session no longer exists — allow login
-                $user->session_id = null;
-                $user->save();
-            }
-        }
+        // Concurrent sessions allowed — multiple employees can use the same account.
+        // The "already applied" guard prevents duplicate applications from concurrent sessions.
 
 
         // Role access & approval
@@ -346,10 +333,6 @@ Route::post('/login', function (Request $request) {
             return back()->withErrors(['email_or_phone' => 'Your account is pending approval. Please wait for admin approval.'])->withInput();
         }
 
-        // ⭐ Store current session ID
-        $user->session_id = Session::getId();
-        $user->save();
-		
         Session::put('last_activity', time());
 
         // Redirect ALL roles to telegram-connect if not connected
@@ -371,9 +354,10 @@ Route::post('/login', function (Request $request) {
             case 'others':
                 return redirect()->intended('/business-owner');
             case 'garage':
-                return redirect()->intended('/garage/');
+                return redirect()->intended('/garage/proformas');
             case 'shop':
-                return redirect()->intended('/spare-part-shops/');
+                Session::forget('url.intended');
+                return redirect('/spare-part-shops/proformas');
             case 'marketer':
                 return redirect()->intended('/marketer');
             case 'employee':
@@ -390,6 +374,15 @@ Route::post('/login', function (Request $request) {
 
     return back()->withErrors(['email_or_phone' => 'Invalid credentials.'])->withInput();
 })->name('login');
+
+
+
+//forgot password sms
+
+Route::post('/auth/forgot-password', [\App\Http\Controllers\Api\AuthController::class, 'forgotPassword'])
+    ->middleware('throttle:3,1');
+Route::post('/auth/reset-password', [\App\Http\Controllers\Api\AuthController::class, 'resetPassword'])
+    ->middleware('throttle:5,1');
 
     // Signup routes
     Route::get('/signup', [\App\Http\Controllers\RegisterController::class, 'showRegistrationForm'])->name('signup');
@@ -412,10 +405,20 @@ Route::get('/api/admin/proformas', function () {
         return response()->json(['error' => 'Unauthorized'], 403);
     }
 
+    $user = auth()->user();
+
     $data = Cache::remember('admin_proformas_data', 10, function () {
-        $proformas = \App\Models\Proforma::with('poster')
+        $proformasQuery = \App\Models\Proforma::with('poster')
             ->whereHas('poster')
-            ->orderBy('created_at', 'desc')
+            ->orderBy('created_at', 'desc');
+
+        if (!(auth()->user()->is_superadmin == 1)) {
+            $proformasQuery->where(function ($q) {
+                $q->whereNull('processed_by')->orWhere('processed_by', auth()->id());
+            });
+        }
+
+        $proformas = $proformasQuery
             ->limit(100)
             ->get()
             ->map(function ($p) {
@@ -495,7 +498,7 @@ Route::post('/api/notifications/read', function () {
 
 // Close proforma (admin only)
 Route::patch('/admin/proforma/{id}/close', [\App\Http\Controllers\AdminController::class, 'closeProforma'])
-    ->name('proforma.close')
+    ->name('admin.proforma.close')
     ->middleware('auth.user');
 
 // Telegram connect page (shown after signup)
@@ -721,6 +724,66 @@ Route::prefix('proforma-applications')->group(function () {
     Route::get('/real-time-updates', [ProformaApplicationDataController::class, 'getRealTimeUpdates'])->name('proforma.applications.real-time');
 });
 
+// ── Application file serving routes (PDF / image quotations) ─────────────────
+
+// Serve plain file bytes — used by the viewer JS for non-encrypted submissions.
+// Reads from disk (file_path); falls back to base64 in DB for old records.
+Route::get('/application/{application}/file', function (\App\Models\ProformaApplication $application) {
+    abort_if(!auth()->check(), 401);
+
+    $pdf = $application->pdf;
+    abort_if(!$pdf, 404);
+
+    if ($pdf->file_path && Storage::disk('local')->exists($pdf->file_path)) {
+        $bytes = Storage::disk('local')->get($pdf->file_path);
+    } elseif ($pdf->encrypted_pdf) {
+        // Legacy: base64 stored directly in the DB column
+        $bytes = base64_decode($pdf->encrypted_pdf);
+    } else {
+        abort(404);
+    }
+
+    $ext  = strtolower(pathinfo($pdf->original_filename, PATHINFO_EXTENSION));
+    $mime = match($ext) {
+        'jpg', 'jpeg' => 'image/jpeg',
+        'png'         => 'image/png',
+        'gif'         => 'image/gif',
+        'webp'        => 'image/webp',
+        'bmp'         => 'image/bmp',
+        default       => 'application/pdf',
+    };
+
+    return response($bytes, 200)
+        ->header('Content-Type', $mime)
+        ->header('Content-Disposition', 'inline; filename="' . $pdf->original_filename . '"');
+})->middleware('auth.user')->name('application.pdf.serve');
+
+// Return encrypted payload as JSON — used by the viewer JS for encrypted submissions.
+// Reads encrypted bytes from disk, re-encodes to base64 for the browser to decrypt.
+Route::get('/application/{application}/file/encrypted', function (\App\Models\ProformaApplication $application) {
+    abort_if(!auth()->check(), 401);
+
+    $pdf = $application->pdf;
+    abort_if(!$pdf || !$pdf->isEncrypted(), 404);
+
+    if ($pdf->file_path && Storage::disk('local')->exists($pdf->file_path)) {
+        $encBase64 = base64_encode(Storage::disk('local')->get($pdf->file_path));
+    } elseif ($pdf->encrypted_pdf) {
+        // Legacy: already stored as base64 in DB
+        $encBase64 = $pdf->encrypted_pdf;
+    } else {
+        abort(404);
+    }
+
+    return response()->json([
+        'encrypted_pdf'     => $encBase64,
+        'encrypted_aes_key' => $pdf->encrypted_aes_key,
+        'aes_iv'            => $pdf->aes_iv,
+    ]);
+})->middleware('auth.user')->name('application.pdf.encrypted');
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 
 Route::get('/', function () {
@@ -738,8 +801,8 @@ Route::get('/', function () {
             'admin', 'superadmin' => '/admin',
             'insurance' => '/insurance',
             'others' => '/business-owner',
-            'garage' => '/garage/',
-            'shop' => '/spare-part-shops/',
+            'garage' => '/garage/proformas',
+            'shop' => '/spare-part-shops/proformas',
             'marketer' => '/marketer',
             'employee' => '/employee',
             'manager' => '/manager/dashboard',
@@ -765,6 +828,7 @@ Route::get('/', function () {
 Route::get('/received-details', function (Request $request) {
     $proforma = Proforma::with([
         'applications.prices.part',
+        'applications.pdf',
         'brand'
     ])->findOrFail($request->query('proforma'));
 
@@ -774,9 +838,15 @@ Route::get('/received-details', function (Request $request) {
         ->get();
 
     // Sort applications by actual final price (lowest first)
-    $applications = $proforma->applications->sortBy(function($application) {
+    $applications = $proforma->applications->sortBy(function($application) use ($proforma) {
         if ($application->from === 'shop' && $application->prices->count() > 0) {
-            $subtotal = $application->prices->sum('part_total');
+            $subtotal = 0;
+            foreach ($proforma->parts as $idx => $part) {
+                $price = $application->prices->values()->get($idx);
+                if ($price) {
+                    $subtotal += $price->unit_price * $part->quantity;
+                }
+            }
             $discountPct = (float)($application->discount ?? 0);
             $discountAmt = ($subtotal * $discountPct) / 100;
             return $subtotal - $discountAmt;
@@ -1160,7 +1230,7 @@ Route::post('/reset-password', function (Request $request) {
     $request->validate([
         'token' => 'required',
         'email' => 'required|string',
-        'password' => 'required|min:6|max:6|confirmed',
+        'password' => 'required|min:6|confirmed',
     ]);
 
     $record = DB::table('password_reset_tokens')->where('email', $request->email)->first();
@@ -1359,12 +1429,68 @@ Route::get('/float', function (Request $request) {
     }
 
     $proforma = \App\Models\Proforma::find($request->query('proforma_id'));
+    
+
     if (! $proforma || $proforma?->status != 'pending') {
         return redirect()->back();
     }
 
-    $proforma->update(['status' => 'published', 'processed_by' => auth()->id()]);
+    // Block float for ALL non-Etera-Chereta proformas when all slots are filled by inboxes.
+    // When all slots are inboxed, inboxed contacts can apply directly (status='pending' is allowed).
+    // Admin must remove at least one inbox entry to open a public float slot.
+    $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
+    $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
 
+    if (!$proforma->isEteraCheretaMode()) {
+        $shopsFull   = $requiredShops   > 0 && $proforma->floatShopQuota()   <= 0;
+        $garagesFull = $requiredGarages > 0 && $proforma->floatGarageQuota() <= 0;
+
+        // Block only when ALL required types are fully covered by inboxes —
+        // if one type still has public slots, float must proceed for that type.
+        $allFull = ($requiredShops   === 0 || $shopsFull)
+                && ($requiredGarages === 0 || $garagesFull)
+                && ($requiredShops > 0 || $requiredGarages > 0);
+
+        if ($allFull) {
+            $msg = [];
+            if ($shopsFull)   $msg[] = 'all ' . $requiredShops   . ' shop slot(s)';
+            if ($garagesFull) $msg[] = 'all ' . $requiredGarages . ' garage slot(s)';
+            return redirect()->back()->with('error',
+                ucfirst(implode(' and ', $msg)) . ' are assigned to inboxed contacts. ' .
+                'Inboxed contacts can already apply directly — no float needed. ' .
+                'To open public slots, remove one or more inbox entries first.'
+            );
+        }
+    }
+
+    // For Etera Chereta proformas, start the timer when floated
+    $isEteraChereta = $proforma->isEteraCheretaMode();
+    $timerExpiresAt = $proforma->timer_expires_at;
+    
+    if ($isEteraChereta && is_null($timerExpiresAt) && $proforma->timer_duration > 0) {
+        $timerExpiresAt = now()->addMinutes($proforma->timer_duration);
+        $proforma->update([
+            'status' => 'published',
+            'processed_by' => auth()->id(),
+            'timer_expires_at' => $timerExpiresAt,
+        ]);
+        
+        // Schedule auto-selection job now that timer has started
+        \App\Jobs\AutoSelectProformaOffers::dispatch($proforma->id)->delay($timerExpiresAt);
+        
+        Log::info('⏰ Etera Chereta timer started on float', [
+            'proforma_id' => $proforma->id,
+            'duration_minutes' => $proforma->timer_duration,
+            'expires_at' => $timerExpiresAt,
+        ]);
+    } else {
+        $proforma->update(['status' => 'published', 'processed_by' => auth()->id()]);
+    }
+    
+    $poster = \App\Models\User::find($proforma->poster_id);
+    if ($poster && $poster->telegram_chat_id) {
+        (new \App\Services\TelegramService())->sendProformaFloatedNotification($poster->telegram_chat_id, $poster);
+    }
     // Log Activity
     \App\Models\ProformaActivityLog::create([
         'proforma_id' => $proforma->id,
@@ -1382,7 +1508,7 @@ Route::get('/float', function (Request $request) {
 // ******************Admin Side******************
 
 Route::prefix('/admin')
-    ->middleware([\App\Http\Middleware\AdminMiddleware::class])
+    ->middleware(['auth.user', \App\Http\Middleware\AdminMiddleware::class])
     ->group(function () {
         // Approve newly registered users
         Route::put('/users/{id}/approve', function ($id) {
@@ -1561,6 +1687,7 @@ Route::prefix('/admin')
                 'brand' => $proforma->brand?->name ?? 'N/A',
                 'model' => $proforma->model,
                 'year' => $proforma->year,
+                'call_customer' => (bool) $proforma->call_customer,
                 'timeline' => $timeline,
             ]);
         })->name('admin.proforma.timeline');
@@ -1573,6 +1700,8 @@ Route::prefix('/admin')
 
 
 Route::get('/verify/{proforma}', function (Proforma $proforma) {
+
+    abort_unless(in_array(auth()->user()->role, ['admin', 'superadmin']), 403);
 
     // ❗ Prevent double verification
     if ($proforma->status === 'completed') {
@@ -1598,7 +1727,7 @@ Route::get('/verify/{proforma}', function (Proforma $proforma) {
         $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
 
         // 🔹 Determine proforma type
-        // Explicit insurance subtypes (set via proforma_type column) always use insurance billing
+        // Explicit insurance subtypes always use insurance billing
         if ($proforma->proforma_type && str_starts_with($proforma->proforma_type, 'insurance_')) {
             $type = 'insurance';
         } elseif ($requiredShops > 0 && $requiredGarages == 0) {
@@ -1655,27 +1784,78 @@ Route::get('/verify/{proforma}', function (Proforma $proforma) {
         */
         elseif ($type === 'insurance') {
 
-            $insuranceTotal = (float) (
-                $proforma->insured
-                    ? ($latestCost->insured_cost ?? 0)
-                    : ($latestCost->insurance_proforma ?? 0)
+            $perProformaCost = \App\Models\InsuranceCost::resolveForPoster(
+                $proforma->poster,
+                $latestCost,
+                (bool) $proforma->insured
             );
 
-            if ($insuranceTotal <= 0) {
+            if ($perProformaCost <= 0) {
                 throw new Exception('Invalid insurance cost');
             }
 
-            $unitPrice = $insuranceTotal / (1 + $vatRate);
-            $vatAmount = $insuranceTotal - $unitPrice;
+            // Count distinct groups that received at least one application
+            $filledGroups = ProformaApplication::where('proforma_id', $proforma->id)
+                ->whereNotNull('inbox_group')
+                ->distinct()
+                ->pluck('inbox_group')
+                ->count();
+
+            // Fallback: if no grouped applications, count all applications
+            if ($filledGroups <= 0) {
+                $filledGroups = ProformaApplication::where('proforma_id', $proforma->id)->count();
+            }
+
+            $totalParts = $proforma->parts()->count();
+            $isGarageOnly = $proforma->isGarageOnlyInsurance();
+            $isDualService = $proforma->isShopGarageInsurance();
+            // Legacy 3+3 proformas (no explicit proforma_type) are also dual service
+            $isLegacyDual = !$proforma->proforma_type && $requiredShops == 3 && $requiredGarages == 3;
+            if ($isLegacyDual) {
+                $isDualService = true;
+            }
+
+            if ($isGarageOnly) {
+                // Garage-only: no parts to prorate, charge flat per filled group
+                $insuranceTotal = $perProformaCost * $filledGroups;
+            } elseif ($isDualService && $totalParts > 0) {
+                // Dual service: prorate shop portion by parts filled + one flat perProformaCost for garage
+                $partsFilled = (int) ProformaApplication::where('proforma_id', $proforma->id)
+                    ->where('from', 'shop')
+                    ->sum('filled_parts_count');
+
+                $shopPortion = $perProformaCost * ($partsFilled / $totalParts);
+
+                // Garage is charged per filled group (each group includes a garage application)
+                $garagePortion = $perProformaCost * $filledGroups;
+
+                $insuranceTotal = $shopPortion + $garagePortion;
+            } elseif ($totalParts > 0) {
+                // Shop-only: prorate by parts filled across all groups
+                $partsFilled = (int) ProformaApplication::where('proforma_id', $proforma->id)
+                    ->where('from', 'shop')
+                    ->sum('filled_parts_count');
+
+                $insuranceTotal = $perProformaCost * ($partsFilled / $totalParts);
+            } else {
+                // No parts and not garage-only: fall back to flat per group
+                $insuranceTotal = $perProformaCost * $filledGroups;
+            }
+
+            // $insuranceTotal is the NET base price; VAT is added on top
+            $insuranceTotal = round($insuranceTotal, 2);
+
+            $vatAmount   = round($insuranceTotal * $vatRate, 2);
+            $totalWithVat = $insuranceTotal + $vatAmount;
 
             $rows[] = [
                 'proforma_id'     => $proforma->id,
                 'type'            => 'insurance',
-                'requested_count' => ($requiredShops + $requiredGarages) ?: 6,
-                'unit_price'      => $unitPrice,
+                'requested_count' => $filledGroups,
+                'unit_price'      => $insuranceTotal,
                 'vat_rate'        => $vatRate * 100,
                 'vat_amount'      => $vatAmount,
-                'total_amount'    => $insuranceTotal,
+                'total_amount'    => $totalWithVat,
                 'is_paid'         => !$proforma->insured,
                 'created_by'      => Auth::id(),
                 'created_at'      => now(),
@@ -1823,9 +2003,37 @@ Route::get('/verify/{proforma}', function (Proforma $proforma) {
 
         foreach ($applications as $application) {
             $user = $application->applicationBy;
-                $amount = $user->role === 'garage'
-                    ? ($commissions->garagePay ?? 0)
-                    : ($commissions->shopPay ?? 0);
+            if (!$user) continue;
+
+            if ($user->role === 'garage') {
+                $amount = (float) ($commissions->garagePay ?? 0);
+            } else {
+                // Pro-rata for shops: scale by parts filled / total parts
+                $shopPay     = (float) ($commissions->shopPay ?? 0);
+                $totalParts  = (int) ($application->total_parts_count ?? 0);
+                $filledParts = (int) ($application->filled_parts_count ?? 0);
+
+                // Fall back to actual data if the tracked counters are missing (0)
+                if ($totalParts <= 0) {
+                    $totalParts = $proforma->parts()->count();
+                }
+                if ($filledParts <= 0 && $totalParts > 0) {
+                    $filledParts = $application->prices()
+                        ->where(function ($q) {
+                            $q->where('unit_price', '>', 0)
+                              ->orWhere('price_is_encrypted', true);
+                        })
+                        ->count();
+                }
+
+                if ($totalParts > 0 && $filledParts > 0) {
+                    $amount = round($shopPay * ($filledParts / $totalParts), 2);
+                } elseif ($totalParts > 0) {
+                    $amount = 0; // No actual part prices recorded — no commission
+                } else {
+                    $amount = $shopPay; // Legacy record: no parts data — full pay
+                }
+            }
 
             if ($amount > 0) {
                 addCommissionRecord(
@@ -1837,7 +2045,17 @@ Route::get('/verify/{proforma}', function (Proforma $proforma) {
             }
         }
         }else{
-             $applications = ProformaApplication::where('proforma_id', $proforma->id)->get();
+            if ($type === 'etera_chereta') {
+                // amount column is string type in DB — must CAST for correct numeric ordering
+                // Pool is frozen: auto-selector closes the proforma before commission runs
+                $applications = ProformaApplication::where('proforma_id', $proforma->id)
+                    ->orderByRaw('CAST(amount AS DECIMAL(15,2)) ASC')
+                    ->orderBy('created_at', 'asc')
+                    ->limit(5)
+                    ->get();
+            } else {
+                $applications = ProformaApplication::where('proforma_id', $proforma->id)->get();
+            }
 
         foreach ($applications as $application) {
             $user = $application->applicationBy;
@@ -1923,7 +2141,7 @@ Route::get('/verify/{proforma}', function (Proforma $proforma) {
 
         return redirect()->back()->with('error', 'Verification failed.');
     }
-});
+})->middleware('auth.user');
 
 
 /**
@@ -1935,6 +2153,26 @@ Route::get('/verify/{proforma}', function (Proforma $proforma) {
 function addCommissionRecord($user, $proformaId, $applicationId, $amount)
 {
     $role = $user->role; // 'shop', 'garage', or 'insurance'
+
+    // 0. Idempotency guard: never create the same commission twice
+    // (re-verification would otherwise inflate balances and analytics).
+    $alreadyExists = PaidUser::where('user_id', $user->id)
+        ->where('proforma_id', $proformaId)
+        ->when(
+            $applicationId,
+            fn($q) => $q->where('application_id', $applicationId),
+            fn($q) => $q->whereNull('application_id')
+        )
+        ->exists();
+
+    if ($alreadyExists) {
+        Log::info('Skipped duplicate commission record', [
+            'user_id' => $user->id,
+            'proforma_id' => $proformaId,
+            'application_id' => $applicationId,
+        ]);
+        return null;
+    }
 
     // 1. Create PaidUser record (Legacy/Work Log)
     $record = PaidUser::create([
@@ -2058,7 +2296,7 @@ function addCommissionRecord($user, $proformaId, $applicationId, $amount)
 
         // Delete Admin (superadmin only)
         Route::delete('/admins/{id}', function ($id) {
-            if (auth()->user()->role !== 'superadmin') {
+            if (!auth()->user()->is_superadmin) {
                 abort(403);
             }
             $admin = \App\Models\User::findOrFail($id);
@@ -2121,8 +2359,20 @@ function addCommissionRecord($user, $proformaId, $applicationId, $amount)
 
         
         // View Garage
-        Route::get('/garages', function () {
-            $garages = \App\Models\User::where('role', 'garage')->get();
+        Route::get('/garages', function (Request $request) {
+            $query = \App\Models\User::where('role', 'garage');
+
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('phone_number', 'like', "%{$search}%")
+                      ->orWhere('tin_number', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%");
+                });
+            }
+
+            $garages = $query->orderBy('name', 'asc')->paginate(20)->withQueryString();
 
             return view('admin.users.garages.view', [
                 'garages' => $garages,
@@ -2251,15 +2501,29 @@ Route::post('/admin/marketers/{id}', [MarketerController::class, 'destroy'])
             ]);
         });
         // View Spare Part Shops
-        Route::get('/spare-part-shops', function () {
-            $shops = \App\Models\User::where('role', 'shop')->get();
+        Route::get('/spare-part-shops', function (Request $request) {
+            $query = \App\Models\User::where('role', 'shop')->with('brands');
 
-            // dd($shops);
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('phone_number', 'like', "%{$search}%")
+                      ->orWhere('tin_number', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%");
+                });
+            }
 
+            if ($request->filled('brand_id')) {
+                $query->whereHas('brands', function ($q) use ($request) {
+                    $q->where('brands.id', $request->brand_id);
+                });
+            }
 
-            return view('admin.users.spare-part-shops.view', [
-                'shops' => $shops,
-            ]);
+            $shops  = $query->orderBy('name', 'asc')->paginate(20);
+            $brands = \App\Models\Brand::orderBy('name', 'asc')->get();
+
+            return view('admin.users.spare-part-shops.view', compact('shops', 'brands'));
         });
         // Add Insurance
         Route::post('/add-shop', [
@@ -2884,20 +3148,57 @@ Route::prefix('employee')
 Route::prefix('insurance')
     ->middleware([\App\Http\Middleware\RoleMiddleware::class])
     ->group(function () {
-        Route::get('/', function(){ return view('insurance.index'); });
+        Route::get('/', function (Request $request) {
+            $query = auth()->user()->proformas()->orderBy('created_at', 'desc');
+
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('file_number', 'like', "%{$search}%")
+                      ->orWhere('customer_name', 'like', "%{$search}%")
+                      ->orWhere('license_plate_number', 'like', "%{$search}%")
+                      ->orWhere('customer_phone_number', 'like', "%{$search}%");
+                });
+            }
+
+            $proformas = $query->paginate(20)->withQueryString();
+
+            return view('insurance.index', compact('proformas'));
+        });
+
+        Route::post('/proforma/{proforma}/request-close', function ($proformaId) {
+            $proforma = \App\Models\Proforma::find($proformaId);
+            if (!$proforma) {
+                return back()->with('error', 'Proforma not found.');
+            }
+            $proforma->update(['close_request' => true]);
+            return back()->with('success', 'Close request submitted.');
+        })->name('insurance.proforma.request-close');
+
 Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance');
-        Route::get('/received-proformas', function () {
+        Route::get('/received-proformas', function (Request $request) {
     if (auth()->check()) {
         $user = auth()->user();
 
         // Mark all new proformas for this user as viewed
         $user->markReceivedProformasAsViewed();
 
-        $proformas = \App\Models\Proforma::where('poster_id', $user->id)
+        $query = \App\Models\Proforma::where('poster_id', $user->id)
             ->where('status', 'completed')
             ->where('verified', true)
-            ->orderBy('created_at','desc')
-            ->paginate(10);
+            ->orderBy('created_at', 'desc');
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('file_number', 'like', "%{$search}%")
+                  ->orWhere('customer_name', 'like', "%{$search}%")
+                  ->orWhere('license_plate_number', 'like', "%{$search}%")
+                  ->orWhere('customer_phone_number', 'like', "%{$search}%");
+            });
+        }
+
+        $proformas = $query->paginate(20)->withQueryString();
 
         return view('insurance.proformas', compact('proformas'));
     }
@@ -2905,37 +3206,207 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
     return redirect('/login');
 });
 
+        // ── Insurance: Manage inbox assignments for a proforma ────────────────────
+        Route::get('proforma/{proforma}/manage-inboxes', function (Proforma $proforma) {
+            abort_if($proforma->poster_id !== auth()->id(), 403);
+
+            $shopUserIds   = \App\Models\User::where('role', 'shop')->pluck('id');
+            $garageUserIds = \App\Models\User::where('role', 'garage')->pluck('id');
+
+            $shopInboxes = \App\Models\Inbox::with('user')
+                ->where('proforma_id', $proforma->id)
+                ->where('source', 'insurance')
+                ->whereIn('user_id', $shopUserIds)
+                ->get()->groupBy('inbox_group');
+
+            $garageInboxes = \App\Models\Inbox::with('user')
+                ->where('proforma_id', $proforma->id)
+                ->where('source', 'insurance')
+                ->whereIn('user_id', $garageUserIds)
+                ->get()->groupBy('inbox_group');
+
+            $appliedUserIds     = $proforma->applications()->pluck('application_by')->map(fn($id) => (int)$id)->toArray();
+            $shopApplications   = $proforma->applications()->where('from', 'shop')->with('applicationBy')->get();
+            $garageApplications = $proforma->applications()->where('from', 'garage')->with('applicationBy')->get();
+
+            $spare_part_partners = auth()->user()->sparePartPartners();
+            $garage_partners     = auth()->user()->garagePartners();
+
+            // For insurance_shop_garage type, only show shops with shop_garage = 1
+            if ($proforma->proforma_type === 'insurance_shop_garage') {
+                $all_shops = \App\Models\User::where('role', 'shop')->where('shop_garage', 1)->orderBy('name')->get();
+            } else {
+                $all_shops = \App\Models\User::where('role', 'shop')->orderBy('name')->get();
+            }
+            $all_garages         = \App\Models\User::where('role', 'garage')->orderBy('name')->get();
+
+            return view('insurance.manage-inboxes', compact(
+                'proforma', 'shopInboxes', 'garageInboxes',
+                'appliedUserIds', 'shopApplications', 'garageApplications',
+                'spare_part_partners', 'garage_partners', 'all_shops', 'all_garages'
+            ));
+        })->name('insurance.manage-inboxes');
+
+        Route::post('proforma/{proforma}/manage-inboxes', function (Request $request, Proforma $proforma) {
+            abort_if($proforma->poster_id !== auth()->id(), 403);
+
+            // Guard: only pending proformas can be edited
+            if ($proforma->status !== 'pending') {
+                return redirect()->back()->with('error', 'This proforma is no longer editable (status: ' . $proforma->status . ').');
+            }
+
+            $appliedUserIds = $proforma->applications()->pluck('application_by')->map(fn($id) => (int)$id)->toArray();
+            $allShopUserIds = \App\Models\User::where('role', 'shop')->pluck('id')->toArray();
+            $shopUserQuery  = \App\Models\User::where('role', 'shop');
+            if ($proforma->isShopGarageInsurance()) {
+                $shopUserQuery->where('shop_garage', 1);
+            }
+            $shopUserIds    = $shopUserQuery->pluck('id')->toArray();
+            $garageUserIds  = \App\Models\User::where('role', 'garage')->pluck('id')->toArray();
+            $shopGroupsUsed   = 0;
+            $garageGroupsUsed = 0;
+
+            // Dynamic shop group count (0 for garage-only proformas)
+            $shopSlotCount = $proforma->isGarageOnlyInsurance() ? 0
+                : max(0, min(5, (int)($proforma->required_number_of_shops ?? 3)));
+
+            for ($grp = 1; $grp <= $shopSlotCount; $grp++) {
+                // ── Lock check: groups with no current insurance inbox entries are locked ──
+                // (chereta cleared them after an application, or insurance never used them)
+                $currentIds = \App\Models\Inbox::where('proforma_id', $proforma->id)
+                    ->where('source', 'insurance')->where('inbox_group', $grp)
+                    ->whereIn('user_id', $allShopUserIds)
+                    ->pluck('user_id')->map(fn($id) => (int)$id)->toArray();
+
+                if (empty($currentIds)) {
+                    // Group is locked — skip entirely, do not touch
+                    continue;
+                }
+
+                // Group is unlocked (has current entries) — apply desired set
+                $desiredIds = collect(array_unique(array_filter($request->input("shop_group_{$grp}", []))))
+                    ->map(fn($v) => (int)$v)
+                    ->reject(fn($id) => in_array($id, $appliedUserIds) || !in_array($id, $shopUserIds))
+                    ->unique()->values()->toArray();
+
+                // Remove entries no longer desired (including clearing the whole group = free slot for admin)
+                $toRemove = array_diff($currentIds, $desiredIds);
+                if (!empty($toRemove)) {
+                    \App\Models\Inbox::where('proforma_id', $proforma->id)
+                        ->where('source', 'insurance')->where('inbox_group', $grp)
+                        ->whereIn('user_id', $toRemove)->delete();
+
+                    // If the group is partially filled and now has no pending inbox, broadcast the rest.
+                    (new ProformaGroupService())->checkAndTriggerPartials($proforma, $grp);
+                }
+                // Add newly desired entries (skip if already inboxed elsewhere on this proforma)
+                foreach (array_diff($desiredIds, $currentIds) as $userId) {
+                    if (!\App\Models\Inbox::where('proforma_id', $proforma->id)->where('user_id', $userId)->exists()) {
+                        \App\Models\Inbox::create(['proforma_id' => $proforma->id, 'user_id' => $userId, 'source' => 'insurance', 'inbox_group' => $grp]);
+                    }
+                }
+                // Recalculate whether this group still has entries after changes
+                if (\App\Models\Inbox::where('proforma_id', $proforma->id)->where('source', 'insurance')->where('inbox_group', $grp)->whereIn('user_id', $shopUserIds)->exists()) {
+                    $shopGroupsUsed++;
+                }
+            }
+
+            // Dynamic garage group count (0 for shop-only proformas)
+            $garageSlotCount = $proforma->isShopOnlyInsurance() ? 0
+                : max(0, min(5, (int)($proforma->required_number_of_garages ?? 3)));
+
+            for ($grp = 1; $grp <= $garageSlotCount; $grp++) {
+                // ── Lock check: groups with no current insurance inbox entries are locked ──
+                $currentIds = \App\Models\Inbox::where('proforma_id', $proforma->id)
+                    ->where('source', 'insurance')->where('inbox_group', $grp)
+                    ->whereIn('user_id', $garageUserIds)
+                    ->pluck('user_id')->map(fn($id) => (int)$id)->toArray();
+
+                if (empty($currentIds)) {
+                    continue;
+                }
+
+                $desiredIds = collect(array_unique(array_filter($request->input("garage_group_{$grp}", []))))
+                    ->map(fn($v) => (int)$v)
+                    ->reject(fn($id) => in_array($id, $appliedUserIds) || !in_array($id, $garageUserIds))
+                    ->unique()->values()->toArray();
+
+                $toRemove = array_diff($currentIds, $desiredIds);
+                if (!empty($toRemove)) {
+                    \App\Models\Inbox::where('proforma_id', $proforma->id)
+                        ->where('source', 'insurance')->where('inbox_group', $grp)
+                        ->whereIn('user_id', $toRemove)->delete();
+                }
+                foreach (array_diff($desiredIds, $currentIds) as $userId) {
+                    if (!\App\Models\Inbox::where('proforma_id', $proforma->id)->where('user_id', $userId)->exists()) {
+                        \App\Models\Inbox::create(['proforma_id' => $proforma->id, 'user_id' => $userId, 'source' => 'insurance', 'inbox_group' => $grp]);
+                    }
+                }
+                if (\App\Models\Inbox::where('proforma_id', $proforma->id)->where('source', 'insurance')->where('inbox_group', $grp)->whereIn('user_id', $garageUserIds)->exists()) {
+                    $garageGroupsUsed++;
+                }
+            }
+
+            // Update quotas so the admin side sees the correct insurance slot count
+            $proforma->update(['insurance_shop_quota' => $shopGroupsUsed, 'insurance_garage_quota' => $garageGroupsUsed]);
+
+            return redirect()->back()->with('success', 'Inbox updated successfully.');
+        })->name('insurance.manage-inboxes.update');
+
         Route::get('proforma-details', function (Request $request) {
+
             $proforma = \App\Models\Proforma::with([
                 'applications.prices',
                 'applications.applicationBy',
+                'applications.pdf',
                 'parts',
+                'proformaInvoice',
+                'brand',
             ])->findOrFail($request->query('proforma_id'));
-            $applications = $proforma->applications->sortBy(function($application) {
-                // For shops: calculate final price from parts minus discount
-                if ($application->from === 'shop' && $application->prices->count() > 0) {
-                    $subtotal = $application->prices->sum('part_total');
-                    $discountPct = (float)($application->discount ?? 0);
-                    $discountAmt = ($subtotal * $discountPct) / 100;
-                    return $subtotal - $discountAmt;
-                }
-                // For garages: use amount field
-                return $application->amount ?? 0;
-            });
 
-            // Limit to requested number for non-Etera Chereta
+            // Shop applications — sort by inbox_group first, then by id.
+            // (Sorting by subtotal is unreliable for encrypted proformas where all amounts are 0.)
+            $shopApplications = $proforma->applications
+                ->where('from', 'shop')
+                ->sortBy(fn($a) => [$a->inbox_group ?? 9999, $a->id]);
+
+            // Garage applications
+            $garageApplications = $proforma->applications
+                ->where('from', 'garage')
+                ->sortBy(function($application) {
+
+                    return $application->amount ?? 0;
+                });
+
+            // Limits
             $requiredShops = (int) ($proforma->required_number_of_shops ?? 0);
-            if ($requiredShops > 0) {
-                $applications = $applications->take($requiredShops);
+            $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
+
+            // Shop limit: for group-based proformas (inbox_group is used), show ALL applications
+            // because partial-fill completions create more applications than required_number_of_shops.
+            $usesGroups = $shopApplications->filter(fn($a) => $a->inbox_group !== null)->isNotEmpty();
+            if (!$usesGroups) {
+                $shopApplications = $requiredShops > 0
+                    ? $shopApplications->take($requiredShops)
+                    : $shopApplications->take(5);
             }
 
-            // Etera Chereta (0 shops requested): show only top 5 lowest price
-            if ($requiredShops === 0) {
-                $applications = $applications->take(5);
-            }
+            // Garage limit
+            if ($requiredGarages > 0) {
+                $garageApplications = $garageApplications->take($requiredGarages);
+            } 
 
-            return view('insurance.proforma-details', compact('proforma','applications'));
-        });
+            // Merge collections
+            $applications = $shopApplications->concat($garageApplications);
+
+            // Build proforma-part → car_part_id map so the view can match prices by car_part_id
+            // instead of by collection index (index-based mapping breaks for partial applications).
+            $partCarPartIds = $proforma->parts->sortBy('id')->values()->map(
+                fn($p) => \App\Models\CarPart::where('name', 'ppart_' . $p->id)->value('id')
+            );
+
+            return view('insurance.proforma-details', compact('proforma', 'applications', 'partCarPartIds'));
+});
         Route::get('/add-parts', function () {
             return view('insurance.parts.add');
         });
@@ -2952,9 +3423,99 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
         ])->name('partners.destroy');
         Route::post('partners/add', [PartnerController::class, 'store'])->name('partners.add');
 
+        // ── E2E Encryption ────────────────────────────────────────────────
+        Route::get('encryption/setup', [\App\Http\Controllers\InsuranceEncryptionController::class, 'setupPage'])
+            ->name('insurance.encryption.setup');
+        Route::post('encryption/setup', [\App\Http\Controllers\InsuranceEncryptionController::class, 'saveKeys'])
+            ->name('insurance.encryption.setup.save');
+        Route::get('encryption/private-key', [\App\Http\Controllers\InsuranceEncryptionController::class, 'getEncryptedPrivateKey'])
+            ->name('insurance.encryption.private-key');
+        Route::post('encryption/change-pin', [\App\Http\Controllers\InsuranceEncryptionController::class, 'changePin'])
+            ->name('insurance.encryption.change-pin');
+        Route::get('encryption/recovery-key', [\App\Http\Controllers\InsuranceEncryptionController::class, 'getRecoveryKey'])
+            ->name('insurance.encryption.recovery-key');
+
         Route::get('/profile', function () {
             return view('insurance.profile');
         });
+
+        // ── Agent Management (insurance admin only) ───────────────────────
+        Route::get('/agents', function () {
+            abort_if(auth()->user()->role !== 'insurance', 403);
+            $agents = \App\Models\User::where('parent_insurance_id', auth()->id())
+                ->orderBy('created_at', 'desc')
+                ->get();
+            return view('insurance.agents', compact('agents'));
+        })->name('insurance.agents');
+
+        Route::post('/agents', function (\Illuminate\Http\Request $request) {
+            abort_if(auth()->user()->role !== 'insurance', 403);
+            try {
+                $request->validate([
+                    'name'         => 'required|string|max:255',
+                    'phone_number' => 'required|digits:10|unique:users,phone_number',
+                    'password'     => 'nullable|string|min:6',
+                ]);
+                $password = $request->filled('password') ? $request->password : '123456';
+                \App\Models\User::create([
+                    'name'                 => $request->name,
+                    'phone_number'         => $request->phone_number,
+                    'password'             => bcrypt($password),
+                    'role'                 => 'insurance_agent',
+                    'parent_insurance_id'  => auth()->id(),
+                    'approved'             => true,
+                    'balance'              => 0,
+                ]);
+                return redirect()->route('insurance.agents')->with('success', 'Agent account created successfully.');
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['error' => collect($e->errors())->flatten()->implode(' ')]);
+            } catch (\Exception $e) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['error' => 'Failed to create agent. ' . $e->getMessage()]);
+            }
+        })->name('insurance.agents.store');
+
+        Route::get('/agents/{agent}/edit', function (\App\Models\User $agent) {
+            abort_if(auth()->user()->role !== 'insurance', 403);
+            abort_if($agent->parent_insurance_id !== auth()->id(), 403);
+            return view('insurance.agents', ['agents' => \App\Models\User::where('parent_insurance_id', auth()->id())->orderBy('created_at','desc')->get(), 'editAgent' => $agent]);
+        })->name('insurance.agents.edit');
+
+        Route::put('/agents/{agent}', function (\Illuminate\Http\Request $request, \App\Models\User $agent) {
+            abort_if(auth()->user()->role !== 'insurance', 403);
+            abort_if($agent->parent_insurance_id !== auth()->id(), 403);
+            try {
+                $request->validate([
+                    'name'         => 'required|string|max:255',
+                    'phone_number' => 'required|digits:10|unique:users,phone_number,' . $agent->id,
+                    'password'     => 'nullable|string|min:6',
+                ]);
+                $data = ['name' => $request->name, 'phone_number' => $request->phone_number];
+                if ($request->filled('password')) {
+                    $data['password'] = bcrypt($request->password);
+                }
+                $agent->update($data);
+                return redirect()->route('insurance.agents')->with('success', 'Agent updated successfully.');
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['error' => collect($e->errors())->flatten()->implode(' ')]);
+            } catch (\Exception $e) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['error' => 'Failed to update agent. ' . $e->getMessage()]);
+            }
+        })->name('insurance.agents.update');
+
+        Route::delete('/agents/{agent}', function (\App\Models\User $agent) {
+            abort_if(auth()->user()->role !== 'insurance', 403);
+            abort_if($agent->parent_insurance_id !== auth()->id(), 403);
+            $agent->delete();
+            return redirect()->route('insurance.agents')->with('success', 'Agent account deleted.');
+        })->name('insurance.agents.delete');
         
 
 
@@ -2969,15 +3530,25 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
             $spare_part_partners = auth()->user()->sparePartPartners();
             $garage_partners = auth()->user()->garagePartners();
 
-            return view(
-                'insurance.create-file',
-                compact(
-                    'brands',
-                    'parts',
-                    'spare_part_partners',
-                    'garage_partners'
+            // For insurance_shop_garage type, only show shops with shop_garage = 1
+            // Note: This is for the create page, filtering happens on selection in JS
+            $all_shops   = \App\Models\User::where('role', 'shop')->with('brands')->orderBy('name')->get();
+            $all_garages = \App\Models\User::where('role', 'garage')->orderBy('name')->get();
+
+            return response()
+                ->view(
+                    'insurance.create-file',
+                    compact(
+                        'brands',
+                        'parts',
+                        'spare_part_partners',
+                        'garage_partners',
+                        'all_shops',
+                        'all_garages'
+                    )
                 )
-            );
+                ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                ->header('Pragma', 'no-cache');
         });
         // Route::post('create-file', function (Request $request) {
         //     $request->validate(
@@ -2988,7 +3559,7 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
         //             'year' => 'required|numeric',
         //             'customer_name' => 'required',
         //             'customer_phone_number' => 'required|numeric',
-        //             'license_plate_number' => 'required',
+        // 
         //             'chassis_number' => 'required',
         //             'parts' => 'required|array',
         //             'parts.id' => 'required|array',
@@ -3029,7 +3600,7 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
         //         'car_brand_id' => $request->brand_id,
         //         'customer_name' => $request->customer_name,
         //         'customer_phone_number' => $request->customer_phone_number,
-        //         'license_plate_number' => $request->license_plate_number,
+        //        
         //         'chassis_number' => $request->chassis_number,
         //         'year' => $request->year,
         //         'model' => $request->model,
@@ -3085,27 +3656,31 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
             $validator = Validator::make($request->all(), [
                 'file_number' => 'nullable',
                 'brand_id' => 'required|exists:brands,id',
-                'car_type' => 'nullable|in:ICE,EV,Hybrid,Others',
+                'car_type' => 'nullable|in:Sedan/S.U.V(GAS),Sedan/S.U.V(EV),Mini Van(GAS),Mini Van(EV),Isuzu/Bus(GAS),Isuzu/Bus(EV),Heavy',
+                'damage_severity' => 'nullable|in:minor,major,severe',
                 'model' => 'required',
                 'year' => 'required',
                 'customer_name' => 'required',
                 'insured' => 'nullable|boolean',
                 'customer_phone_number' => 'required|string',
+                'Agent_phone_number' => 'required|string',
                 'customer_email' => 'nullable|string',
-                'license_plate_number' => 'required',
                 'chassis_number' => 'nullable',
+                'license_plate_number' => 'required|string',
                 'parts' => 'required|array',
                 'parts.*.number' => 'required|string',
                 'parts.*.grade' => 'required|string',
                 'parts.*.country' => 'required|string',
-                'parts.*.quantity' => 'nullable|numeric',
+                'parts.*.quantity' => 'nullable|integer|min:1',
                 'parts.*.condition' => 'nullable|string',
                 'parts.*.component' => 'nullable|string',
+                'parts.*.repair_renew' => 'nullable|string|in:renew,repair',
+                'call_customer' => 'nullable|boolean',
                 'parts.*.images.*' => 'nullable|image|max:10240', // Validate images
                 'number_of_proformas' => 'nullable|integer|min:-1|max:5',
                 'etera_chereta_hours' => 'nullable|integer|in:4,8,12,24,48,72',
                 'voice_note' => 'nullable|string|max:10485760',
-                'proforma_type' => 'nullable|in:insurance_standard,insurance_shop_only,insurance_garage_only',
+                'proforma_type' => 'nullable|in:insurance_standard,insurance_shop_only,insurance_garage_only,insurance_shop_garage',
                 'number_of_garages' => 'nullable|integer|min:1|max:5'
             ]);
             
@@ -3121,13 +3696,13 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
             $requiredShops = 3;
             $requiredGarages = 3;
             $timerExpiresAt = null;
+
             $proformaType = null;
 
             if ($isEteraChereta) {
                 $eteraHours = (int) $request->input('etera_chereta_hours', 24);
                 $timerMinutes = $eteraHours * 60;
-                $timerEnabled = true;
-                $timerExpiresAt = now()->addMinutes($timerMinutes);
+                $timerExpiresAt = null;
                 $requiredShops = 0;
                 $requiredGarages = 0;
                 $proformaType = null;
@@ -3139,22 +3714,29 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
                 $requiredShops = max(1, (int) $request->input('number_of_proformas', 3));
                 $requiredGarages = 0;
                 $proformaType = 'insurance_shop_only';
-            } else {
+            } elseif ($request->input('proforma_type') === 'insurance_shop_garage') {
                 $requiredShops = max(1, (int) $request->input('number_of_proformas', 3));
-                $requiredGarages = 3;
-                $proformaType = 'insurance_standard';
+                $requiredGarages = 0;
+                $proformaType = 'insurance_shop_garage';
+            } else {
+                // Fallback: insurance_shop_only (standard type is hidden from UI)
+                $requiredShops   = max(1, (int) $request->input('number_of_proformas', 3));
+                $requiredGarages = 0;
+                $proformaType = 'insurance_shop_only';
             }
 
             $proforma = \App\Models\Proforma::create([
                 'poster_id' => auth()->user()->id,
                 'file_number' => $request->file_number ?? '#'.auth()->user()->id.'-'.time(),
                 'car_brand_id' => $request->brand_id,
-                'car_type' => $request->input('car_type', 'ICE'),
+                'car_type' => $request->input('car_type', 'Sedan/S.U.V(GAS)'),
+                'damage_severity' => $request->input('damage_severity'),
                 'customer_name' => $request->customer_name,
                 'customer_phone_number' => $request->customer_phone_number,
+                'Agent_phone_number' => $request->Agent_phone_number,
                 'customer_email' => $request->customer_email,
-                'license_plate_number' => $request->license_plate_number,
                 'chassis_number' => $request->chassis_number,
+                'license_plate_number' => $request->license_plate_number,
                 'year' => $request->year,
                 'model' => $request->model,
                 'required_number_of_shops' => $requiredShops,
@@ -3163,41 +3745,97 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
                 'timer_duration' => $timerMinutes,
                 'timer_expires_at' => $timerExpiresAt,
                 'insured' => $request->has('insured') ? true : false,
+                'call_customer' => $request->has('call_customer'),
             ]);
 
-            foreach ($request->parts as $partData) {
-                // Create a new part record
-                $part = $proforma->parts()->create([
-                    'number' => $partData['number'],
-                    'grade' => $partData['grade'] ?? null,
-                    'country' => $partData['country'] ?? null,
-                    'quantity' => $partData['quantity'] ?? null,
-                    'condition' => $partData['condition'] ?? null,
-                    'component' => $partData['component'] ?? null,
-                ]);
-
+            if (!empty($request->parts)) {
+                $now = now();
+                DB::table('proforma_part')->insert(
+                    collect($request->parts)->map(fn($p) => [
+                        'proforma_id'  => $proforma->id,
+                        'number'       => $p['number'],
+                        'grade'        => $p['grade'] ?? null,
+                        'country'      => $p['country'] ?? null,
+                        'quantity'     => $p['quantity'] ?? null,
+                        'condition'    => $p['condition'] ?? null,
+                        'component'    => $p['component'] ?? null,
+                        'repair_renew' => $p['repair_renew'] ?? null,
+                        'created_at'   => $now,
+                        'updated_at'   => $now,
+                    ])->toArray()
+                );
             }
             
-            // Shop partner inboxes (skip for garage-only)
-            if ($proformaType !== 'insurance_garage_only' && $request->spare_part_partners) {
-                foreach ($request->spare_part_partners as $inbox) {
-                    Inbox::create([
-                        'proforma_id' => $proforma->id,
-                        'user_id' => $inbox,
-                        'source' => 'insurance',
-                    ]);
+            // ── Insurance inbox groups (each group = 1 required slot) ────────────
+            // Shop groups are skipped for garage-only; garage groups skipped for shop-only.
+            $shopGroup1  = array_unique(array_filter($request->input('spare_part_partners', [])));
+            $shopGroup2  = array_unique(array_filter($request->input('insurance_shop_extra1', [])));
+            $shopGroup3  = array_unique(array_filter($request->input('insurance_shop_extra2', [])));
+            $shopGroup4  = array_unique(array_filter($request->input('insurance_shop_extra3', [])));
+            $shopGroup5  = array_unique(array_filter($request->input('insurance_shop_extra4', [])));
+
+            $garageGroup1 = array_unique(array_filter($request->input('garage_partners', [])));
+            $garageGroup2 = array_unique(array_filter($request->input('insurance_garage_extra1', [])));
+            $garageGroup3 = array_unique(array_filter($request->input('insurance_garage_extra2', [])));
+            $garageGroup4 = array_unique(array_filter($request->input('insurance_garage_extra3', [])));
+            $garageGroup5 = array_unique(array_filter($request->input('insurance_garage_extra4', [])));
+
+            // Backend safety: remove cross-group duplicates between consecutive extra groups
+            $shopGroup3   = array_values(array_diff($shopGroup3,   $shopGroup2));
+            $shopGroup4   = array_values(array_diff($shopGroup4,   $shopGroup3, $shopGroup2));
+            $shopGroup5   = array_values(array_diff($shopGroup5,   $shopGroup4, $shopGroup3, $shopGroup2));
+            $garageGroup3 = array_values(array_diff($garageGroup3, $garageGroup2));
+            $garageGroup4 = array_values(array_diff($garageGroup4, $garageGroup3, $garageGroup2));
+            $garageGroup5 = array_values(array_diff($garageGroup5, $garageGroup4, $garageGroup3, $garageGroup2));
+
+            $shopGroupsUsed = 0;
+            if ($proformaType !== 'insurance_garage_only') {
+                foreach ([1 => $shopGroup1, 2 => $shopGroup2, 3 => $shopGroup3, 4 => $shopGroup4, 5 => $shopGroup5] as $grp => $ids) {
+                    if (!empty($ids)) {
+                        // Filter users: for insurance_shop_garage type, only include users with shop_garage = 1
+                        if ($proformaType === 'insurance_shop_garage') {
+                            $ids = array_filter($ids, function($userId) {
+                                $user = \App\Models\User::find($userId);
+                                return $user && $user->shop_garage == 1;
+                            });
+                        }
+                        if (!empty($ids)) {
+                            $shopGroupsUsed++;
+                            foreach ($ids as $userId) {
+                                Inbox::create([
+                                    'proforma_id' => $proforma->id,
+                                    'user_id'     => $userId,
+                                    'source'      => 'insurance',
+                                    'inbox_group' => $grp,
+                                ]);
+                            }
+                        }
+                    }
                 }
             }
 
-            // Garage partner inboxes (skip for shop-only)
-            if ($proformaType !== 'insurance_shop_only' && $request->garage_partners) {
-                foreach ($request->garage_partners as $inbox) {
-                    Inbox::create([
-                        'proforma_id' => $proforma->id,
-                        'user_id' => $inbox,
-                        'source' => 'insurance',
-                    ]);
+            $garageGroupsUsed = 0;
+            if (!in_array($proformaType, ['insurance_shop_only', 'insurance_shop_garage'], true)) {
+                foreach ([1 => $garageGroup1, 2 => $garageGroup2, 3 => $garageGroup3, 4 => $garageGroup4, 5 => $garageGroup5] as $grp => $ids) {
+                    if (!empty($ids)) {
+                        $garageGroupsUsed++;
+                        foreach ($ids as $userId) {
+                            Inbox::create([
+                                'proforma_id' => $proforma->id,
+                                'user_id'     => $userId,
+                                'source'      => 'insurance',
+                                'inbox_group' => $grp,
+                            ]);
+                        }
+                    }
                 }
+            }
+
+            if (\Illuminate\Support\Facades\Schema::hasColumn('proformas', 'insurance_shop_quota')) {
+                $proforma->update(['insurance_shop_quota' => $shopGroupsUsed]);
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('proformas', 'insurance_garage_quota')) {
+                $proforma->update(['insurance_garage_quota' => $garageGroupsUsed]);
             }
 
             // Handle voice note if present
@@ -3246,27 +3884,74 @@ Route::get('/balance', [UserBalanceController::class, 'index'])->name('balance')
             // 🔔 Broadcast to admin dashboard in real-time
             event(new ProformaCreated($proforma));
 
-            // If Etera-Chereta mode, dispatch auto-selection after expiry
-            if ($isEteraChereta) {
-                \App\Jobs\AutoSelectProformaOffers::dispatch($proforma->id)->delay(now()->addMinutes($timerMinutes));
-            }
+            // Note: Timer and auto-selection will start when admin floats the proforma
 
             return redirect()->back()->with('success', 'Proforma created successfully');
         })->name('insurance.create-file');
 
-    Route::get('/insurance/create-file', function () {
-        $brands = Brand::all();
-        $spare_part_partners = User::where('role', 'shop')->get();
-        $garage_partners = User::where('role', 'garage')->get();
-        
-        return view('insurance.create-file', compact('brands', 'spare_part_partners', 'garage_partners'));
-    })->name('insurance.create-file.show');
 
 
         
         
     Route::post('/upload/image', [App\Http\Controllers\FileUploadController::class, 'uploadPartsImage'])->name('upload.image');
     Route::delete('/delete', [App\Http\Controllers\FileUploadController::class, 'deleteUpload'])->name('upload.delete');
+
+        // ── Encryption integrity verification (insurance only) ────────────────
+        Route::get('version', function () {
+            $commitLong  = trim(shell_exec('git -C ' . escapeshellarg(base_path()) . ' rev-parse HEAD 2>/dev/null') ?? '');
+            $commitShort = trim(shell_exec('git -C ' . escapeshellarg(base_path()) . ' rev-parse --short HEAD 2>/dev/null') ?? '');
+
+            if (empty($commitLong)) {
+                $headFile = base_path('.git/HEAD');
+                if (file_exists($headFile)) {
+                    $head = trim(file_get_contents($headFile));
+                    if (str_starts_with($head, 'ref: ')) {
+                        $refFile = base_path('.git/' . substr($head, 5));
+                        $commitLong = file_exists($refFile) ? trim(file_get_contents($refFile)) : $head;
+                    } else {
+                        $commitLong = $head;
+                    }
+                }
+                $commitShort = $commitLong ? substr($commitLong, 0, 7) : 'unknown';
+            }
+
+            $encFile     = base_path('resources/js/e2e-encryption.js');
+            $fileHash    = file_exists($encFile) ? 'sha384-' . base64_encode(hash_file('sha384', $encFile, true)) : 'file-not-found';
+            $fileSize    = file_exists($encFile) ? filesize($encFile) : 0;
+            $fileLines   = file_exists($encFile) ? count(file($encFile)) : 0;
+
+            $repoUrl     = 'https://github.com/abel149/etera';
+            $rawBase     = 'https://raw.githubusercontent.com/abel149/etera';
+            $encFilePath = 'resources/js/e2e-encryption.js';
+
+            $githubFileUrl   = $commitLong ? "{$repoUrl}/blob/{$commitLong}/{$encFilePath}"  : null;
+            $githubCommitUrl = $commitLong ? "{$repoUrl}/commit/{$commitLong}"               : null;
+            $rawDownloadUrl  = $commitLong ? "{$rawBase}/{$commitLong}/{$encFilePath}"        : null;
+
+            return response()->json([
+                'commit'       => $commitLong  ?: 'unknown',
+                'commit_short' => $commitShort ?: 'unknown',
+                'github' => [
+                    'repo'             => $repoUrl,
+                    'commit_url'       => $githubCommitUrl,
+                    'encryption_file'  => $githubFileUrl,
+                    'raw_download_url' => $rawDownloadUrl,
+                ],
+                'encryption_file' => [
+                    'path'       => $encFilePath,
+                    'sha384'     => $fileHash,
+                    'size_bytes' => $fileSize,
+                    'line_count' => $fileLines,
+                ],
+                'how_to_verify' => [
+                    'important_note' => 'Use curl.exe (not curl) on Windows to avoid CRLF line-ending conversion that changes the hash.',
+                    'step_1' => 'Run: curl.exe -o enc.js "' . ($rawDownloadUrl ?? '{raw_download_url}') . '"',
+                    'step_2' => 'Run: openssl dgst -sha384 -binary enc.js | openssl base64',
+                    'step_3' => 'Add "sha384-" before the result and compare with encryption_file.sha384 above.',
+                    'step_4' => 'Match = live code is byte-for-byte identical to GitHub. Mismatch = server code was changed without pushing.',
+                ],
+            ], 200, ['Cache-Control' => 'no-store, no-cache']);
+        })->name('insurance.version');
 
     });
 
@@ -3276,15 +3961,53 @@ Route::get('proforma-details', function (Request $request) {
         return redirect()->back();
     }
 
-    // Reset inbox count when user opens proforma details
-    if (auth()->check()) {
-        // Remove the proforma from user's inbox to reset the ticker
-        \App\Models\Inbox::where('user_id', auth()->id())
-            ->where('proforma_id', $proforma->id)
-            ->delete();
+    $assignedGroup   = null;
+    $lockedParts     = collect();
+    $applicationMode = null;
+
+    if (auth()->check() && auth()->user()->role === 'shop' && !$proforma->isShopGarageInsurance()) {
+        $groupService = new \App\Services\ProformaGroupService();
+
+        $partial = \App\Models\Partial::where('proforma_id', $proforma->id)
+            ->where('user_id', auth()->id())
+            ->where('active', true)
+            ->first();
+
+        if ($partial) {
+            $applicationMode = 'partial';
+            $assignedGroup   = $partial->inbox_group;
+            $lockedParts     = $groupService->getLockedParts($proforma->id, $assignedGroup);
+        } else {
+            $ownInbox = $proforma->inboxes()->where('user_id', auth()->id())->first();
+
+            if ($ownInbox && $ownInbox->inbox_group !== null) {
+                // Shop is inboxed into a slot shared with other shops — lock any parts
+                // already priced by another shop in the same group.
+                $assignedGroup = $ownInbox->inbox_group;
+                $lockedParts   = $groupService->getLockedParts($proforma->id, $assignedGroup);
+            }
+        }
     }
 
-    return view('spare-part.details', compact('proforma'));
+    // Build lockedDataByPartId: proforma_part.id => ['unit_price' => N]
+    // CarParts are stored as 'ppart_{proforma_part.id}' — match on that name.
+    $lockedDataByPartId = collect();
+    if ($lockedParts->isNotEmpty()) {
+        $parts      = $proforma->parts->sortBy('id')->values();
+        $ppartNames = $parts->map(fn ($p) => 'ppart_' . $p->id)->values()->all();
+        $carPartMap = \App\Models\CarPart::whereIn('name', $ppartNames)
+            ->pluck('id', 'name');
+        foreach ($parts as $p) {
+            $carPartId = $carPartMap['ppart_' . $p->id] ?? null;
+            if ($carPartId && $lockedParts->has($carPartId)) {
+                $lockedDataByPartId[$p->id] = [
+                    'unit_price' => $lockedParts[$carPartId]->unit_price ?? 0,
+                ];
+            }
+        }
+    }
+
+    return view('spare-part.details', compact('proforma', 'assignedGroup', 'lockedParts', 'lockedDataByPartId', 'applicationMode'));
 })->name('proforma-details');
 
 Route::prefix('garage')
@@ -3347,14 +4070,6 @@ Route::post('/proforma/{proforma}/request-close', function ($proformaId) {
                 return redirect()->back();
             }
 
-            // Reset inbox count when user opens proforma details
-            if (auth()->check()) {
-                // Remove the proforma from user's inbox to reset the ticker
-                \App\Models\Inbox::where('user_id', auth()->id())
-                    ->where('proforma_id', $proforma->id)
-                    ->delete();
-            }
-
             return view('spare-part.details', compact('proforma'));
         })->name('garage.proforma-details');
         
@@ -3362,51 +4077,174 @@ Route::post('/proforma/{proforma}/request-close', function ($proformaId) {
             Request $request,
             Proforma $proforma
         ) {
-            $request->validate([
-                'amount' => 'required|numeric|min:1',
-                'discount' => 'nullable|numeric|min:0|max:100',
-            ]);
+            $isEncrypted = $request->boolean('prices_encrypted', false);
+            $hasPdf      = $request->filled('encrypted_pdf') || $request->filled('pdf_data');
 
-            // Calculate final amount
-            $initialPrice = $request->amount;
-            $discount = $request->discount ?? 0;
-            $finalAmount = $request->input('final-amount', $initialPrice);
-            
-            // Ensure minimum amount
-            $finalAmount = max($finalAmount, 1);
-
-            $application = $proforma->applications()->create([
-                'application_by' => auth()->id(),
-                'from' => 'garage',
-                'amount' => $finalAmount,
-                'discount' => $discount,
-            ]);
-
-            // Send notification to proforma poster
-            if ($proforma->poster && $proforma->poster->id !== auth()->id()) {
-                $proforma->poster->notify(new ProformaApplicationReceived($proforma, $application, auth()->user()));
+            if ($isEncrypted) {
+                $request->validate(['encrypted_amount' => 'required|string']);
+            } elseif (!$hasPdf) {
+                $request->validate([
+                    'amount'   => 'required|numeric|min:1',
+                    'discount' => 'nullable|numeric|min:0|max:100',
+                    'expiry_date' => 'nullable|date|after:today',
+                ], [
+                    'expiry_date.date' => 'Expiry date must be a valid date.',
+                    'expiry_date.after' => 'Expiry date must be after today.',
+                ]);
             }
 
-            // Remove inbox record if exists
-            $proforma->inboxes()->where('user_id', auth()->id())->delete();
+            // Insurance proformas require encrypted submissions — when the poster
+            // has encryption set up. Posters without keys accept plain submissions.
+            if (!$isEncrypted && in_array(optional($proforma->poster)->role, ['insurance', 'insurance_agent']) && optional($proforma->poster)->has_encryption) {
+                return redirect()->back()
+                    ->withErrors(['general' => 'Encrypted price submission is required for this proforma. Please contact the insurance.'])
+                    ->withInput();
+            }
 
-            // Check if proforma should be closed (both garage and shop requirements met)
+            // Guard: prevent duplicate applications from the same user (concurrent session safety)
+            $alreadyApplied = \App\Models\ProformaApplication::where('proforma_id', $proforma->id)
+                ->where('application_by', auth()->id())
+                ->exists();
+            if ($alreadyApplied) {
+                return redirect('/garage/proformas')
+                    ->with('error', 'You have already applied to this proforma.');
+            }
+
+            $discount     = $request->discount ?? 0;
+            $finalAmount  = 0;
+
+            if (!$isEncrypted && !$hasPdf) {
+                $initialPrice = $request->amount;
+                $finalAmount  = $initialPrice - ($initialPrice * $discount / 100);
+                $finalAmount  = max($finalAmount, 1);
+            }
+
+            // Detect inbox source AND group BEFORE deleting inbox
+            $ownInbox           = $proforma->inboxes()->where('user_id', auth()->id())->first();
+            $isInsuranceInboxed = $ownInbox && $ownInbox->source === 'insurance';
+            $isAdminInboxed     = $ownInbox && $ownInbox->source === 'admin';
+            $inboxGroup         = $ownInbox?->inbox_group;
+
+            $applicationSource = $isInsuranceInboxed ? 'partner' : ($isAdminInboxed ? 'admin' : 'public');
+
+            $appData = [
+                'application_by'    => auth()->id(),
+                'from'              => 'garage',
+                'amount'            => $finalAmount,
+                'discount'          => $isEncrypted ? 0 : $discount,
+                'notes'             => $request->filled('notes') ? trim($request->notes) : null,
+                'application_source'=> $applicationSource,
+                'inbox_group'       => $inboxGroup,
+                'expiry_date'       => $request->filled('expiry_date') ? $request->expiry_date : null,
+            ];
+            if ($isEncrypted && $request->filled('encrypted_amount')) {
+                $appData['encrypted_amount']   = $request->encrypted_amount;
+                $appData['amount_is_encrypted'] = true;
+            }
+            $application = $proforma->applications()->create($appData);
+
+            // ── PDF / image quotation storage ──────────────────────────────────
+            if ($hasPdf) {
+                try {
+                    $originalFilename = $request->pdf_filename ?? 'quotation.pdf';
+                    $ext = strtolower(pathinfo($originalFilename, PATHINFO_EXTENSION)) ?: 'pdf';
+
+                    if ($request->filled('encrypted_pdf')) {
+                        $encBytes = base64_decode($request->encrypted_pdf);
+                        $filename = $application->id . '_' . \Illuminate\Support\Str::uuid() . '.enc';
+                        Storage::disk('local')->put('application-files/' . $filename, $encBytes);
+                        \App\Models\ApplicationPdf::create([
+                            'application_id'    => $application->id,
+                            'storage_type'      => 'encrypted',
+                            'file_path'         => 'application-files/' . $filename,
+                            'encrypted_aes_key' => $request->encrypted_aes_key,
+                            'aes_iv'            => $request->aes_iv,
+                            'original_filename' => $originalFilename,
+                        ]);
+                    } elseif ($request->filled('pdf_data')) {
+                        $fileBytes = base64_decode($request->pdf_data);
+                        $filename  = $application->id . '_' . \Illuminate\Support\Str::uuid() . '.' . $ext;
+                        Storage::disk('local')->put('application-files/' . $filename, $fileBytes);
+                        \App\Models\ApplicationPdf::create([
+                            'application_id'    => $application->id,
+                            'storage_type'      => 'plain',
+                            'file_path'         => 'application-files/' . $filename,
+                            'original_filename' => $originalFilename,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Failed to store garage application file: ' . $e->getMessage());
+                }
+            }
+
+            // ── Inbox cleanup ─────────────────────────────────────────────────
+            // Remove own inbox record
+            \App\Models\Inbox::where('user_id', auth()->id())
+                ->where('proforma_id', $proforma->id)
+                ->delete();
+
+            // Chereta: wipe all garage inbox siblings in the same group (per-group cleanup)
+            if ($isInsuranceInboxed) {
+                $garageUserIds = \App\Models\User::where('role', 'garage')->pluck('id');
+
+                if ($inboxGroup !== null) {
+                    // Per-group chereta: wipe all others in the same inbox_group
+                    $proforma->inboxes()
+                        ->where('source', 'insurance')
+                        ->where('inbox_group', $inboxGroup)
+                        ->whereIn('user_id', $garageUserIds)
+                        ->delete();
+                } else {
+                    // Legacy (no inbox_group): quota-based cleanup
+                    $garagePartnerApplied = $proforma->applications()
+                        ->where('from', 'garage')
+                        ->where('application_source', 'partner')
+                        ->count();
+                    $garageQuota = (int) ($proforma->insurance_garage_quota ?? 1);
+                    if ($garagePartnerApplied >= $garageQuota) {
+                        $proforma->inboxes()
+                            ->where('source', 'insurance')
+                            ->whereNull('inbox_group')
+                            ->whereIn('user_id', $garageUserIds)
+                            ->delete();
+                    }
+                }
+            }
+
+            // ── Proforma closure check ────────────────────────────────────────
             $garageApplicationsCount = $proforma->applications()->where('from', 'garage')->count();
-            $shopApplicationsCount = $proforma->applications()->where('from', 'shop')->count();
+            $shopApplicationsCount   = $proforma->applications()->where('from', 'shop')->count();
             $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
-            $requiredShops = (int) ($proforma->required_number_of_shops ?? 0);
-            
-            // Check if BOTH garage and shop requirements are met and not an Etera-Chereta (0,0) proforma
-            $isEteraChereta = ($requiredGarages + $requiredShops) === 0;
+            $requiredShops   = (int) ($proforma->required_number_of_shops ?? 0);
+
+            $isEteraChereta       = ($requiredGarages + $requiredShops) === 0;
             $garageRequirementMet = $requiredGarages === 0 || $garageApplicationsCount >= $requiredGarages;
-            $shopRequirementMet = $requiredShops === 0 || $shopApplicationsCount >= $requiredShops;
-            
+            $shopRequirementMet   = $requiredShops   === 0 || $shopApplicationsCount   >= $requiredShops;
+
             if (!$isEteraChereta && $garageRequirementMet && $shopRequirementMet && ($requiredGarages > 0 || $requiredShops > 0)) {
                 $proforma->update(['status' => 'closed']);
                 $proforma->inboxes()->delete();
             }
 
-            return redirect('/role/proformas')
+            // ── Notify poster via Telegram (best-effort — must not crash the apply flow) ──
+            try {
+                if ($proforma->poster && !empty($proforma->poster->telegram_chat_id)) {
+                    $telegram = new \App\Services\TelegramService();
+                    $telegram->sendApplicationReceivedNotification(
+                        $proforma->poster->telegram_chat_id,
+                        $proforma,
+                        auth()->user()->role
+                    );
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Garage application notification failed', [
+                    'proforma_id' => $proforma->id,
+                    'user_id'     => auth()->id(),
+                    'error'       => $e->getMessage(),
+                ]);
+            }
+
+            return redirect('/garage/proformas')
                 ->with('success', 'Price quote submitted successfully!');
         })->name('garage.proforma.apply');
 
@@ -3440,13 +4278,19 @@ Route::get('/received-details', function (Request $request) {
 
     // Eagerly load the 'applicationBy' relationship for each application
     $applications = $proforma->applications()
-        ->with(['prices', 'applicationBy']) // ✅ Added 'applicationBy'
+        ->with(['prices', 'applicationBy', 'pdf']) // ✅ Added 'applicationBy'
         ->orderBy('created_at', 'desc')
         ->get()
-        ->sortByDesc(function($application) {
+        ->sortByDesc(function($application) use ($proforma) {
             // This sorting logic remains the same
             if ($application->applicationBy->role === 'shop' && $application->prices->count() > 0) {
-                $subtotal = $application->prices->sum('part_total');
+                $subtotal = 0;
+                foreach ($proforma->parts as $idx => $part) {
+                    $price = $application->prices->values()->get($idx);
+                    if ($price) {
+                        $subtotal += $price->unit_price * $part->quantity;
+                    }
+                }
                 $discountPct = (float)($application->discount ?? 0);
                 $discountAmt = ($subtotal * $discountPct) / 100;
                 return $subtotal - $discountAmt;
@@ -3523,11 +4367,10 @@ Route::prefix('garage')
                     'number_of_proformas' => ['required', 'integer', 'min:-1', 'max:4'],
                     'etera_chereta_hours' => ['nullable', 'integer', 'in:4,8,12,24,48,72'],
                     'brand_id' => ['required', 'integer', 'exists:brands,id'],
-                    'car_type' => 'required|in:ICE,EV,Hybrid,Others',
+                    'car_type' => 'required|in:Sedan/S.U.V(GAS),Sedan/S.U.V(EV),Mini Van(GAS),Mini Van(EV),Isuzu/Bus(GAS),Isuzu/Bus(EV),Heavy',
                     'model' => ['required', 'string', 'max:255'],
                     'year' => ['required', 'regex:/^(#N\/A|19\d{2}|20\d{2})$/'],
                     'customer_phone_number' => ['required', 'string'],
-                    'license_plate_number' => ['required', 'string'],
                     'chassis_number' => ['nullable', 'string'],
                     'parts.condition' => ['required', 'array', 'min:1'],
                     'parts.condition.*' => ['required', 'string', 'in:New'],
@@ -3537,8 +4380,8 @@ Route::prefix('garage')
                     'parts.grade.*' => ['required', 'string'],
                     'parts.country' => ['required', 'array'],
                     'parts.country.*' => ['required', 'string'],
-                    'parts.quantity' => ['required', 'array'],
-                    'parts.quantity.*' => ['required', 'integer'],
+                    'parts.quantity' => ['nullable', 'array'],
+                    'parts.quantity.*' => ['nullable', 'integer', 'min:1'],
                     'parts.component' => ['required', 'array', 'min:1'],
                     'parts.component.*' => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
                     // ⚠️ FilePond now sends uploaded paths, not actual image files
@@ -3571,10 +4414,9 @@ Route::prefix('garage')
                     'poster_id' => auth()->id(),
                     'file_number' => '#' . auth()->id() . '-' . substr(time(), -4),
                     'car_brand_id' => $request->brand_id,
-                    'car_type' => $request->input('car_type', 'ICE'),
+                    'car_type' => $request->input('car_type', 'Sedan/S.U.V(GAS)'),
                     'customer_name' => auth()->user()->name,
                     'customer_phone_number' => $request->customer_phone_number,
-                    'license_plate_number' => $request->license_plate_number,
                     'chassis_number' => $request->chassis_number,
                     'year' => $request->year,
                     'model' => $request->model,
@@ -3693,6 +4535,49 @@ foreach ($partsData['condition'] as $index => $condition) {
 
 Route::post('apply/{proforma}', [ProformaApplicationController::class, 'store'])->name('proforma.apply');
 
+// Public key endpoint — used by shop/garage to encrypt prices before submitting
+Route::get('insurance/public-key/{proforma}', [\App\Http\Controllers\InsuranceEncryptionController::class, 'getPublicKey'])
+    ->middleware('auth')
+    ->name('insurance.public-key');
+
+// PDF routes — serve encrypted blobs to insurance, or plain PDF to poster
+Route::get('insurance/application/{application}/pdf', function (\App\Models\ProformaApplication $application) {
+    $proforma = $application->proforma;
+    if (!$proforma || $proforma->poster_id !== auth()->id()) {
+        abort(403);
+    }
+    $pdf = $application->pdf;
+    if (!$pdf || !$pdf->isEncrypted()) {
+        abort(404);
+    }
+    return response()->json([
+        'encrypted_pdf'     => $pdf->encrypted_pdf,
+        'encrypted_aes_key' => $pdf->encrypted_aes_key,
+        'aes_iv'            => $pdf->aes_iv,
+        'original_filename' => $pdf->original_filename,
+    ]);
+})->middleware(['auth'])->name('application.pdf.encrypted');
+
+Route::get('application/{application}/pdf/serve', function (\App\Models\ProformaApplication $application) {
+    $proforma = $application->proforma;
+    $userId = auth()->id();
+    // Allow the proforma poster OR the shop that submitted the application
+    $isPoster    = $proforma && $proforma->poster_id === $userId;
+    $isApplicant = $application->application_by === $userId;
+    if (!$isPoster && !$isApplicant) {
+        abort(403);
+    }
+    $pdf = $application->pdf;
+    if (!$pdf || $pdf->isEncrypted()) {
+        abort(404);
+    }
+    $pdfBytes = base64_decode($pdf->encrypted_pdf);
+    return response($pdfBytes, 200, [
+        'Content-Type'        => 'application/pdf',
+        'Content-Disposition' => 'inline; filename="' . $pdf->original_filename . '"',
+    ]);
+})->middleware(['auth'])->name('application.pdf.serve');
+
 Route::prefix('spare-part-shops')
     ->middleware([ShopMiddleware::class])
     ->group(function () {
@@ -3722,15 +4607,92 @@ Route::prefix('spare-part-shops')
                 return redirect()->back();
             }
 
-            // Reset inbox count when user opens proforma details
-            if (auth()->check()) {
-                // Remove the proforma from user's inbox to reset the ticker
-                \App\Models\Inbox::where('user_id', auth()->id())
-                    ->where('proforma_id', $proforma->id)
-                    ->delete();
+            $assignedGroup  = null;
+            $lockedParts    = collect();
+            $applicationMode = $request->query('mode');
+
+            if (auth()->check() && auth()->user()->role === 'shop') {
+                $groupService = new \App\Services\ProformaGroupService();
+
+                if ($proforma->isShopGarageInsurance()) {
+                    $ownInbox = $proforma->inboxes()->where('user_id', auth()->id())->first();
+                    $assignedGroup = $ownInbox?->inbox_group;
+                    $applicationMode = null;
+                } elseif ($applicationMode === 'full') {
+                    $assignedGroup = $groupService->autoAssignGroup($proforma);
+
+                    if ($assignedGroup === null) {
+                        return redirect('/spare-part-shops/proformas')
+                            ->with('error', 'No empty proforma group is available. Please use one of the partial proforma cards.');
+                    }
+                } elseif ($applicationMode === 'partial') {
+                    $requestedGroup = $request->integer('group');
+                    $partial = \App\Models\Partial::where('proforma_id', $proforma->id)
+                        ->where('user_id', auth()->id())
+                        ->where('inbox_group', $requestedGroup)
+                        ->where('active', true)
+                        ->first();
+
+                    if (! $partial) {
+                        return redirect('/spare-part-shops/proformas')
+                            ->with('error', 'This partial proforma is no longer available.');
+                    }
+
+                    $assignedGroup = $partial->inbox_group;
+                    $lockedParts = $groupService->getLockedParts($proforma->id, $assignedGroup);
+                } else {
+                    $partial = \App\Models\Partial::where('proforma_id', $proforma->id)
+                        ->where('user_id', auth()->id())
+                        ->where('active', true)
+                        ->first();
+
+                    if ($partial) {
+                        $applicationMode = 'partial';
+                        $assignedGroup = $partial->inbox_group;
+                        $lockedParts = $groupService->getLockedParts($proforma->id, $assignedGroup);
+                    } else {
+                        $ownInbox = $proforma->inboxes()->where('user_id', auth()->id())->first();
+                        $isAdminInboxed = $ownInbox && $ownInbox->source === 'admin';
+
+                        if ($ownInbox && $ownInbox->inbox_group !== null) {
+                            $assignedGroup = $ownInbox->inbox_group;
+                            $lockedParts = $groupService->getLockedParts($proforma->id, $assignedGroup);
+                        } else {
+                            $applicationMode = 'full';
+                            $assignedGroup = $groupService->autoAssignGroup($proforma);
+
+                            if ($assignedGroup === null && $isAdminInboxed) {
+                                $applicationMode = 'partial';
+                                $assignedGroup = $groupService->findFirstIncompleteGroup($proforma);
+                            }
+
+                            if ($applicationMode === 'partial' && $assignedGroup !== null) {
+                                $lockedParts = $groupService->getLockedParts($proforma->id, $assignedGroup);
+                            }
+                        }
+                    }
+                }
             }
 
-            return view('spare-part.details', compact('proforma'));
+            // Build lockedDataByPartId: proforma_part.id => ['unit_price' => N]
+            // CarParts are now stored as 'ppart_{proforma_part.id}' — match on that name.
+            $lockedDataByPartId = collect();
+            if ($lockedParts->isNotEmpty()) {
+                $parts      = $proforma->parts->sortBy('id')->values();
+                $ppartNames = $parts->map(fn ($p) => 'ppart_' . $p->id)->values()->all();
+                $carPartMap = \App\Models\CarPart::whereIn('name', $ppartNames)
+                    ->pluck('id', 'name');
+                foreach ($parts as $p) {
+                    $carPartId = $carPartMap['ppart_' . $p->id] ?? null;
+                    if ($carPartId && $lockedParts->has($carPartId)) {
+                        $lockedDataByPartId[$p->id] = [
+                            'unit_price' => $lockedParts[$carPartId]->unit_price ?? 0,
+                        ];
+                    }
+                }
+            }
+
+            return view('spare-part.details', compact('proforma', 'assignedGroup', 'lockedParts', 'lockedDataByPartId', 'applicationMode'));
         })->name('proforma-details');
 
 Route::post('apply/{proforma}', function (
@@ -3740,6 +4702,21 @@ Route::post('apply/{proforma}', function (
     $request->validate([
         'amount' => 'required|numeric|min:1',
     ]);
+
+    // Guard: prevent duplicate applications from the same user (concurrent session safety)
+    // Exception: if the user has an active Partial record, they may apply to a different group.
+    $alreadyApplied = \App\Models\ProformaApplication::where('proforma_id', $proforma->id)
+        ->where('application_by', auth()->id())
+        ->exists();
+    $hasActivePartial = \App\Models\Partial::where('proforma_id', $proforma->id)
+        ->where('user_id', auth()->id())
+        ->where('active', true)
+        ->exists();
+    if ($alreadyApplied && !$hasActivePartial) {
+        return redirect('/role/proformas')
+            ->with('error', 'You have already applied to this proforma.');
+    }
+
     $application = $proforma->applications()->create([
         'application_by' => auth()->check()
             ? Auth::id()
@@ -3796,39 +4773,118 @@ Route::post('/proformas', function (Request $request) {
     $proforma = \App\Models\Proforma::findOrFail($request->proforma);
     $telegram = new \App\Services\TelegramService();
 
-    if ($request->spare_part_partners) {
-        $uniqueSparePartPartners = array_unique($request->spare_part_partners);
+    // ── Guard: skip shop inboxing entirely for garage-only proformas ─────────────
+    if (($proforma->proforma_type ?? null) === 'insurance_garage_only'
+        && $request->has('spare_part_partners')) {
+        // Silently drop shop submissions for garage-only proformas
+        $request->request->remove('spare_part_partners');
+    }
+    // ── Guard: skip garage inboxing entirely for shop-only proformas ─────────────
+    if (($proforma->proforma_type ?? null) === 'insurance_shop_only'
+        && $request->has('garage_partners')) {
+        $request->request->remove('garage_partners');
+    }
 
-        foreach ($uniqueSparePartPartners as $inbox) {
-            if (empty($inbox)) {
-                continue;
+    if ($request->has('spare_part_partners')) {
+        $requiredShops  = (int) ($proforma->required_number_of_shops ?? 0);
+        $isEteraChereta = $requiredShops === 0 && (int)($proforma->required_number_of_garages ?? 0) === 0;
+
+        // IDs with active (non-rejected) applications — these slots are locked and cannot be changed
+        $lockedShopIdsQuery = $proforma->applications()->where('from', 'shop');
+        if (\Illuminate\Support\Facades\Schema::hasColumn('proforma_applications', 'status')) {
+            $lockedShopIdsQuery->where(function ($q) {
+                $q->whereNull('status')->orWhere('status', '!=', 'rejected');
+            });
+        }
+        $lockedShopIds = $lockedShopIdsQuery
+            ->pluck('application_by')->map(fn($id) => (string) $id)->unique()->toArray();
+
+        // How many admin-inboxable slots exist for this proforma.
+        // Fall back to insurance inbox count when insurance_shop_quota column is null.
+        $effectiveShopQuota = $proforma->shopPartnerQuota() > 0
+            ? $proforma->shopPartnerQuota()
+            : \App\Models\Inbox::where('proforma_id', $proforma->id)
+                ->where('source', 'insurance')
+                ->whereHas('user', fn($q) => $q->where('role', 'shop'))
+                ->count();
+        $adminShopSlotCap = !$isEteraChereta && $requiredShops > 0
+            ? max(0, $requiredShops - $effectiveShopQuota)
+            : PHP_INT_MAX;
+
+        // Editable capacity = cap minus those already consumed by admin applications
+        $lockedAdminShopCount = 0;
+        if (\Illuminate\Support\Facades\Schema::hasColumn('proforma_applications', 'application_source')) {
+            $lockedAdminShopCount = $proforma->applications()
+                ->where('from', 'shop')->where('application_source', 'admin')->count();
+        }
+        $editableShopSlots = $adminShopSlotCap === PHP_INT_MAX
+            ? PHP_INT_MAX
+            : max(0, $adminShopSlotCap - $lockedAdminShopCount);
+
+        // ── Set-diff approach ──────────────────────────────────────────────────
+        // Build the desired set from the submitted form values.
+        // Skip locked IDs (applied users) and enforce the editable capacity cap.
+        $desiredShopIds = collect(is_array($request->spare_part_partners) ? $request->spare_part_partners : [])
+            ->map(fn($v) => !empty($v) ? (string) $v : null)
+            ->filter()
+            ->reject(fn($id) => in_array($id, $lockedShopIds, true))
+            ->unique()
+            ->when($editableShopSlots !== PHP_INT_MAX, fn($c) => $c->take($editableShopSlots))
+            ->values()
+            ->toArray();
+
+        // Current editable admin inboxes (not locked by an application)
+        $currentShopIds = \App\Models\Inbox::where('proforma_id', $proforma->id)
+            ->where('source', 'admin')
+            ->whereHas('user', fn($q) => $q->where('role', 'shop'))
+            ->whereNotIn('user_id', $lockedShopIds)
+            ->pluck('user_id')->map(fn($v) => (string) $v)->toArray();
+
+        // Remove entries that are no longer in the desired set
+        $shopToRemove = array_diff($currentShopIds, $desiredShopIds);
+        if (!empty($shopToRemove)) {
+            \App\Models\Inbox::where('proforma_id', $proforma->id)
+                ->where('source', 'admin')
+                ->whereIn('user_id', $shopToRemove)
+                ->delete();
+        }
+
+        // Add new entries
+        $adminGroupService = new \App\Services\ProformaGroupService();
+        foreach (array_diff($desiredShopIds, $currentShopIds) as $desiredUserId) {
+
+            // Delete any existing Partial records for this shop — admin inbox
+            // gives them a dedicated slot, so stale partials must not override it.
+            \App\Models\Partial::where('proforma_id', $proforma->id)
+                ->where('user_id', $desiredUserId)
+                ->delete();
+
+            // Assign a dedicated group so the shop is guaranteed a fresh
+            // empty group regardless of when insurance shops applied.
+            $adminGroup = $adminGroupService->autoAssignGroup($proforma);
+
+            // Filter users: for insurance_shop_garage type, only include users with shop_garage = 1
+            if ($proforma->proforma_type === 'insurance_shop_garage') {
+                $user = \App\Models\User::find($desiredUserId);
+                if (!$user || $user->shop_garage != 1) {
+                    continue;
+                }
             }
-            $inboxRecord = Inbox::firstOrCreate([
-                'proforma_id' => $proforma->id,
-                'user_id' => $inbox,
-            ]);
 
-            // Send Telegram + FCM notification to inboxed user
+            $inboxRecord = Inbox::firstOrCreate(
+                ['proforma_id' => $proforma->id, 'user_id' => $desiredUserId, 'source' => 'admin'],
+                ['inbox_group' => $adminGroup],
+            );
             if ($inboxRecord->wasRecentlyCreated) {
                 try {
-                    $user = \App\Models\User::find($inbox);
-                    if ($user) {
-                        if (!empty($user->telegram_chat_id) && $telegram->isConfigured()) {
-                            $telegram->sendInboxReceivedNotification((string) $user->telegram_chat_id, $proforma);
-                        }
-                        if (!empty($user->device_token)) {
-                            \App\Helpers\FcmHelper::send(
-                                $user->device_token,
-                                'New Proforma in Inbox',
-                                "Proforma #{$proforma->file_number} has been sent to your inbox.",
-                                ['type' => 'inbox', 'proforma_id' => (string) $proforma->id]
-                            );
-                        }
+                    $user = \App\Models\User::find($desiredUserId);
+                    if ($user && !empty($user->telegram_chat_id) && $telegram->isConfigured()) {
+                        $telegram->sendInboxReceivedNotification((string) $user->telegram_chat_id, $proforma);
                     }
                 } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning('Inbox notification failed', [
+                    \Illuminate\Support\Facades\Log::warning('Inbox Telegram notification failed', [
                         'proforma_id' => $proforma->id,
-                        'user_id' => $inbox,
+                        'user_id' => $desiredUserId,
                         'error' => $e->getMessage(),
                     ]);
                 }
@@ -3836,39 +4892,90 @@ Route::post('/proformas', function (Request $request) {
         }
     }
 
-    if ($request->garage_partners) {
-        $uniqueGaragePartners = array_unique($request->garage_partners);
+    if ($request->has('garage_partners')) {
+        $requiredGarages = (int) ($proforma->required_number_of_garages ?? 0);
+        $isEteraCheretaG = (int)($proforma->required_number_of_shops ?? 0) === 0 && $requiredGarages === 0;
 
-        foreach ($uniqueGaragePartners as $inbox) {
-            if (empty($inbox)) {
-                continue;
+        // IDs with active (non-rejected) applications — locked slots
+        $lockedGarageIdsQuery = $proforma->applications()->where('from', 'garage');
+        if (\Illuminate\Support\Facades\Schema::hasColumn('proforma_applications', 'status')) {
+            $lockedGarageIdsQuery->where(function ($q) {
+                $q->whereNull('status')->orWhere('status', '!=', 'rejected');
+            });
+        }
+        $lockedGarageIds = $lockedGarageIdsQuery
+            ->pluck('application_by')->map(fn($id) => (string) $id)->unique()->toArray();
+
+        // Fall back to insurance inbox count when insurance_garage_quota column is null.
+        $effectiveGarageQuota = $proforma->garagePartnerQuota() > 0
+            ? $proforma->garagePartnerQuota()
+            : \App\Models\Inbox::where('proforma_id', $proforma->id)
+                ->where('source', 'insurance')
+                ->whereHas('user', fn($q) => $q->where('role', 'garage'))
+                ->count();
+        $adminGarageSlotCap = !$isEteraCheretaG && $requiredGarages > 0
+            ? max(0, $requiredGarages - $effectiveGarageQuota)
+            : PHP_INT_MAX;
+
+        $lockedAdminGarageCount = 0;
+        if (\Illuminate\Support\Facades\Schema::hasColumn('proforma_applications', 'application_source')) {
+            $lockedAdminGarageCount = $proforma->applications()
+                ->where('from', 'garage')->where('application_source', 'admin')->count();
+        }
+        $editableGarageSlots = $adminGarageSlotCap === PHP_INT_MAX
+            ? PHP_INT_MAX
+            : max(0, $adminGarageSlotCap - $lockedAdminGarageCount);
+
+        // ── Set-diff approach ──────────────────────────────────────────────────
+        $desiredGarageIds = collect(is_array($request->garage_partners) ? $request->garage_partners : [])
+            ->map(fn($v) => !empty($v) ? (string) $v : null)
+            ->filter()
+            ->reject(fn($id) => in_array($id, $lockedGarageIds, true))
+            ->unique()
+            ->when($editableGarageSlots !== PHP_INT_MAX, fn($c) => $c->take($editableGarageSlots))
+            ->values()
+            ->toArray();
+
+        // Current editable admin inboxes (not locked by an application)
+        $currentGarageIds = \App\Models\Inbox::where('proforma_id', $proforma->id)
+            ->where('source', 'admin')
+            ->whereHas('user', fn($q) => $q->where('role', 'garage'))
+            ->whereNotIn('user_id', $lockedGarageIds)
+            ->pluck('user_id')->map(fn($v) => (string) $v)->toArray();
+
+        // Remove entries no longer in the desired set
+        $garageToRemove = array_diff($currentGarageIds, $desiredGarageIds);
+        if (!empty($garageToRemove)) {
+            \App\Models\Inbox::where('proforma_id', $proforma->id)
+                ->where('source', 'admin')
+                ->whereIn('user_id', $garageToRemove)
+                ->delete();
+        }
+
+        // Add new entries
+        foreach (array_diff($desiredGarageIds, $currentGarageIds) as $desiredUserId) {
+
+            // Filter users: for insurance_shop_garage type, only include garages with shop_garage = 1
+            if ($proforma->proforma_type === 'insurance_shop_garage') {
+                $user = \App\Models\User::find($desiredUserId);
+                if (!$user || $user->shop_garage != 1) {
+                    continue;
+                }
             }
-            $inboxRecord = Inbox::firstOrCreate([
-                'proforma_id' => $proforma->id,
-                'user_id' => $inbox,
-            ]);
 
-            // Send Telegram + FCM notification to inboxed user
+            $inboxRecord = Inbox::firstOrCreate(
+                ['proforma_id' => $proforma->id, 'user_id' => $desiredUserId, 'source' => 'admin'],
+            );
             if ($inboxRecord->wasRecentlyCreated) {
                 try {
-                    $user = \App\Models\User::find($inbox);
-                    if ($user) {
-                        if (!empty($user->telegram_chat_id) && $telegram->isConfigured()) {
-                            $telegram->sendInboxReceivedNotification((string) $user->telegram_chat_id, $proforma);
-                        }
-                        if (!empty($user->device_token)) {
-                            \App\Helpers\FcmHelper::send(
-                                $user->device_token,
-                                'New Proforma in Inbox',
-                                "Proforma #{$proforma->file_number} has been sent to your inbox.",
-                                ['type' => 'inbox', 'proforma_id' => (string) $proforma->id]
-                            );
-                        }
+                    $user = \App\Models\User::find($desiredUserId);
+                    if ($user && !empty($user->telegram_chat_id) && $telegram->isConfigured()) {
+                        $telegram->sendInboxReceivedNotification((string) $user->telegram_chat_id, $proforma);
                     }
                 } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning('Inbox notification failed', [
+                    \Illuminate\Support\Facades\Log::warning('Inbox Telegram notification failed', [
                         'proforma_id' => $proforma->id,
-                        'user_id' => $inbox,
+                        'user_id' => $desiredUserId,
                         'error' => $e->getMessage(),
                     ]);
                 }
@@ -3876,7 +4983,13 @@ Route::post('/proformas', function (Request $request) {
         }
     }
 
-    $proforma->update(['status' => 'published']);
+    // Claim this proforma for the current admin if not yet processed,
+    // so it remains visible in the admin list after auto-close.
+    if (empty($proforma->processed_by)
+        && auth()->check()
+        && in_array(auth()->user()->role ?? '', ['admin', 'superadmin'])) {
+        $proforma->update(['processed_by' => auth()->id()]);
+    }
 
     return redirect()->back()->with('success', 'Proforma updated successfully!');
 })->name('proforma.store');
@@ -3942,19 +5055,28 @@ Route::get('/telegram-connect', function (Request $request) {
     }
     $telegramService = app(\App\Services\TelegramService::class);
     $telegramLink = $telegramService->generateStartLink($user->id);
-    $skipUrl = match($user->role) {
-        'garage' => '/garage/',
-        'shop' => '/spare-part-shops/',
-        'admin' => '/admin',
-        'insurance' => '/insurance',
-        'others' => '/business-owner',
-        'marketer' => '/marketer',
-        'operator' => '/operator/dashboard',
-        'employee' => '/employee',
-        default => '/',
-    };
+    $skipUrl = '/telegram-skip';
     return view('authentication.telegram-connect', compact('telegramLink', 'skipUrl'));
 })->name('telegram.connect');
+
+// Skip Telegram connect for this session
+Route::get('/telegram-skip', function () {
+    session(['telegram_skipped' => true]);
+    $user = auth()->user();
+    $redirect = match($user?->role) {
+        'garage'    => '/garage/proformas',
+        'shop'      => '/spare-part-shops/proformas',
+        'admin', 'superadmin' => '/admin',
+        'insurance' => '/insurance',
+        'others'    => '/business-owner',
+        'marketer'  => '/marketer',
+        'operator'  => '/operator/dashboard',
+        'employee'  => '/employee',
+        'accountant'=> '/finance',
+        default     => '/',
+    };
+    return redirect($redirect);
+})->name('telegram.skip');
 
 // Telegram Webhook handler (called by Telegram servers — no CSRF, no session needed)
 Route::post('/api/telegram/webhook', [\App\Http\Controllers\TelegramWebhookController::class, 'handle'])
@@ -4144,12 +5266,11 @@ Route::prefix('business-owner')
                     'number_of_proformas' => ['required', 'integer', 'min:-1', 'max:4'],
                     'etera_chereta_hours' => ['nullable', 'integer', 'in:4,8,12,24,48,72'],
                     'brand_id' => ['required', 'integer', 'exists:brands,id'],
-                    'car_type' => 'required|in:ICE,EV,Hybrid,Others',
+                    'car_type' => 'required|in:Sedan/S.U.V(GAS),Sedan/S.U.V(EV),Mini Van(GAS),Mini Van(EV),Isuzu/Bus(GAS),Isuzu/Bus(EV),Heavy',
 
                     'model' => ['required', 'string', 'max:255'],
                     'year' => ['required', 'regex:/^(#N\/A|19\d{2}|20\d{2})$/'],
                     'customer_phone_number' => ['required', 'string'],
-                    'license_plate_number' => ['required', 'string'],
                     'chassis_number' => ['nullable', 'string'],
                     'parts.condition' => ['required', 'array', 'min:1'],
                     'parts.condition.*' => ['required', 'string', 'in:New'],
@@ -4159,8 +5280,8 @@ Route::prefix('business-owner')
                     'parts.grade.*' => ['required', 'string'],
                     'parts.country' => ['required', 'array'],
                     'parts.country.*' => ['required', 'string'],
-                    'parts.quantity' => ['required', 'array'],
-                    'parts.quantity.*' => ['required', 'integer'],
+                    'parts.quantity' => ['nullable', 'array'],
+                    'parts.quantity.*' => ['nullable', 'integer', 'min:1'],
                     'parts.component' => ['required', 'array', 'min:1'],
                     'parts.component.*' => ['required', 'string', 'in:Body Parts,Mechanical Parts'],
                     // ⚠️ FilePond now sends uploaded paths, not actual image files
@@ -4187,17 +5308,17 @@ Route::prefix('business-owner')
                 $eteraHours = (int) $request->input('etera_chereta_hours', 24);
                 $requiredShops = $isEteraChereta ? 0 : (int) $request->input('number_of_proformas', 3);
                 $timerMinutes = $isEteraChereta ? $eteraHours * 60 : null;
-                $timerExpiresAt = $isEteraChereta ? now()->addMinutes($timerMinutes) : null;
+                // Timer starts when admin floats, not on creation
+                $timerExpiresAt = null;
 
                 $proforma = Proforma::create([
                     'poster_id' => auth()->id(),
                     'file_number' => '#' . auth()->id() . '-' . substr(time(), -4),
                     'car_brand_id' => $request->brand_id,
-                    'car_type' => $request->input('car_type', 'ICE'),
+                    'car_type' => $request->input('car_type', 'Sedan/S.U.V(GAS)'),
 
                     'customer_name' => auth()->user()->name,
                     'customer_phone_number' => $request->customer_phone_number,
-                    'license_plate_number' => $request->license_plate_number,
                     'chassis_number' => $request->chassis_number,
                     'year' => $request->year,
                     'model' => $request->model,
@@ -4295,14 +5416,12 @@ Route::prefix('business-owner')
                 // 🔔 Broadcast to admin dashboard in real-time
                 event(new ProformaCreated($proforma));
 
-                // 🔹 Step 5 — Schedule Etera-Chereta AutoSelect
-                if ($isEteraChereta) {
-                    AutoSelectProformaOffers::dispatch($proforma->id)->delay(now()->addMinutes($timerMinutes));
-                    Log::info('⏰ Etera-Chereta scheduled for business-owner', [
-                        'proforma_id' => $proforma->id,
-                        'delay_minutes' => $timerMinutes
-                    ]);
-                }
+                // 🔹 Step 5 — Note: Timer and auto-selection will start when admin floats the proforma
+                Log::info('✅ Proforma created for business-owner (timer will start on float)', [
+                    'proforma_id' => $proforma->id,
+                    'is_etera_chereta' => $isEteraChereta,
+                    'timer_minutes' => $timerMinutes
+                ]);
 
                 return redirect()->back()->with('success', 'Proforma created successfully!');
             } catch (\Exception $e) {
@@ -4341,7 +5460,7 @@ Route::get('received-proformas', function () {
 // Proforma Details 
 Route::get('proforma-details', function (Request $request) {
 
-    $proforma = Proforma::with(['proformaInvoice', 'applications.prices'])
+    $proforma = Proforma::with(['proformaInvoice', 'applications.prices', 'applications.applicationBy', 'applications.pdf'])
         ->findOrFail($request->query('proforma_id'));
 
     $reciept = $proforma->proformaInvoice;
@@ -4350,10 +5469,16 @@ Route::get('proforma-details', function (Request $request) {
     $allApplications = $proforma->applications;
 
     // Attach calculated price
-    $allApplications = $allApplications->map(function ($application) {
+    $allApplications = $allApplications->map(function ($application) use ($proforma) {
 
         if ($application->from === 'shop' && $application->prices->isNotEmpty()) {
-            $subtotal = $application->prices->sum('part_total');
+            $subtotal = 0;
+            foreach ($proforma->parts as $idx => $part) {
+                $price = $application->prices->values()->get($idx);
+                if ($price) {
+                    $subtotal += $price->unit_price * $part->quantity;
+                }
+            }
             $discount = (float) ($application->discount ?? 0);
 
             $application->final_price = $subtotal - ($subtotal * $discount / 100);
@@ -4479,7 +5604,7 @@ Route::get('/etera-chereta/status', function () {
 // =====================
 // Accountant Dashboard
 // =====================
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth.user'])->group(function () {
 
     Route::get('/finance',
         [App\Http\Controllers\AdminAnalyticsController::class, 'index']
@@ -4504,9 +5629,9 @@ Route::prefix('role')
             $user = auth()->user();
             
             if ($user->role === 'garage') {
-                return redirect('/garage/');
+                return redirect('/garage/proformas');
             } elseif ($user->role === 'shop') {
-                return redirect('/spare-part-shops/');
+                return redirect('/spare-part-shops/proformas');
             } elseif ($user->role === 'insurance') {
                 return redirect('/insurance/received-proformas');
             } else {
@@ -4542,6 +5667,7 @@ Route::prefix('role')
     
     // Debug route for testing part prices
     Route::get('/debug/part-prices/{applicationId}', function($applicationId) {
+        abort_unless(in_array(auth()->user()->role, ['admin', 'superadmin']), 403);
         $application = \App\Models\ProformaApplication::with('prices', 'proforma.parts')->findOrFail($applicationId);
         
         return response()->json([
@@ -4568,10 +5694,11 @@ Route::prefix('role')
                 ];
             })
         ]);
-    })->name('debug.part-prices');
+    })->name('debug.part-prices')->middleware('auth.user');
     
     // Debug route for testing voice notes
     Route::get('/debug/voice-notes/{applicationId}', function($applicationId) {
+        abort_unless(in_array(auth()->user()->role, ['admin', 'superadmin']), 403);
         $application = \App\Models\ProformaApplication::with('media', 'applicationBy')->findOrFail($applicationId);
         
         return response()->json([
@@ -4600,7 +5727,7 @@ Route::prefix('role')
                 ];
             })
         ]);
-    })->name('debug.voice-notes');
+    })->name('debug.voice-notes')->middleware('auth.user');
 
 // Include Manager & Operator Routes
 require __DIR__.'/manager_operator_routes.php';

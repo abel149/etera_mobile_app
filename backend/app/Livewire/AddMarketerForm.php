@@ -17,7 +17,7 @@ class AddMarketerForm extends Component
     private $rules = [
         'name' => 'required|string|max:255',
         'phone_number' => 'required|numeric|unique:users,phone_number',
-        'email' => 'required|email|unique:users,email',
+        'email' => 'nullable|email|unique:users,email',
         'password' => 'nullable|min:6|confirmed', // now optional and min length 6
     ];
 

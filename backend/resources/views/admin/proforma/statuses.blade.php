@@ -89,13 +89,14 @@
                                         <th>Brand</th>
                                         <th>Status</th>
                                         <th>Processed By</th>
+                                        <th>Call</th>
                                         <th>Floated At</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach($proformas as $index => $proforma)
-                                    <tr class="proforma-row" data-plate="{{ strtolower($proforma->license_plate_number ?? '') }}" data-phone="{{ strtolower($proforma->customer_phone_number ?? '') }}" data-status="{{ $proforma->status }}" data-admin="{{ $proforma->processed_by }}">
+                                    <tr class="proforma-row" data-plate="{{ strtolower($proforma->license_plate_number ?? '') }}" data-phone="{{ strtolower($proforma->customer_phone_number ?? '') }}" data-status="{{ $proforma->status }}" data-admin="{{ $proforma->processed_by }}" data-call="{{ $proforma->call_customer ? '1' : '0' }}">
                                         <td class="row-number">{{ $index + 1 }}</td>
                                         <td><strong>{{ $proforma->file_number }}</strong></td>
                                         <td>{{ $proforma->customer_name }}</td>
@@ -116,6 +117,11 @@
                                         <td>
                                             <span class="badge bg-dark">{{ $proforma->processedBy?->name ?? 'Unassigned' }}</span>
                                         </td>
+                                        <td>
+                                            @if($proforma->call_customer)
+                                                <span class="badge bg-warning text-dark"><i class="bx bx-phone-call me-1"></i>Call</span>
+                                            @endif
+                                        </td>
                                         <td>{{ $proforma->updated_at?->format('d M Y, h:i A') }}</td>
                                         <td>
                                             <button type="button" class="btn btn-sm btn-outline-primary" onclick="showTimeline({{ $proforma->id }})">
@@ -125,7 +131,7 @@
                                     </tr>
                                     @endforeach
                                     <tr id="emptyRow" style="display:none;">
-                                        <td colspan="8" class="text-center text-muted py-4">
+                                        <td colspan="9" class="text-center text-muted py-4">
                                             <i class="bx bx-info-circle me-1"></i>No proformas found matching the filters.
                                         </td>
                                     </tr>
@@ -308,7 +314,7 @@ function showTimeline(proformaId) {
     .then(data => {
         let html = `
             <div class="timeline-header-card">
-                <h6><i class="bx bx-file me-2"></i>File #${data.file_number}</h6>
+                <h6><i class="bx bx-file me-2"></i>File #${data.file_number}${data.call_customer ? ' <span class="badge bg-warning text-dark ms-2"><i class="bx bx-phone-call"></i> Call Customer</span>' : ''}</h6>
                 <div class="text-muted mt-1">
                     <span class="me-3"><i class="bx bx-user me-1"></i>${data.customer_name}</span>
                     <span class="me-3"><i class="bx bx-car me-1"></i>${data.brand} ${data.model} (${data.year})</span>

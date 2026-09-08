@@ -107,6 +107,7 @@ class RegisterController extends Controller
                 'approved' => false, // ALL users require admin approval
                 'balance' => 0,
                 'registered_by' => $request->registered_by ?? null,
+                'terms_agreed_at' => now(),
             ]);
 
             // Register brands for spare part shops
@@ -215,9 +216,9 @@ class RegisterController extends Controller
      */
     public function storeBusinessOwner(Request $request)
     {
-        // 1. Log incoming request BEFORE validation
+        // 1. Log incoming request BEFORE validation (never log passwords)
         Log::info('STORE BUSINESS OWNER: Incoming request received', [
-            'request_all' => $request->all(),
+            'request_all' => $request->except(['password', 'password_confirmation']),
             'ip' => $request->ip(),
         ]);
 
@@ -235,11 +236,11 @@ class RegisterController extends Controller
                 'phone_number.unique' => 'You already have an account with this phone number.',
             ]);
 
-            // 3. If validation fails → log it
+            // 3. If validation fails → log it (never log passwords)
             if ($validatedData->fails()) {
                 Log::warning('STORE BUSINESS OWNER: Validation failed', [
                     'errors' => $validatedData->errors()->toArray(),
-                    'request_data' => $request->all()
+                    'request_data' => $request->except(['password', 'password_confirmation'])
                 ]);
 
                 return redirect()->back()
@@ -260,7 +261,7 @@ class RegisterController extends Controller
                 'location' => $request->location,
                 'email' => $request->filled('email') ? $request->email : null,
                 'password' => Hash::make($request->password),
-                'role' => 'others',
+                'role' => User::ROLE_BUSINESS_OWNER,
                 'approved' => true,
                 'balance' => 0,
             ]);

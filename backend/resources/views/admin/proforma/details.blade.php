@@ -94,7 +94,7 @@
                                     </tr>
                                     <tr>
                                         <td><strong>Created By:</strong></td>
-                                        <td>{{ $proforma->poster->name }} ({{ ucfirst($proforma->poster->role) }})</td>
+                                        <td>{{ $proforma->poster?->name ?? 'N/A' }} ({{ ucfirst($proforma->poster?->role ?? 'unknown') }})</td>
                                     </tr>
                                     <tr>
                                         <td><strong>Created At:</strong></td>
@@ -126,7 +126,7 @@
                                     </tr>
                                     <tr>
                                         <td><strong>License Plate:</strong></td>
-                                        <td>{{ $proforma->license_plate_number }}</td>
+                                        <td>{{ $proforma->license_plate_number ?? 'N/A' }}</td>
                                     </tr>
                                     <tr>
                                         <td><strong>Chassis Number:</strong></td>
@@ -134,7 +134,7 @@
                                     </tr>
                                     <tr>
                                         <td><strong>Car:</strong></td>
-                                        <td>{{ $proforma->car_type }} {{ $proforma->brand->name }} {{ $proforma->model }} ({{ $proforma->year }})</td>
+                                        <td>{{ $proforma->car_type }} {{ $proforma->brand?->name ?? 'N/A' }} {{ $proforma->model }} ({{ $proforma->year }})</td>
                                     </tr>
                                     <tr>
                                         <td><strong>Proforma Requested:</strong></td>
@@ -144,6 +144,12 @@
                                         <td>Unlimted with timer.</td>
                                         @endif
                                     </tr>
+                                    @if($proforma->call_customer)
+                                    <tr>
+                                        <td><strong>Call Customer:</strong></td>
+                                        <td><span class="badge bg-warning text-dark"><i class="bx bx-phone-call me-1"></i>Call Customer</span></td>
+                                    </tr>
+                                    @endif
                                 </table>
                             </div>
                         </div>
@@ -242,7 +248,14 @@
 
                         @endif
                         
-                        @if(($proforma->status == 'pending' || $proforma->status == 'opened') && !$proforma?->selected())
+                        @php
+                            $noFloatNeeded = !$proforma->isEteraCheretaMode()
+                                && $proforma->floatShopQuota()   <= 0
+                                && $proforma->floatGarageQuota() <= 0
+                                && ((int)($proforma->required_number_of_shops ?? 0) > 0
+                                    || (int)($proforma->required_number_of_garages ?? 0) > 0);
+                        @endphp
+                        @if(($proforma->status == 'pending' || $proforma->status == 'opened') && !$proforma?->selected() && !$noFloatNeeded)
                                                         <a href="/float?proforma_id={{ $proforma->id }}" class="btn btn-primary">Float</a>
                                                     @endif
                                                     @if(($proforma->status == 'completed' || $proforma->status == 'closed') && !$proforma->verified && !$proforma->selected() && $proforma->processed_by == auth()->id())
@@ -268,7 +281,15 @@
                         @if($proforma->parts->count() > 0)
                         <div class="row mt-4">
                             <div class="col-12">
-                                <h5 class="mb-3">Required Spare Parts</h5>
+                                <h5 class="mb-3">
+                                    Required Spare Parts
+                                    @php $progress = $proforma->partsPricingProgress(); @endphp
+                                    @if($progress['total'] > 0)
+                                    <span class="badge {{ $progress['filled'] >= $progress['total'] ? 'bg-success' : 'bg-warning' }} ms-2" style="font-size: 0.85rem;">
+                                        Parts Priced: {{ $progress['filled'] }}/{{ $progress['total'] }}
+                                    </span>
+                                    @endif
+                                </h5>
                                 <div class="table-responsive">
                                      <table class="table table-bordered mb-0">
           <thead>
@@ -345,8 +366,8 @@
                                         <tbody>
                                             @foreach($applications as $index => $application)
                                             <tr class="application-row" data-index="{{ $index }}" @if($proforma->isEteraCheretaMode() && $index >= 5) style="display:none;" @endif>
-                                                <td>{{ $application->applicationBy->name }}</td>
-                                                <td>{{ ucfirst($application->applicationBy->role) }}</td>
+                                                <td>{{ $application->applicationBy?->name ?? 'N/A' }}</td>
+                                                <td>{{ ucfirst($application->applicationBy?->role ?? 'unknown') }}</td>
                                                 <td>{{ $application->created_at->format('d M Y, h:i A') }}</td>
                                                 
                                                 <td>
@@ -358,7 +379,7 @@
                                                                     Your browser does not support the audio element.
                                                                 </audio>
                                                                 <button type="button" class="btn btn-sm btn-outline-primary" 
-                                                                        onclick="playVoiceNote('{{ $voiceNote->getUrl() }}', '{{ $application->applicationBy->name }}')">
+                                                                        onclick="playVoiceNote('{{ $voiceNote->getUrl() }}', '{{ $application->applicationBy?->name ?? 'N/A' }}')">
                                                                     <i class="bx bx-play"></i>
                                                                 </button>
                                                             </div>
@@ -409,28 +430,34 @@
         </div>
     </div>
 
-    {{-- Send to Inbox — Floating Button + Modal --}}
+    {{-- Admin Inbox Management — Floating Button + Modal --}}
     @php
-        $requiredShops = (int) ($proforma->required_number_of_shops ?? 0);
-        $isEteraChereta = $requiredShops === 0 && (int)($proforma->required_number_of_garages ?? 0) === 0;
-        $alreadyInboxed = $proforma->inboxes ? $proforma->inboxes->pluck('user_id')->toArray() : [];
+        $requiredShops      = (int) ($proforma->required_number_of_shops ?? 0);
+        $isEteraChereta     = $requiredShops === 0 && $requiredGarages === 0;
+        // Use controller-computed effective quotas (fallback to insurance inbox count when column is null)
+        $shopQuota          = $effectiveShopQuota;
+        $garageQuota        = $effectiveGarageQuota;
+        $hasInsuranceSlots  = ($shopQuota > 0 || $garageQuota > 0);
+        $hasAdminSlots      = ($adminShopSlotCap > 0 || $adminGarageSlotCap > 0);
+        $proformaActive     = !in_array($proforma->status, ['closed', 'completed']);
     @endphp
 
-    @if(!$isEteraChereta && $requiredShops > 0)
-    {{-- Floating Action Button --}}
+    @if(!$isEteraChereta && ($hasAdminSlots || $hasInsuranceSlots) && $proformaActive)
+    {{-- Floating Action Button — always visible when admin has slots to manage --}}
     <button type="button" class="btn btn-primary rounded-circle shadow-lg" id="inboxFab"
         data-bs-toggle="modal" data-bs-target="#inboxModal"
-        style="position: fixed; bottom: 2rem; right: 2rem; width: 56px; height: 56px; font-size: 1.4rem; z-index: 1050; display: flex; align-items: center; justify-content: center;">
+        style="position:fixed;bottom:2rem;right:2rem;width:56px;height:56px;font-size:1.4rem;z-index:1050;display:flex;align-items:center;justify-content:center;"
+        title="Manage Admin Inboxes">
         <i class="bx bx-send"></i>
     </button>
 
-    {{-- Inbox Modal --}}
+    {{-- Admin Inbox Modal --}}
     <div class="modal fade" id="inboxModal" tabindex="-1" aria-labelledby="inboxModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="inboxModalLabel">
-                        <i class="bx bx-send me-2"></i>Send to Inbox
+                        <i class="bx bx-send me-2"></i>Manage Admin Inboxes
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -439,38 +466,244 @@
                     <input type="hidden" name="proforma" value="{{ $proforma->id }}">
                     <div class="modal-body">
 
-                        {{-- Already sent --}}
-                        @if(count($alreadyInboxed) > 0)
-                        <div class="alert alert-info py-2 mb-3">
-                            <small><strong>Already sent to:</strong></small>
+                        @php
+                            // For dropdown: exclude already-inboxed AND applied users from options,
+                            // but include the user currently in each slot so they show as selected
+                            $shopDropdownExclude   = array_merge($alreadyInboxedShopIds,   $activeApplicationShopIds);
+                            $garageDropdownExclude = array_merge($alreadyInboxedGarageIds, $activeApplicationGarageIds);
+
+                            $inboxShopOptions = $shops->map(fn($s) => [
+                                'id'    => (int)$s->id,
+                                'label' => ($s->store_id ?? '') . ' - ' . $s->name,
+                            ])->values()->toArray();
+
+                            $inboxGarageOptions = $garages->map(fn($g) => [
+                                'id'    => (int)$g->id,
+                                'label' => $g->name,
+                            ])->values()->toArray();
+                        @endphp
+
+                        {{-- JS data for comboboxes --}}
+                        <script>
+                        const inboxShopData   = @json($inboxShopOptions);
+                        const inboxGarageData = @json($inboxGarageOptions);
+                        const inboxShopExclude   = @json(array_map('intval', $shopDropdownExclude));
+                        const inboxGarageExclude = @json(array_map('intval', $garageDropdownExclude));
+                        </script>
+
+                        {{-- Locked notice: garage-only proforma — no shop inboxing --}}
+                        @if($proforma->isGarageOnlyInsurance())
+                        <div class="alert alert-secondary d-flex align-items-center gap-2 mb-3">
+                            <i class="bx bx-lock fs-5"></i>
+                            <span><strong>Shop slots are locked.</strong> This is a <em>Garage Only</em> proforma — only garage inboxing is permitted.</span>
+                        </div>
+                        @endif
+
+                        {{-- ── Shop Slots ────────────────────────────────────── --}}
+                        @if($adminShopSlotCap > 0 || $shopQuota > 0)
+                        <h6 class="fw-bold mb-2 text-primary"><i class="bx bx-store me-1"></i>Shop Slots</h6>
+
+                        {{-- Insurance-reserved locked slots --}}
+                        @if($shopQuota > 0)
+                            @if(count($insuranceShopInboxes) > 0)
+                                @foreach($insuranceShopInboxes as $insInbox)
+                                @php
+                                    $insApplied = in_array((int)$insInbox->user_id, $activeApplicationShopIds);
+                                    $insLabel   = trim(($insInbox->user->store_id ?? '') . ' - ' . ($insInbox->user->name ?? 'Unknown'));
+                                @endphp
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold">
+                                        <i class="bx bx-lock-alt text-warning me-1"></i>Insurance Slot
+                                        @if($insApplied)
+                                            <span class="badge bg-success ms-1">Applied ✓</span>
+                                        @else
+                                            <span class="badge bg-warning text-dark ms-1">Awaiting partner</span>
+                                        @endif
+                                    </label>
+                                    <input type="text" class="form-control bg-light text-muted" value="{{ $insLabel }}" disabled>
+                                </div>
+                                @endforeach
+                            @else
+                                {{-- Chereta fired — inboxes cleared, quota slots are filled --}}
+                                @for($q = 0; $q < $shopQuota; $q++)
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold">
+                                        <i class="bx bx-lock-alt text-warning me-1"></i>Insurance Slot
+                                        <span class="badge bg-success ms-1">Filled by insurance ✓</span>
+                                    </label>
+                                    <input type="text" class="form-control bg-light text-muted" value="Insurance partner applied" disabled>
+                                </div>
+                                @endfor
+                            @endif
+                        @endif
+
+                        @if($adminShopSlotCap > 0 && $shopQuota > 0)<hr class="my-2">@endif
+
+                        @if(count($activeApplicationShopIds) > 0 && $adminShopSlotCap > 0)
+                        <div class="alert alert-warning py-2 mb-3">
+                            <small><strong>Applied (slot locked):</strong></small>
                             <div class="d-flex flex-wrap gap-1 mt-1">
-                                @foreach($proforma->inboxes as $inbox)
-                                    <span class="badge bg-primary">{{ $inbox->user->name ?? 'N/A' }}</span>
+                                @foreach($shops->whereIn('id', $activeApplicationShopIds) as $s)
+                                    <span class="badge bg-warning text-dark">{{ $s->store_id }} - {{ $s->name }}</span>
                                 @endforeach
                             </div>
                         </div>
                         @endif
-
-                        {{-- Dynamic dropdowns: one per required shop --}}
-                        @for($i = 1; $i <= $requiredShops; $i++)
+                        @for($i = 0; $i < $adminShopSlotCap; $i++)
+                        @php
+                            $existingShopInbox = $adminShopInboxes[$i] ?? null;
+                            $existingShopLabel = $existingShopInbox
+                                ? (($existingShopInbox->user->store_id ?? '') . ' - ' . ($existingShopInbox->user->name ?? ''))
+                                : '';
+                            $existingShopId = $existingShopInbox ? (int)$existingShopInbox->user_id : '';
+                            $isShopLocked   = $existingShopInbox && in_array((int)$existingShopInbox->user_id, $activeApplicationShopIds);
+                        @endphp
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Shop Slot {{ $i }}</label>
-                            <select name="spare_part_partners[]" class="form-select inbox-shop-select" data-slot="{{ $i }}">
-                                <option value="">-- Select Spare Part Shop --</option>
-                                @foreach($shops as $shop)
-                                    @if(!in_array($shop->id, $alreadyInboxed))
-                                    <option value="{{ $shop->id }}">{{ $shop->store_id }} - {{ $shop->name }}</option>
-                                    @endif
-                                @endforeach
-                            </select>
+                            <label class="form-label fw-semibold">
+                                Shop Slot {{ $i + 1 }}
+                                @if($existingShopInbox && !$isShopLocked)
+                                    <span class="badge bg-info text-dark ms-1">Inboxed — change or clear below</span>
+                                @elseif($isShopLocked)
+                                    <span class="badge bg-success ms-1">Applied — locked</span>
+                                @endif
+                            </label>
+                            @if($isShopLocked)
+                                {{-- Applied slot — readonly, submit current value so diff logic keeps it --}}
+                                <input type="text" class="form-control bg-light" value="{{ $existingShopLabel }}" disabled>
+                                <input type="hidden" name="spare_part_partners[]" value="{{ $existingShopId }}">
+                            @else
+                                <div class="inbox-combobox-wrapper position-relative" data-type="shop" data-slot="{{ $i }}">
+                                    <input type="text"
+                                           class="form-control inbox-cb-search"
+                                           data-type="shop" data-slot="{{ $i }}"
+                                           placeholder="Type to search or leave empty to clear…"
+                                           value="{{ $existingShopLabel }}"
+                                           autocomplete="off">
+                                    <input type="hidden"
+                                           name="spare_part_partners[]"
+                                           class="inbox-cb-value"
+                                           data-type="shop" data-slot="{{ $i }}"
+                                           value="{{ $existingShopId }}">
+                                    <div class="inbox-cb-dropdown list-group d-none"
+                                         data-type="shop" data-slot="{{ $i }}"
+                                         style="position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;z-index:2000;"></div>
+                                </div>
+                                @if($existingShopInbox)
+                                <small class="text-muted">Select a different person to reassign, or clear the text and save to free this slot.</small>
+                                @endif
+                            @endif
                         </div>
                         @endfor
+                        @endif
+
+                        {{-- Locked notice: shop-only proforma — no garage inboxing --}}
+                        @if($proforma->isShopOnlyInsurance())
+                        <div class="alert alert-secondary d-flex align-items-center gap-2 mb-3 mt-3">
+                            <i class="bx bx-lock fs-5"></i>
+                            <span><strong>Garage slots are locked.</strong> This is a <em>Shop Only</em> proforma — only shop inboxing is permitted.</span>
+                        </div>
+                        @endif
+
+                        {{-- ── Garage Slots ──────────────────────────────────── --}}
+                        @if($adminGarageSlotCap > 0 || $garageQuota > 0)
+                        <hr class="my-3">
+                        <h6 class="fw-bold mb-2 text-success"><i class="bx bx-wrench me-1"></i>Garage Slots</h6>
+
+                        {{-- Insurance-reserved locked slots --}}
+                        @if($garageQuota > 0)
+                            @if(count($insuranceGarageInboxes) > 0)
+                                @foreach($insuranceGarageInboxes as $insInbox)
+                                @php
+                                    $insApplied = in_array((int)$insInbox->user_id, $activeApplicationGarageIds);
+                                    $insLabel   = $insInbox->user->name ?? 'Unknown';
+                                @endphp
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold">
+                                        <i class="bx bx-lock-alt text-warning me-1"></i>Insurance Slot
+                                        @if($insApplied)
+                                            <span class="badge bg-success ms-1">Applied ✓</span>
+                                        @else
+                                            <span class="badge bg-warning text-dark ms-1">Awaiting partner</span>
+                                        @endif
+                                    </label>
+                                    <input type="text" class="form-control bg-light text-muted" value="{{ $insLabel }}" disabled>
+                                </div>
+                                @endforeach
+                            @else
+                                {{-- Chereta fired — inboxes cleared, quota slots are filled --}}
+                                @for($q = 0; $q < $garageQuota; $q++)
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold">
+                                        <i class="bx bx-lock-alt text-warning me-1"></i>Insurance Slot
+                                        <span class="badge bg-success ms-1">Filled by insurance ✓</span>
+                                    </label>
+                                    <input type="text" class="form-control bg-light text-muted" value="Insurance partner applied" disabled>
+                                </div>
+                                @endfor
+                            @endif
+                        @endif
+
+                        @if($adminGarageSlotCap > 0 && $garageQuota > 0)<hr class="my-2">@endif
+
+                        @if(count($activeApplicationGarageIds) > 0 && $adminGarageSlotCap > 0)
+                        <div class="alert alert-warning py-2 mb-3">
+                            <small><strong>Applied (slot locked):</strong></small>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                @foreach($garages->whereIn('id', $activeApplicationGarageIds) as $g)
+                                    <span class="badge bg-warning text-dark">{{ $g->name }}</span>
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                        @for($i = 0; $i < $adminGarageSlotCap; $i++)
+                        @php
+                            $existingGarageInbox = $adminGarageInboxes[$i] ?? null;
+                            $existingGarageLabel = $existingGarageInbox ? ($existingGarageInbox->user->name ?? '') : '';
+                            $existingGarageId    = $existingGarageInbox ? (int)$existingGarageInbox->user_id : '';
+                            $isGarageLocked      = $existingGarageInbox && in_array((int)$existingGarageInbox->user_id, $activeApplicationGarageIds);
+                        @endphp
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Garage Slot {{ $i + 1 }}
+                                @if($existingGarageInbox && !$isGarageLocked)
+                                    <span class="badge bg-info text-dark ms-1">Inboxed — change or clear below</span>
+                                @elseif($isGarageLocked)
+                                    <span class="badge bg-success ms-1">Applied — locked</span>
+                                @endif
+                            </label>
+                            @if($isGarageLocked)
+                                <input type="text" class="form-control bg-light" value="{{ $existingGarageLabel }}" disabled>
+                                <input type="hidden" name="garage_partners[]" value="{{ $existingGarageId }}">
+                            @else
+                                <div class="inbox-combobox-wrapper position-relative" data-type="garage" data-slot="{{ $i }}">
+                                    <input type="text"
+                                           class="form-control inbox-cb-search"
+                                           data-type="garage" data-slot="{{ $i }}"
+                                           placeholder="Type to search or leave empty to clear…"
+                                           value="{{ $existingGarageLabel }}"
+                                           autocomplete="off">
+                                    <input type="hidden"
+                                           name="garage_partners[]"
+                                           class="inbox-cb-value"
+                                           data-type="garage" data-slot="{{ $i }}"
+                                           value="{{ $existingGarageId }}">
+                                    <div class="inbox-cb-dropdown list-group d-none"
+                                         data-type="garage" data-slot="{{ $i }}"
+                                         style="position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;z-index:2000;"></div>
+                                </div>
+                                @if($existingGarageInbox)
+                                <small class="text-muted">Select a different person to reassign, or clear the text and save to free this slot.</small>
+                                @endif
+                            @endif
+                        </div>
+                        @endfor
+                        @endif
 
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-primary">
-                            <i class="bx bx-send me-1"></i> Send
+                            <i class="bx bx-save me-1"></i> Save Inboxes
                         </button>
                     </div>
                 </form>
@@ -478,52 +711,113 @@
         </div>
     </div>
 
-    {{-- Dynamic dropdown filtering JS --}}
+    {{-- Combobox JS (shared for both shop and garage) --}}
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const selects = document.querySelectorAll('.inbox-shop-select');
-        if (!selects.length) return;
+    document.addEventListener('DOMContentLoaded', function () {
+        function getDataset(type) {
+            return type === 'shop' ? inboxShopData : inboxGarageData;
+        }
+        function getExcludes(type) {
+            return type === 'shop' ? inboxShopExclude : inboxGarageExclude;
+        }
 
-        // Store all original options (from the first select, they're all identical)
-        const allOptions = [];
-        selects[0].querySelectorAll('option').forEach(opt => {
-            allOptions.push({ value: opt.value, text: opt.textContent });
-        });
+        function getOtherSelectedIds(type, slot) {
+            const ids = [];
+            document.querySelectorAll('.inbox-cb-value[data-type="' + type + '"]').forEach(h => {
+                if (parseInt(h.dataset.slot) !== parseInt(slot) && h.value) ids.push(parseInt(h.value));
+            });
+            return ids;
+        }
 
-        selects.forEach(sel => {
-            sel.addEventListener('change', () => updateDropdowns());
-        });
+        function renderCbDropdown(type, slot, term) {
+            const dropdown  = document.querySelector('.inbox-cb-dropdown[data-type="' + type + '"][data-slot="' + slot + '"]');
+            const curHidden = document.querySelector('.inbox-cb-value[data-type="' + type + '"][data-slot="' + slot + '"]');
+            if (!dropdown) return;
 
-        function updateDropdowns() {
-            // Gather currently selected values
-            const selected = {};
-            selects.forEach(sel => {
-                const val = sel.value;
-                if (val) selected[sel.dataset.slot] = val;
+            const baseExcludes = getExcludes(type);
+            const otherIds     = getOtherSelectedIds(type, slot);
+            const curVal       = curHidden ? parseInt(curHidden.value) : 0;
+            const lowerTerm    = term.toLowerCase();
+
+            const filtered = getDataset(type).filter(item => {
+                const id = item.id;
+                // Always include the currently selected value for this slot
+                if (id === curVal && curVal) return true;
+                if (baseExcludes.includes(id)) return false;
+                if (otherIds.includes(id)) return false;
+                if (term && !item.label.toLowerCase().includes(lowerTerm)) return false;
+                return true;
             });
 
-            selects.forEach(sel => {
-                const currentVal = sel.value;
-                const slot = sel.dataset.slot;
-
-                // Values selected in OTHER dropdowns
-                const otherSelected = Object.entries(selected)
-                    .filter(([s]) => s !== slot)
-                    .map(([, v]) => v);
-
-                // Rebuild options
-                sel.innerHTML = '';
-                allOptions.forEach(opt => {
-                    if (opt.value === '' || !otherSelected.includes(opt.value)) {
-                        const o = document.createElement('option');
-                        o.value = opt.value;
-                        o.textContent = opt.text;
-                        if (opt.value === currentVal) o.selected = true;
-                        sel.appendChild(o);
+            dropdown.innerHTML = '';
+            if (!filtered.length) {
+                dropdown.innerHTML = '<div class="list-group-item text-muted small py-2">No results found</div>';
+            } else {
+                filtered.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'list-group-item list-group-item-action small py-2';
+                    if (term) {
+                        const idx = item.label.toLowerCase().indexOf(lowerTerm);
+                        btn.innerHTML = item.label.slice(0, idx)
+                            + '<strong>' + item.label.slice(idx, idx + term.length) + '</strong>'
+                            + item.label.slice(idx + term.length);
+                    } else {
+                        btn.textContent = item.label;
                     }
+                    btn.addEventListener('mousedown', function (e) {
+                        e.preventDefault();
+                        selectCbItem(type, slot, String(item.id), item.label);
+                    });
+                    dropdown.appendChild(btn);
                 });
+            }
+            dropdown.classList.remove('d-none');
+        }
+
+        function selectCbItem(type, slot, id, label) {
+            const search   = document.querySelector('.inbox-cb-search[data-type="' + type + '"][data-slot="' + slot + '"]');
+            const hidden   = document.querySelector('.inbox-cb-value[data-type="' + type + '"][data-slot="' + slot + '"]');
+            const dropdown = document.querySelector('.inbox-cb-dropdown[data-type="' + type + '"][data-slot="' + slot + '"]');
+            if (search)   search.value  = label;
+            if (hidden)   hidden.value  = id;
+            if (dropdown) dropdown.classList.add('d-none');
+
+            // Clear the same person from other slots of same type
+            document.querySelectorAll('.inbox-cb-value[data-type="' + type + '"]').forEach(h => {
+                if (parseInt(h.dataset.slot) !== parseInt(slot) && h.value === id) {
+                    h.value = '';
+                    const sib = document.querySelector('.inbox-cb-search[data-type="' + type + '"][data-slot="' + h.dataset.slot + '"]');
+                    if (sib) sib.value = '';
+                }
             });
         }
+
+        document.querySelectorAll('.inbox-cb-search').forEach(inp => {
+            const type = inp.dataset.type;
+            const slot = inp.dataset.slot;
+
+            inp.addEventListener('input', function () {
+                const hid = document.querySelector('.inbox-cb-value[data-type="' + type + '"][data-slot="' + slot + '"]');
+                if (hid) hid.value = '';
+                renderCbDropdown(type, slot, this.value.trim());
+            });
+            inp.addEventListener('focus', function () {
+                renderCbDropdown(type, slot, this.value.trim());
+            });
+            inp.addEventListener('blur', function () {
+                setTimeout(function () {
+                    const dd = document.querySelector('.inbox-cb-dropdown[data-type="' + type + '"][data-slot="' + slot + '"]');
+                    if (dd) dd.classList.add('d-none');
+                }, 160);
+            });
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('.inbox-combobox-wrapper')) {
+                document.querySelectorAll('.inbox-cb-dropdown').forEach(d => d.classList.add('d-none'));
+            }
+        });
     });
     </script>
     @endif

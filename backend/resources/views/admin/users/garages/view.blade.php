@@ -8,45 +8,19 @@
 			<div class="col-12">
 				<div class="card">
 					<div class="card-body">
-						<div class="row align-items-right">
-							<div class="col-lg-9 col-xl-10">
-								<form class="">
-									<div class="row row-cols-auto g-2">
-										<div class="col">
-											<div class="position-relative">
-												<input type="text" class="form-control ps-5 radius-30 " placeholder="Search Garage..."> <span class="position-absolute top-50 product-show translate-middle-y"><i class="bx bx-search"></i></span>
-											</div>
-										</div>
-										<div class="col">
-											<div class="btn-group" role="group" aria-label="Button group with nested dropdown">
-												<button type="button" class="btn btn-white radius-30">
-												<i class="bx bx-filter"></i> Filter</button>
-												<div class="btn-group" role="group">
-												  <button id="btnGroupDrop1" type="button" class="btn btn-white radius-30 dropdown-toggle dropdown-toggle-nocaret px-1" data-bs-toggle="dropdown" aria-expanded="false">
-													<i class='bx bx-chevron-down'></i>
-												  </button>
-												  <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
-													<li><a class="dropdown-item" href="#">Name</a></li>
-													<li><a class="dropdown-item" href="#">Tin #</a></li>
-													<li><a class="dropdown-item" href="#">Date Modified</a></li>
-												  </ul>
-												</div>
-											  </div>
-										</div>
-										<div class="col">
-											<div class="position-relative">
-												<a href="/admin/add-garage" type="button" class="btn btn-primary radius-30 "><i class="bx bx-plus me-0"></i> Garage
-										</a>
-											</div>
-										</div>
-										{{-- <div class="col">
-										<button type="button" class="btn btn-danger radius-30" data-bs-toggle="modal" data-bs-target="#selectedDelete"><i class="bx bx-trash me-0"></i> Delete</button>
-									</div> --}}
-									</div>
-								</form>
+						<form id="searchForm" method="GET" action="{{ url('/admin/garages') }}" class="row align-items-center mb-3">
+							<div class="col-lg-6 col-xl-5">
+								<div class="position-relative">
+									<input type="text" name="search" id="tableSearch" class="form-control ps-5 radius-30" placeholder="Search by name, phone or TIN..." value="{{ request('search') }}">
+									<span class="position-absolute top-50 product-show translate-middle-y"><i class="bx bx-search"></i></span>
+								</div>
 							</div>
-						</div>
+							<div class="col-auto ms-auto">
+								<a href="/admin/add-garage" type="button" class="btn btn-primary radius-30"><i class="bx bx-plus me-0"></i> Garage</a>
+							</div>
+						</form>
 
+				<div id="searchableTable">
 				<div class="table-responsive lead-table">
 					<table class="table mb-0 align-middle">
 						<thead class="table-light">
@@ -86,7 +60,11 @@
 								<td>
 									<div class="d-flex align-items-center">
 										<div  data-bs-toggle="modal" data-bs-target="#garageDetailModal{{$garage->id}}" >
-											<h6 class="mb-0 font-14">{{$garage->name}}</h6>
+											<h6 class="mb-0 font-14">{{$garage->name}}
+												@if($garage->shop_garage)
+													<span class="badge bg-info ms-1" style="font-size: 0.7rem;">Dual Service</span>
+												@endif
+											</h6>
 											<p class="mb-0 font-13 text-secondary">{{$garage->email}}</p>
 										</div>
 									</div>
@@ -217,6 +195,69 @@
 						</tbody>
 					</table>
 				</div>
+				</div>{{-- /table-responsive --}}
+				@if($garages->hasPages() || $garages->total() > 0)
+				<div class="d-flex flex-column flex-sm-row align-items-center justify-content-between mt-3 px-1 gap-2">
+					<div class="text-muted" style="font-size:0.875rem;">
+						Showing <strong>{{ $garages->firstItem() ?? 0 }}</strong>
+						to <strong>{{ $garages->lastItem() ?? 0 }}</strong>
+						of <strong>{{ $garages->total() }}</strong> garages
+					</div>
+					@if($garages->hasPages())
+					@php
+						$cur   = $garages->currentPage();
+						$last  = $garages->lastPage();
+						$range = collect();
+						for ($p = 1; $p <= $last; $p++) {
+							if ($p === 1 || $p === $last || abs($p - $cur) <= 1) {
+								$range->push(['type' => 'page', 'n' => $p]);
+							} elseif (abs($p - $cur) === 2) {
+								$range->push(['type' => 'dots']);
+							}
+						}
+						// Deduplicate consecutive dots
+						$pages = collect();
+						$prevDot = false;
+						foreach ($range as $item) {
+							if ($item['type'] === 'dots') {
+								if (!$prevDot) $pages->push($item);
+								$prevDot = true;
+							} else {
+								$pages->push($item);
+								$prevDot = false;
+							}
+						}
+					@endphp
+					<nav aria-label="Garages pagination">
+						<ul class="pagination mb-0" style="gap:4px;">
+							{{-- Previous --}}
+							<li class="page-item {{ $garages->onFirstPage() ? 'disabled' : '' }}">
+								<a class="page-link radius-30 px-3" href="{{ $garages->previousPageUrl() ?? '#' }}" aria-label="Previous" style="border-radius:30px!important;">
+									<i class="bx bx-chevron-left"></i> Prev
+								</a>
+							</li>
+							{{-- Page numbers --}}
+							@foreach($pages as $item)
+								@if($item['type'] === 'dots')
+									<li class="page-item disabled"><span class="page-link" style="border-radius:30px!important;">…</span></li>
+								@else
+									<li class="page-item {{ $item['n'] === $cur ? 'active' : '' }}">
+										<a class="page-link radius-30" href="{{ $garages->url($item['n']) }}" style="border-radius:30px!important;">{{ $item['n'] }}</a>
+									</li>
+								@endif
+							@endforeach
+							{{-- Next --}}
+							<li class="page-item {{ $garages->hasMorePages() ? '' : 'disabled' }}">
+								<a class="page-link radius-30 px-3" href="{{ $garages->nextPageUrl() ?? '#' }}" aria-label="Next" style="border-radius:30px!important;">
+									Next <i class="bx bx-chevron-right"></i>
+								</a>
+							</li>
+						</ul>
+					</nav>
+					@endif
+				</div>
+				@endif
+				</div>{{-- /searchableTable --}}
 			</div>
 		</div>
 		<!--end row-->
@@ -263,4 +304,70 @@
 	</div>
 </div>
 <!-- End Single Delete Modal -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('searchForm');
+    const searchInput = document.getElementById('tableSearch');
+    const searchableTable = document.getElementById('searchableTable');
+    if (!form || !searchInput || !searchableTable) return;
+
+    // Restore cursor to end of input after AJAX navigation
+    if (searchInput.value) {
+        searchInput.focus();
+        const len = searchInput.value.length;
+        searchInput.setSelectionRange(len, len);
+    }
+
+    function clientFilterRows() {
+        const query = searchInput.value.toLowerCase().trim();
+        const rows = searchableTable.querySelectorAll('tbody tr');
+        rows.forEach(function (row) {
+            const name = (row.querySelector('td:nth-child(2)')?.textContent || '').toLowerCase();
+            const phone = (row.querySelector('td:nth-child(3)')?.textContent || '').toLowerCase();
+            const tin = (row.querySelector('td:nth-child(4)')?.textContent || '').toLowerCase();
+            row.style.display = (!query || name.includes(query) || phone.includes(query) || tin.includes(query)) ? '' : 'none';
+        });
+    }
+
+    async function fetchTable(url) {
+        try {
+            const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!res.ok) throw new Error('fetch failed');
+            const html = await res.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const newContent = doc.getElementById('searchableTable');
+            if (newContent) {
+                searchableTable.innerHTML = newContent.innerHTML;
+                history.pushState({}, '', url);
+                bindPaginationLinks();
+            }
+        } catch (e) {
+            form.submit();
+        }
+    }
+
+    function getSearchUrl() {
+        const params = new URLSearchParams(new FormData(form));
+        return form.action + '?' + params.toString();
+    }
+
+    let debounceTimer;
+    searchInput.addEventListener('input', function () {
+        clientFilterRows();
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function () { fetchTable(getSearchUrl()); }, 700);
+    });
+
+    function bindPaginationLinks() {
+        searchableTable.querySelectorAll('nav a.page-link[href]:not([href="#"])').forEach(function (link) {
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                fetchTable(this.href);
+            });
+        });
+    }
+
+    bindPaginationLinks();
+});
+</script>
 @endsection

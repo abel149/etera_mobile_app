@@ -50,7 +50,7 @@
 									@foreach($proformas as $proforma)
 									<tr>
 										<td>{{ $proforma->file_number }}</td>
-										<td>{{ $proforma->year }} {{ $proforma->brand?->name }} {{ $proforma->model }}( {{ $proforma->license_plate_number }})</td>
+										<td>{{ $proforma->year }} {{ $proforma->brand?->name }} {{ $proforma->model }}{{ $proforma->license_plate_number ? ' ('.$proforma->license_plate_number.')' : '' }}</td>
 										
 										<td class="
 											@if($proforma->status == 'pending') text-warning 

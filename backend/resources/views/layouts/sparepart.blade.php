@@ -719,6 +719,20 @@
 
 		/* Animated Background Circles — now light */
 		.etera-bg-circles { display: none; }
+
+		/* Mobile hamburger notification dot */
+		.sp-mobile-toggle { position: relative; }
+		.sp-mobile-notif-dot {
+			position: absolute;
+			top: 2px;
+			right: 2px;
+			width: 9px;
+			height: 9px;
+			border-radius: 50%;
+			background: #dc3545;
+			border: 1.5px solid #fff;
+			pointer-events: none;
+		}
 	</style>
 
 	@if(auth()->check() && auth()->user()->role == 'garage')
@@ -770,8 +784,16 @@
 		</a>
 
 		<!-- Mobile Toggle -->
+		@php
+			$_mobileNotifCount = (auth()->user()?->getInboxCount() ?? 0)
+				+ (auth()->user()?->getReceivedProformasCount() ?? 0)
+				+ (auth()->user()?->getReturnedFromAdminCount() ?? 0);
+		@endphp
 		<button class="sp-mobile-toggle" id="sp-mobile-toggle" aria-label="Toggle navigation">
 			<i class="bi bi-list"></i>
+			@if($_mobileNotifCount > 0)
+				<span class="sp-mobile-notif-dot"></span>
+			@endif
 		</button>
 
 		<!-- Navigation -->

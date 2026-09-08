@@ -27,8 +27,16 @@
 			<div class="col-12">
 				<div class="card">
 					<div class="card-body">
-						<div class="table-responsive lead-table">
-							<table class="table mb-0 align-middle">
+					<div class="row align-items-center mb-3">
+						<div class="col-lg-6 col-xl-5">
+							<div class="position-relative">
+								<input type="text" id="tableSearch" class="form-control ps-5 radius-30" placeholder="Search by name or phone...">
+								<span class="position-absolute top-50 product-show translate-middle-y"><i class="bx bx-search"></i></span>
+							</div>
+						</div>
+					</div>
+					<div class="table-responsive lead-table">
+						<table class="table mb-0 align-middle" id="adminsTable">
 								<thead class="table-light">
 									<tr>
 										<th>#</th>
@@ -59,7 +67,7 @@
 											<button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#adminDetailModal{{ $admin->id }}">
 												<i class="bx bx-show me-0"></i>
 											</button>
-											@if(auth()->user()->role === 'superadmin' && $admin->id !== auth()->id() && $admin->role !== 'superadmin')
+											@if(auth()->user()->is_superadmin)
 											<button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteAdminModal{{ $admin->id }}">
 												<i class="bx bx-trash me-0"></i>
 											</button>
@@ -82,7 +90,7 @@
 													<p><strong>Role:</strong> {{ ucfirst($admin->role) }}</p>
 													<p><strong>Registered:</strong> {{ $admin->created_at }}</p>
 
-													@if(auth()->user()->role === 'superadmin' && $admin->role !== 'superadmin')
+													@if(auth()->user()->is_superadmin)
 													<hr>
 													<h6 class="mb-3">Edit Admin</h6>
 													<form action="{{ route('admin.admins.update', $admin->id) }}" method="POST">
@@ -100,8 +108,6 @@
 															<label class="form-label">Email</label>
 															<input type="email" name="email" class="form-control" value="{{ $admin->email }}">
 														</div>
-														{{-- Superadmin cannot change admin's password --}}
-														<p class="text-muted small"><i class="bx bx-lock-alt me-1"></i>Password cannot be changed by superadmin. Admin must change their own password from their profile.</p>
 														<button type="submit" class="btn btn-primary w-100">
 															<i class="bx bx-save me-1"></i>Save Changes
 														</button>
@@ -116,7 +122,7 @@
 									</div>
 
 									{{-- Delete Modal --}}
-									@if(auth()->user()->role === 'superadmin' && $admin->id !== auth()->id() && $admin->role !== 'superadmin')
+									@if(auth()->user()->is_superadmin)
 									<div class="modal fade" id="deleteAdminModal{{ $admin->id }}" tabindex="-1" aria-hidden="true">
 										<div class="modal-dialog modal-dialog-centered">
 											<div class="modal-content">
@@ -148,4 +154,21 @@
 		</div>
 	</div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('tableSearch');
+    if (!searchInput) return;
+    const table = document.querySelector('.lead-table table tbody');
+    if (!table) return;
+    searchInput.addEventListener('input', function () {
+        const query = this.value.toLowerCase().trim();
+        const rows = table.querySelectorAll('tr');
+        rows.forEach(function (row) {
+            const name = (row.querySelector('td:nth-child(2)')?.textContent || '').toLowerCase();
+            const phone = (row.querySelector('td:nth-child(3)')?.textContent || '').toLowerCase();
+            row.style.display = (!query || name.includes(query) || phone.includes(query)) ? '' : 'none';
+        });
+    });
+});
+</script>
 @endsection

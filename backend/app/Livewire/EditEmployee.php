@@ -24,12 +24,20 @@ class EditEmployee extends Component
 
     private $rules = [
         'name' => 'required|string|max:255',
-        'phone_number' => 'required|numeric|unique:users,phone_number',
-        'email' => 'required|email|unique:users,email',
+        'phone_number' => 'required|numeric',
+        'email' => 'required|email',
         'password' => 'nullable|min:8',
         'role_id' => 'required|exists:levels,id',
         'manager_id' => 'nullable|exists:users,id',
     ];
+
+    protected function rulesWithUniqueIgnore()
+    {
+        $rules = $this->rules;
+        $rules['phone_number'] .= '|unique:users,phone_number,' . $this->employee->id;
+        $rules['email'] .= '|unique:users,email,' . $this->employee->id;
+        return $rules;
+    }
 
     public function mount($employeeId)
     {
@@ -69,12 +77,12 @@ class EditEmployee extends Component
 
     public function updated($propertyName)
     {
-        $this->validateOnly($propertyName, $this->rules);
+        $this->validateOnly($propertyName, $this->rulesWithUniqueIgnore());
     }
 
     public function submit()
     {
-        $this->validate($this->rules);
+        $this->validate($this->rulesWithUniqueIgnore());
 
         // Ensure the selected role is updated
         $this->selectedRole = Level::find($this->role_id);
@@ -89,8 +97,9 @@ class EditEmployee extends Component
 
         // If it's an operator (level 2), a manager is required
         if ($level_id == 2 && !$this->manager_id) {
-            $this->rules['manager_id'] = 'required';
-            $this->validate($this->rules);
+            $rules = $this->rulesWithUniqueIgnore();
+            $rules['manager_id'] = 'required';
+            $this->validate($rules);
             return;
         }
 

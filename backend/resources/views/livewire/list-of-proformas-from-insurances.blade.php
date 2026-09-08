@@ -168,7 +168,7 @@
                                                 <li><i class="icon-material-outline-directions-car"></i>{{ $proforma->year }}, {{ $proforma->brand->name ?? 'N/A' }}, {{ $proforma->model ?? 'N/A' }} [{{ $proforma->license_plate_number ?? 'N/A' }}]</li>
                                                 @if(auth()->user()->role == 'garage')
                                                 @elseif(auth()->user()->role == 'shop')
-                                                    <li><i class="icon-material-outline-settings"></i> {{ $proforma->remaining_shops ?? 0 }} Remaining</li>
+                                                    <li><i class="icon-material-outline-settings"></i> Active</li>
                                                 @endif
                                                 <li><i class="icon-material-outline-access-time"></i> {{ $proforma->created_at->diffForHumans() }}</li>
                                             </ul>

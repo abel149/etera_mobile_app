@@ -18,7 +18,6 @@ class CreateProforma extends Component
     public $year;
     public $customer_name;
     public $customer_phone_number;
-    public $license_plate_number;
     public $chassis_number;
     public $parts = [
         'id' => [],
@@ -34,7 +33,6 @@ class CreateProforma extends Component
         'year' => 'required|numeric',
         'customer_name' => 'required',
         'customer_phone_number' => 'required|starts_with:251|numeric',
-        'license_plate_number' => 'required',
         'chassis_number' => 'nullable',
         'parts.id' => 'required|array',
         'parts.id.*' => 'required|exists:car_parts,id',
@@ -58,7 +56,6 @@ class CreateProforma extends Component
             'car_brand_id' => $this->brand_id,
             'customer_name' => $this->customer_name,
             'customer_phone_number' => $this->customer_phone_number,
-            'license_plate_number' => $this->license_plate_number,
             'chassis_number' => $this->chassis_number,
             'year' => $this->year,
             'model' => $this->model,

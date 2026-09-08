@@ -17,9 +17,9 @@ class ProformaApplication extends Model implements HasMedia
     protected $guarded = [];
 
     protected $casts = [
-        'initial_price' => 'decimal:2',
-        'amount' => 'decimal:2',
-        'discount' => 'decimal:2',
+        'initial_price'       => 'decimal:2',
+        'amount'              => 'decimal:2',
+        'amount_is_encrypted' => 'boolean',
     ];
 
     public function proforma()
@@ -34,7 +34,12 @@ class ProformaApplication extends Model implements HasMedia
 
     public function prices()
     {
-        return $this->hasMany(ProformaPartPrice::class, 'application_id');
+        return $this->hasMany(ProformaPartPrice::class, 'application_id')->orderBy('id', 'asc');
+    }
+
+    public function pdf()
+    {
+        return $this->hasOne(ApplicationPdf::class, 'application_id');
     }
 
     public function media(): MorphMany
@@ -43,23 +48,11 @@ class ProformaApplication extends Model implements HasMedia
     }
 
     /**
-     * Calculate final price based on initial price and discount
+     * Get the final price (amount is already VAT-inclusive, no discount to apply)
      */
     public function calculateFinalPrice()
     {
-        if ($this->initial_price && $this->discount) {
-            $discountAmount = ($this->initial_price * $this->discount) / 100;
-            return $this->initial_price - $discountAmount;
-        }
         return $this->initial_price ?? $this->amount;
-    }
-
-    /**
-     * Get the discount percentage
-     */
-    public function getDiscountPercentageAttribute()
-    {
-        return $this->discount ?? 0;
     }
 
     /**

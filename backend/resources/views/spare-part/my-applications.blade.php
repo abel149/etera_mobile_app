@@ -52,12 +52,26 @@ class="current"
     {{-- Applications Table --}}
     <div class="card radius-10 shadow-sm">
         <div class="card-body">
+            {{-- Search --}}
+            <div class="row mb-3">
+                <div class="col-md-5 col-12">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class='bx bx-search'></i></span>
+                        <input type="text" id="applicationSearch" class="form-control"
+                               placeholder="Search by license plate or file number...">
+                        <button type="button" id="clearApplicationSearch" class="btn btn-outline-secondary" style="display:none;">
+                            <i class='bx bx-x'></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
             <div class="table-responsive">
-                <table class="table table-hover table-bordered align-middle mb-0">
+                <table class="table table-hover table-bordered align-middle mb-0" id="applicationsTable">
                     <thead class="table-light">
                         <tr>
                             <th>#</th>
                             <th>Proforma #</th>
+                            <th>License Plate</th>
                             <th>Brand</th>
                             <th>Type</th>
                             <th>Amount</th>
@@ -71,18 +85,29 @@ class="current"
                         @forelse($applications as $index => $application)
                         @php
                             $proforma = $application->proforma;
-                            $status = $application->status ?? 'pending';
+                            $status = optional($application->proforma)->status ?? 'pending';
                             $statusColors = [
-                                'pending' => 'bg-warning text-dark',
-                                'accepted' => 'bg-success',
-                                'rejected' => 'bg-danger',
-                                'selected' => 'bg-primary',
+                                'pending'   => 'bg-warning text-dark',
+                                'opened'    => 'bg-info text-dark',
+                                'published' => 'bg-primary',
+                                'closed'    => 'bg-danger',
+                                'completed' => 'bg-success',
                             ];
                             $statusClass = $statusColors[$status] ?? 'bg-secondary';
 
                             // Calculate final amount
-                            if ($application->from === 'shop' && $application->prices->count() > 0) {
-                                $subtotal = $application->prices->sum('part_total');
+                            $pricesAreEncrypted = $application->amount_is_encrypted
+                                || $application->prices->contains(fn($p) => $p->price_is_encrypted);
+
+                            if (!$pricesAreEncrypted && $application->from === 'shop' && $application->prices->count() > 0) {
+                                $proformaParts = ($application->proforma->parts ?? collect())->sortBy('id')->values();
+                                $subtotal = 0;
+                                foreach ($proformaParts as $idx => $part) {
+                                    $price = $application->prices->values()->get($idx);
+                                    if ($price) {
+                                        $subtotal += $price->unit_price * ($part->quantity ?? 1);
+                                    }
+                                }
                                 $discountPct = (float)($application->discount ?? 0);
                                 $discountAmt = ($subtotal * $discountPct) / 100;
                                 $finalAmount = $subtotal - $discountAmt;
@@ -90,7 +115,9 @@ class="current"
                                 $finalAmount = $application->amount ?? 0;
                             }
                         @endphp
-                        <tr>
+                        <tr class="application-row"
+                            data-file-number="{{ strtolower($proforma->file_number ?? '') }}"
+                            data-license-plate="{{ strtolower($proforma->license_plate_number ?? '') }}">
                             <td>{{ $index + 1 }}</td>
                             <td>
                                 @if($proforma)
@@ -99,6 +126,7 @@ class="current"
                                     <span class="text-muted">-</span>
                                 @endif
                             </td>
+                            <td>{{ $proforma->license_plate_number ?? '-' }}</td>
                             <td>{{ $proforma->brand->name ?? '-' }}</td>
                             <td>
                                 <span class="badge {{ $application->from === 'shop' ? 'bg-info' : 'bg-secondary' }}">
@@ -106,7 +134,12 @@ class="current"
                                 </span>
                             </td>
                             <td>
-                                <strong>{{ number_format($finalAmount, 2) }}</strong> Birr
+                                @if($pricesAreEncrypted)
+                                    <i class="bx bx-lock text-warning"></i>
+                                    <em class="text-warning">Encrypted</em>
+                                @else
+                                    <strong>{{ number_format($finalAmount, 2) }}</strong> Birr
+                                @endif
                             </td>
                             <td>
                                 @if($application->discount > 0)
@@ -133,12 +166,18 @@ class="current"
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="9" class="text-center text-muted py-5">
+                            <td colspan="10" class="text-center text-muted py-5">
                                 <i class='bx bx-file bx-lg d-block mb-2'></i>
                                 You haven't applied on any proformas yet.
                             </td>
                         </tr>
                         @endforelse
+                        <tr id="noSearchResults" style="display:none;">
+                            <td colspan="10" class="text-center text-muted py-4">
+                                <i class='bx bx-search-alt bx-md d-block mb-2'></i>
+                                No applications match your search.
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -150,15 +189,30 @@ class="current"
 @foreach($applications as $application)
     @if($application->proforma)
     @php
-        $proforma = $application->proforma;
-        $parts = $proforma->parts ?? collect();
-        $prices = $application->prices ?? collect();
+        $proforma  = $application->proforma;
+        $parts     = $proforma->parts ?? collect();
+        $prices    = $application->prices ?? collect();
         $discountPct = (float)($application->discount ?? 0);
-        $subtotalParts = (float) $prices->sum('part_total');
-        $usingParts = $subtotalParts > 0;
-        $subtotal = $usingParts ? $subtotalParts : (float) $application->amount;
-        $discountAmt = $usingParts ? (($subtotal * $discountPct) / 100) : 0.0;
-        $netTotal = $usingParts ? ($subtotal - $discountAmt) : (float) $application->amount;
+        $partsSorted = $parts->sortBy('id')->values();
+
+        $pricesAreEncrypted = $application->amount_is_encrypted
+            || $prices->contains(fn($p) => $p->price_is_encrypted);
+
+        $subtotalParts = 0;
+        if (!$pricesAreEncrypted) {
+            foreach ($partsSorted as $idx => $part) {
+                $price = $prices->values()->get($idx);
+                if ($price) {
+                    $subtotalParts += $price->unit_price * ($part->quantity ?? 1);
+                }
+            }
+        }
+
+        // For encrypted shop applications prices->count() > 0 so show the parts table
+        $usingParts  = ($prices->count() > 0 && $application->from === 'shop') || $subtotalParts > 0;
+        $subtotal    = $subtotalParts;
+        $discountAmt = $usingParts && !$pricesAreEncrypted ? ($subtotal * $discountPct / 100) : 0.0;
+        $netTotal    = $usingParts && !$pricesAreEncrypted ? ($subtotal - $discountAmt) : (float) $application->amount;
     @endphp
     <div class="modal fade" id="applicationModal{{ $application->id }}" tabindex="-1"
          aria-labelledby="applicationModalLabel{{ $application->id }}" aria-hidden="true">
@@ -217,31 +271,39 @@ class="current"
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach($parts as $pIdx => $part)
+                                @foreach($partsSorted as $pIdx => $part)
                                     @php
-                                        $partPrice = $prices->where('car_part_id', $part->id)->first();
-                                        if (!$partPrice) {
-                                            $partPrice = $prices->values()->get($loop->index);
-                                        }
+                                        $partPrice = $prices->values()->get($pIdx);
                                     @endphp
                                     <tr>
-                                        <td>{{ $pIdx + 1 }}</td>
+                                        <td>{{ $loop->iteration }}</td>
                                         <td>{{ $part->number }}</td>
                                         <td>{{ $part->condition ?? '-' }}</td>
                                         <td>{{ $part->grade ?? '-' }}</td>
                                         <td>{{ $part->country ?? '-' }}</td>
                                         <td>{{ $part->quantity ?? 1 }}</td>
-                                        @if($partPrice)
+                                        @if($partPrice && !empty($partPrice->price_is_encrypted))
+                                            <td class="text-end"><i class="bx bx-lock text-warning"></i> <em class="text-warning small">Encrypted</em></td>
+                                            <td class="text-end text-muted">—</td>
+                                        @elseif($partPrice && $partPrice->unit_price > 0)
                                             <td class="text-end">{{ number_format($partPrice->unit_price, 2) }} ETB</td>
-                                            <td class="text-end">{{ number_format($partPrice->part_total ?? ($partPrice->unit_price * ($part->quantity ?? 1)), 2) }} ETB</td>
+                                            <td class="text-end">{{ number_format($partPrice->unit_price * ($part->quantity ?? 1), 2) }} ETB</td>
                                         @else
-                                            <td class="text-end">0.00 ETB</td>
-                                            <td class="text-end">0.00 ETB</td>
+                                            <td class="text-end text-muted fst-italic">— Not available</td>
+                                            <td class="text-end text-muted">—</td>
                                         @endif
                                     </tr>
                                 @endforeach
                             </tbody>
                             <tfoot>
+                                @if($pricesAreEncrypted)
+                                <tr>
+                                    <td colspan="8" class="text-center py-2">
+                                        <i class="bx bx-lock text-warning me-1"></i>
+                                        <em class="text-warning">Prices submitted securely — only the insurance can view the total.</em>
+                                    </td>
+                                </tr>
+                                @else
                                 <tr>
                                     <td colspan="7" class="text-end"><strong>SUBTOTAL</strong></td>
                                     <td class="text-end"><strong>{{ number_format($subtotal, 2) }} ETB</strong></td>
@@ -256,14 +318,23 @@ class="current"
                                         <strong>{{ number_format($netTotal, 2) }} ETB</strong>
                                     </td>
                                 </tr>
+                                @endif
                             </tfoot>
                         </table>
                     </div>
                     @else
                     {{-- Garage / lump-sum application --}}
                     <div class="text-center py-3">
-                        <h6 class="text-muted mb-2">Total Amount</h6>
-                        <h3 style="color: var(--etera-teal-light);">{{ number_format($netTotal, 2) }} ETB</h3>
+                        @if($application->amount_is_encrypted)
+                            <i class="bx bx-lock fs-1 text-warning"></i>
+                            <p class="text-warning mt-2 mb-0">
+                                <strong>Price submitted securely (encrypted).</strong><br>
+                                <small class="text-muted">Only the insurance can decrypt and view the actual amount.</small>
+                            </p>
+                        @else
+                            <h6 class="text-muted mb-2">Total Amount</h6>
+                            <h3 style="color: var(--etera-teal-light);">{{ number_format($netTotal, 2) }} ETB</h3>
+                        @endif
                     </div>
                     @endif
                 </div>
@@ -279,4 +350,45 @@ class="current"
 @endforeach
 
 <div class="margin-top-45 margin-bottom-45"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('applicationSearch');
+    const clearBtn = document.getElementById('clearApplicationSearch');
+    const rows = document.querySelectorAll('#applicationsTable tbody tr.application-row');
+    const noResultsRow = document.getElementById('noSearchResults');
+
+    if (!searchInput) return;
+
+    function filterRows() {
+        const term = searchInput.value.trim().toLowerCase();
+        let visibleCount = 0;
+
+        rows.forEach(function (row) {
+            const fileNumber = row.getAttribute('data-file-number') || '';
+            const licensePlate = row.getAttribute('data-license-plate') || '';
+            const match = term === '' || fileNumber.includes(term) || licensePlate.includes(term);
+            row.style.display = match ? '' : 'none';
+            if (match) visibleCount++;
+        });
+
+        if (noResultsRow) {
+            noResultsRow.style.display = (term !== '' && visibleCount === 0) ? '' : 'none';
+        }
+        if (clearBtn) {
+            clearBtn.style.display = term !== '' ? '' : 'none';
+        }
+    }
+
+    searchInput.addEventListener('input', filterRows);
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function () {
+            searchInput.value = '';
+            filterRows();
+            searchInput.focus();
+        });
+    }
+});
+</script>
 @endsection

@@ -32,68 +32,85 @@ class SendProformaPublishedEmail
             return;
         }
 
+        $isTest = $proforma->poster ? ($proforma->poster->is_test ?? false) : false;
         $emailEnabled = \App\Models\EmailSetting::isEnabled('proforma_floated');
+        $telegramService = app(TelegramService::class);
+        $subject = 'Proforma #' . $proforma->file_number . ' Published';
 
-        // Find all shops that serve this proforma's brand (distinct to avoid duplicates)
-        $shopUsers = \App\Models\User::where('role', 'shop')
+        // ── Notify shops (brand-filtered + is_test matched) ──────────────────
+        $shopQuery = \App\Models\User::where('role', 'shop')
+            ->where(function ($q) use ($isTest) {
+                if ($isTest) {
+                    $q->where('is_test', true);
+                } else {
+                    $q->where(fn($q2) => $q2->where('is_test', false)->orWhereNull('is_test'));
+                }
+            })
             ->whereHas('brands', function ($q) use ($proforma) {
                 $q->where('brand_id', $proforma->car_brand_id);
-            })
-            ->distinct()
-            ->get();
+            });
 
-        $subject = 'Proforma #' . $proforma->file_number . ' Published';
-        $telegramService = app(TelegramService::class);
+        // For insurance_shop_garage type, only notify users with shop_garage = 1
+        if ($proforma->proforma_type === 'insurance_shop_garage') {
+            $shopQuery->where('shop_garage', 1);
+        }
+
+        $shopUsers = $shopQuery->distinct()->get();
 
         foreach ($shopUsers as $user) {
-            // Send email if enabled
             if ($emailEnabled && !empty($user->email)) {
                 try {
-                    Mail::to($user->email)
-                        ->queue(new ProformaFloatedMail($proforma));
-
-                    \App\Models\SentEmail::log(
-                        'proforma_floated',
-                        $user->email,
-                        $user->name,
-                        $user->id,
-                        $proforma->id,
-                        $subject,
-                        'sent'
-                    );
+                    Mail::to($user->email)->queue(new ProformaFloatedMail($proforma));
+                    \App\Models\SentEmail::log('proforma_floated', $user->email, $user->name, $user->id, $proforma->id, $subject, 'sent');
                 } catch (\Throwable $e) {
-                    Log::warning('Failed to send proforma float email', [
-                        'user_id' => $user->id,
-                        'email' => $user->email,
-                        'proforma_id' => $proforma->id,
-                        'error' => $e->getMessage(),
-                    ]);
-
-                    \App\Models\SentEmail::log(
-                        'proforma_floated',
-                        $user->email,
-                        $user->name,
-                        $user->id,
-                        $proforma->id,
-                        $subject,
-                        'failed',
-                        $e->getMessage()
-                    );
+                    Log::warning('Failed to send proforma float email', ['user_id' => $user->id, 'proforma_id' => $proforma->id, 'error' => $e->getMessage()]);
+                    \App\Models\SentEmail::log('proforma_floated', $user->email, $user->name, $user->id, $proforma->id, $subject, 'failed', $e->getMessage());
                 }
             }
-
-            // Send Telegram notification if user has linked their Telegram
             if (!empty($user->telegram_chat_id)) {
                 try {
                     $telegramService->sendProformaNotification($user->telegram_chat_id, $proforma);
                 } catch (\Throwable $e) {
-                    Log::warning('Failed to send Telegram proforma notification', [
-                        'user_id' => $user->id,
-                        'chat_id' => $user->telegram_chat_id,
-                        'proforma_id' => $proforma->id,
-                        'error' => $e->getMessage(),
-                    ]);
+                    Log::warning('Failed to send Telegram shop notification', ['user_id' => $user->id, 'proforma_id' => $proforma->id, 'error' => $e->getMessage()]);
                 }
+            }
+        }
+
+        // ── Notify garages (is_test matched, treat null as false) ────────────
+        if ($proforma->proforma_type === 'insurance_shop_only') {
+            $garageUsers = collect();
+        } else {
+            $garageQuery = \App\Models\User::where('role', 'garage')
+                ->where(function ($q) use ($isTest) {
+                    if ($isTest) {
+                        $q->where('is_test', true);
+                    } else {
+                        $q->where(fn($q2) => $q2->where('is_test', false)->orWhereNull('is_test'));
+                    }
+                })
+                ->whereNotNull('telegram_chat_id');
+
+            if ($proforma->proforma_type === 'insurance_shop_garage') {
+                $garageQuery->where('shop_garage', 1);
+            }
+
+            $garageUsers = $garageQuery->get();
+        }
+
+        foreach ($garageUsers as $user) {
+            try {
+                $telegramService->sendProformaNotification($user->telegram_chat_id, $proforma);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to send Telegram garage notification', ['user_id' => $user->id, 'proforma_id' => $proforma->id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        // ── Notify marketers (real proformas only — marketers have no is_test) ─
+        if (!$isTest) {
+            try {
+                $telegramService->sendProformaFloatedNotificationToMarketers($proforma);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to send Telegram marketer float notification', ['proforma_id' => $proforma->id, 'error' => $e->getMessage()]);
             }
         }
     }

@@ -107,7 +107,7 @@
                         <div class="mb-3">
                             <p class="mb-1"><strong>Customer:</strong> {{ $proforma->customer_name }}</p>
                             <p class="mb-1"><strong>Phone:</strong> {{ $proforma->customer_phone_number }}</p>
-                            <p class="mb-1"><strong>License:</strong> {{ $proforma->license_plate_number }}</p>
+                            <p class="mb-1"><strong>License:</strong> {{ $proforma->license_plate_number ?? 'N/A' }}</p>
                             <p class="mb-1"><strong>Chassis:</strong> {{ $proforma->chassis_number }}</p>
                             <p class="mb-1"><strong>Brand:</strong> {{ $proforma->brand->name ?? 'N/A' }}</p>
                             <p class="mb-1"><strong>Model:</strong> {{ $proforma->model }}</p>

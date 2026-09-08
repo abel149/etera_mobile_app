@@ -9,9 +9,6 @@
     <link rel="icon" href="{{ asset('favicon.ico') }}" type="image/x-icon"/>
     <link rel="icon" href="{{ asset('assets/images/transparent.svg') }}" type="image/jpeg" />
 
-    <!-- etera Modern Design System -->
-    <link href="{{ asset('assets/css/etera-modern.css') }}" rel="stylesheet">
-
     <!-- etera White & Green Auth Theme -->
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');

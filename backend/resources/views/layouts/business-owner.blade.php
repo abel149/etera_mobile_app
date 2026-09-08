@@ -249,6 +249,19 @@
 			line-height: 1;
 		}
 
+		/* Mobile hamburger notification dot */
+		.sp-mobile-notif-dot {
+			position: absolute;
+			top: 2px;
+			right: 2px;
+			width: 9px;
+			height: 9px;
+			border-radius: 50%;
+			background: #dc3545;
+			border: 1.5px solid #fff;
+			pointer-events: none;
+		}
+
 		/* Mobile nav toggle */
 		.sp-mobile-toggle {
 			display: none;
@@ -732,8 +745,15 @@
 		</a>
 
 		<!-- Mobile Toggle -->
-		<button class="sp-mobile-toggle" id="sp-mobile-toggle" aria-label="Toggle navigation">
+		@php
+			$_boNotifCount = auth()->user()->getReceivedProformasCount()
+				+ auth()->user()->getReturnedFromAdminCount();
+		@endphp
+		<button class="sp-mobile-toggle" id="sp-mobile-toggle" aria-label="Toggle navigation" style="position:relative;">
 			<i class="bi bi-list"></i>
+			@if($_boNotifCount > 0)
+				<span class="sp-mobile-notif-dot"></span>
+			@endif
 		</button>
 
 		<!-- Navigation -->

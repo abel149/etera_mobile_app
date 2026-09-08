@@ -560,13 +560,6 @@ auth()->user()->unreadNotifications->count()}}</span>
         © <script>document.write(new Date().getFullYear())</script>. All rights reserved.
     </p>
 
-    <p class="mb-0">
-        <!--Made by -->
-        <!--<a href="https://www.primetechplc.com" target="_blank" rel="noopener">-->
-        <!--    Prime Software-->
-        <!--</a> -->
-        <!--in collaboration with <strong>Beemnet Abraham</strong>.-->
-    </p>
 </footer>
 
 
@@ -939,129 +932,40 @@ auth()->user()->unreadNotifications->count()}}</span>
 
   <script>
 	document.addEventListener("DOMContentLoaded", function() {
-    const csrfToken = document.querySelector('input[type="hidden"').value;
+    var csrfEl = document.querySelector('input[type="hidden"]');
+    if (!csrfEl) return;
+    var csrfToken = csrfEl.value;
 
-    const licenseBusiness = FilePond
-    const stampBusiness = FilePond
-    const licenseGarage = FilePond
-    const stampGarage = FilePond
-    const licenseShop = FilePond
-    const stampShop = FilePond
-	console.log(csrfToken)
-    // Create a FilePond instance
-  	licenseBusiness.create(document.querySelector('#licenseBusiness')).setOptions({
-      allowMultiple:true,
-      credits:false,
-      imageResizeMode:'contain',
-      imagePreviewMaxFileSize:'3MB',
+    var fpImageOptions = {
+      allowMultiple: true,
+      credits: false,
+      imageResizeMode: 'contain',
+      imagePreviewMaxFileSize: '3MB',
       acceptedFileTypes: ['image/*'],
-        server: {
-            process: '/upload/image',
-            revert: '/delete',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-            }
-        }
-    });
-    stampBusiness.create(document.querySelector('#stampBusiness')).setOptions({
-      allowMultiple:true,
-      credits:false,
-      imageResizeMode:'contain',
-      imagePreviewMaxFileSize:'3MB',
-      acceptedFileTypes: ['image/*'],
-        server: {
-            process: '/upload/image',
-            revert: '/delete',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-            }
-        }
-    });
-    licenseGarage.create(document.querySelector('#licenseGarage')).setOptions({
-      allowMultiple:true,
-      credits:false,
-      imageResizeMode:'contain',
-      imagePreviewMaxFileSize:'3MB',
-      acceptedFileTypes: ['image/*'],
-        server: {
-            process: '/upload/image',
-            revert: '/delete',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-            }
-        }
-    });
-    stampGarage.create(document.querySelector('#stampGarage')).setOptions({
-      allowMultiple:true,
-      credits:false,
-      imageResizeMode:'contain',
-      imagePreviewMaxFileSize:'3MB',
-      acceptedFileTypes: ['image/*'],
-        server: {
-            process: '/upload/image',
-            revert: '/delete',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-            }
-        }
-    });
-    licenseShop.create(document.querySelector('#licenseShop')).setOptions({
-      allowMultiple:true,
-      credits:false,
-      imageResizeMode:'contain',
-      imagePreviewMaxFileSize:'3MB',
-      acceptedFileTypes: ['image/*'],
-        server: {
-            process: '/upload/image',
-            revert: '/delete',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-            }
-        }
-    });
-    stampShop.create(document.querySelector('#stampShop')).setOptions({
-      allowMultiple:true,
-      credits:false,
-      imageResizeMode:'contain',
-      imagePreviewMaxFileSize:'3MB',
-      acceptedFileTypes: ['image/*'],
-        server: {
-            process: '/upload/image',
-            revert: '/delete',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-            }
-        }
+      server: {
+        process: '/upload/image',
+        revert: '/delete',
+        headers: { 'X-CSRF-TOKEN': csrfToken }
+      }
+    };
+
+    ['#licenseBusiness', '#stampBusiness', '#licenseGarage', '#stampGarage', '#licenseShop', '#stampShop'].forEach(function(sel) {
+      var el = document.querySelector(sel);
+      if (el) FilePond.create(el).setOptions(fpImageOptions);
     });
 
-	audio.create(document.querySelector('#audio')).setOptions({
-      allowMultiple:true,
-      credits:false,
-      imageResizeMode:'contain',
-      imagePreviewMaxFileSize:'3MB',
-      //acceptedFileTypes: ['image/*'],
-        server: {
-            process: '/upload/audio',
-            revert: '/delete',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-            }
-        }
+    var audioEl = document.querySelector('#audio');
+    if (audioEl) FilePond.create(audioEl).setOptions({
+      allowMultiple: true,
+      credits: false,
+      server: { process: '/upload/audio', revert: '/delete', headers: { 'X-CSRF-TOKEN': csrfToken } }
     });
 
-	video.create(document.querySelector('#video')).setOptions({
-      allowMultiple:true,
-      credits:false,
-      imageResizeMode:'contain',
-      imagePreviewMaxFileSize:'3MB',
-      //acceptedFileTypes: ['image/*'],
-        server: {
-            process: '/upload/video',
-            revert: '/delete',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-            }
-        }
+    var videoEl = document.querySelector('#video');
+    if (videoEl) FilePond.create(videoEl).setOptions({
+      allowMultiple: true,
+      credits: false,
+      server: { process: '/upload/video', revert: '/delete', headers: { 'X-CSRF-TOKEN': csrfToken } }
     });
   })
 

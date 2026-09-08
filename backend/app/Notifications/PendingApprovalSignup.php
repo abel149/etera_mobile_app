@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -21,21 +20,7 @@ class PendingApprovalSignup extends Notification
 
     public function via(object $notifiable): array
     {
-        $channels = ['database'];
-        if (!empty($notifiable->device_token)) {
-            $channels[] = FcmChannel::class;
-        }
-        return $channels;
-    }
-
-    public function toFcm(object $notifiable): array
-    {
-        $roleText = $this->userRole ? ucfirst($this->userRole) : 'User';
-        return [
-            'New User Pending Approval',
-            "{$this->userName} ({$roleText}) signed up and needs your approval.",
-            ['type' => 'approval_pending_signup'],
-        ];
+        return ['database'];
     }
 
     public function toDatabase(object $notifiable): array
@@ -52,14 +37,13 @@ class PendingApprovalSignup extends Notification
         $roleText = $this->userRole ? ('Role: ' . $this->userRole) : 'Role: N/A';
 
         return [
-            'type'        => 'approval_pending_signup',
-            'title'       => 'New User Pending Approval',
+            'type' => 'approval_pending_signup',
             'file_number' => 'Approval',
-            'user_id'     => $this->userId,
-            'user_name'   => $this->userName,
-            'user_role'   => $this->userRole,
-            'message'     => "New signup: {$this->userName}{$contact}. {$roleText}.",
-            'created_at'  => now()->toISOString(),
+            'user_id' => $this->userId,
+            'user_name' => $this->userName,
+            'user_role' => $this->userRole,
+            'message' => "New signup pending approval: {$this->userName}{$contact}. {$roleText}.",
+            'created_at' => now()->toISOString(),
         ];
     }
 }

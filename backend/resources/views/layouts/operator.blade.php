@@ -154,10 +154,7 @@
 		<div class="overlay toggle-icon"></div>
 		<a href="javaScript:;" class="back-to-top"><i class='bx bxs-up-arrow-alt'></i></a>
 
-		<footer class="page-footer text-center">
-			<p class="mb-1">© <script>document.write(new Date().getFullYear())</script>. All rights reserved.</p>
-			<p class="mb-0">Made by <a href="https://www.primetechplc.com" target="_blank" rel="noopener">Prime Software</a> in collaboration with <strong>Beemnet Abraham</strong>.</p>
-		</footer>
+		
 	</div>
 
 	<!-- Scripts -->

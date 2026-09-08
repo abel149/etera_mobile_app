@@ -41,12 +41,15 @@ public function store(Request $request)
         // Password is optional; if null, default will be applied
         'password' => 'nullable|min:6|max:6|confirmed',
 
-        'tin_number' => 'required|unique:users,tin_number',
+        'tin_number' => 'nullable|unique:users,tin_number',
         'brands' => 'required',
         'brands.*' => 'required|exists:brands,id',
 
-        'license_image' => 'required|file|image',
-        'stamp_image' => 'required|file|image',
+        'license_image' => 'nullable|file|image',
+        'stamp_image' => 'nullable|file|image',
+
+        'dealers' => 'nullable|boolean',
+        'shop_garage' => 'nullable|boolean',
     ]);
 
     // Default password handling
@@ -62,9 +65,9 @@ public function store(Request $request)
 
     } while (User::where('store_id', $newStoreId)->exists());
 
-    // Upload images
-    $licenseImagePath = $request->file('license_image')->store('public/licenses');
-    $stampImagePath = $request->file('stamp_image')->store('public/stamps');
+    // Upload images (optional)
+    $licenseImagePath = $request->hasFile('license_image') ? $request->file('license_image')->store('public/licenses') : null;
+    $stampImagePath = $request->hasFile('stamp_image') ? $request->file('stamp_image')->store('public/stamps') : null;
 
     // Create the shop user
     $user = User::create([
@@ -79,6 +82,8 @@ public function store(Request $request)
         'license_image' => $licenseImagePath,
         'stamp_image' => $stampImagePath,
         'store_id' => $newStoreId,
+        'dealers' => $request->has('dealers') ? 1 : 0,
+        'shop_garage' => $request->has('shop_garage') ? 1 : 0,
     ]);
 
     // Attach brands
@@ -288,11 +293,9 @@ public function edit(string $id)
             'location' => 'required',
             // 'business_license_number' => 'required|unique:users,business_license_number,' . $id,
             // 'license_expire_date' => 'required|date',
-            'tin_number' => 'required|unique:users,tin_number,' . $id,
+            'tin_number' => 'nullable|unique:users,tin_number,' . $id,
             'brands' => 'required',
             'brands.*' => 'required|exists:brands,id', // Ensure the brand exists
-            'license_image' => 'nullable|file|image',
-            'stamp_image' => 'nullable|file|image',
 
 
         ]);
@@ -301,22 +304,45 @@ public function edit(string $id)
         $shop = User::findOrFail($id);
     
     
-        // Handle image update if a new image is uploaded
-        if ($request->hasFile('license_image')) {
-            // Delete the old image if it exists
-            if ($shop->license_image && Storage::exists('public/licenses/' . $shop->license_image)) {
-                Storage::delete('public/licenses/' . $shop->license_image);
+        // Handle license image - FilePond async upload, direct file, or removal
+        if ($request->filled('remove_license_image') && $request->remove_license_image === '1') {
+            if ($shop->license_image && Storage::disk('public')->exists($shop->license_image)) {
+                Storage::disk('public')->delete($shop->license_image);
             }
-            // Store the new license image
+            $shop->license_image = null;
+        } elseif ($request->filled('license_image_data')) {
+            $tempPath = $request->license_image_data;
+            if (Storage::disk('public')->exists($tempPath)) {
+                $filename = time() . '_' . basename($tempPath);
+                $newPath = 'licenses/' . $filename;
+                Storage::disk('public')->move($tempPath, $newPath);
+                if ($shop->license_image && Storage::disk('public')->exists($shop->license_image)) {
+                    Storage::disk('public')->delete($shop->license_image);
+                }
+                $shop->license_image = $newPath;
+            }
+        } elseif ($request->hasFile('license_image')) {
             $shop->license_image = $request->file('license_image')->store('licenses', 'public');
         }
     
-        if ($request->hasFile('stamp_image')) {
-            // Delete the old image if it exists
-            if ($shop->stamp_image && Storage::exists('public/stamps/' . $shop->stamp_image)) {
-                Storage::delete('public/stamps/' . $shop->stamp_image);
+        // Handle stamp image - FilePond async upload, direct file, or removal
+        if ($request->filled('remove_stamp_image') && $request->remove_stamp_image === '1') {
+            if ($shop->stamp_image && Storage::disk('public')->exists($shop->stamp_image)) {
+                Storage::disk('public')->delete($shop->stamp_image);
             }
-            // Store the new stamp image
+            $shop->stamp_image = null;
+        } elseif ($request->filled('stamp_image_data')) {
+            $tempPath = $request->stamp_image_data;
+            if (Storage::disk('public')->exists($tempPath)) {
+                $filename = time() . '_' . basename($tempPath);
+                $newPath = 'stamps/' . $filename;
+                Storage::disk('public')->move($tempPath, $newPath);
+                if ($shop->stamp_image && Storage::disk('public')->exists($shop->stamp_image)) {
+                    Storage::disk('public')->delete($shop->stamp_image);
+                }
+                $shop->stamp_image = $newPath;
+            }
+        } elseif ($request->hasFile('stamp_image')) {
             $shop->stamp_image = $request->file('stamp_image')->store('stamps', 'public');
         }
     
@@ -328,6 +354,8 @@ public function edit(string $id)
         // $shop->business_license_number = $request->business_license_number;
         // $shop->license_expire_date = $request->license_expire_date;
         $shop->tin_number = $request->tin_number;
+        $shop->dealers = $request->has('dealers') ? 1 : 0;
+        $shop->shop_garage = $request->has('shop_garage') ? 1 : 0;
 
 
         // Save the updated shop
@@ -343,11 +371,15 @@ public function edit(string $id)
         }
     
         // Redirect based on the user role
-        if (auth()->user()->role === 'admin') {
+        if (in_array(auth()->user()->role, ['admin', 'superadmin'])) {
             return redirect()->to('/admin/spare-part-shops')->with('success', 'Shop updated successfully');
         } elseif (auth()->user()->role === 'marketer') {
             return redirect()->to('/marketer/spare-part-shops')->with('success', 'Shop updated successfully');
+        } elseif (auth()->user()->role === 'shop') {
+            return redirect()->to('/spare-part-shops/profile')->with('success', 'Profile updated successfully');
         }
+
+        return redirect()->to('/admin/spare-part-shops')->with('success', 'Shop updated successfully');
     }
     
     

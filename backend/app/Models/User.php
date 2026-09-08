@@ -5,8 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\HasApiTokens;
 use App\Models\Brand; 
 use App\Models\BankAccount; 
 use App\Models\UserReview;
@@ -23,13 +23,14 @@ class User extends Authenticatable
     public const ROLE_MANAGER        = 'manager';
     public const ROLE_OPERATOR       = 'operator';
     public const ROLE_BUSINESS_OWNER = 'business_owner';
-    public const ROLE_INSURANCE      = 'insurance';
+    public const ROLE_INSURANCE       = 'insurance';
+    public const ROLE_INSURANCE_AGENT  = 'insurance_agent';
     public const ROLE_SHOP           = 'shop';
     public const ROLE_GARAGE         = 'garage';
     public const ROLE_EMPLOYEE       = 'employee';
     public const ROLE_MARKETER       = 'marketer';
     public const ROLE_INDIVIDUAL     = 'individual';
-    public const ROLE_Others         = 'others';
+
     // =====================
     // Boot Method (Auto-Generate store_id for Shop & Garage)
     // =====================
@@ -72,9 +73,11 @@ class User extends Authenticatable
         'password',
         'role',
         'is_new',
+        'is_test',
         'store_id',
         'approved',
         'registered_by',
+        'parent_insurance_id',
         'license_expire_date',
         'phone_number',
         'location',
@@ -85,12 +88,21 @@ class User extends Authenticatable
         'latitude',
         'longitude',
         'balance',
-        'billing_plan',
-        'billing_cycle_start',
         'file_quota',
         'commission_per_file',
         'employee_type',
         'telegram_chat_id',
+        'public_key',
+        'encrypted_private_key',
+        'key_iv',
+        'key_salt',
+        'has_encryption',
+        'recovery_encrypted_private_key',
+        'recovery_key_iv',
+        'recovery_key_salt',
+        'dealers',
+        'shop_garage',
+        'terms_agreed_at',
         'device_token',
     ];
 
@@ -105,12 +117,15 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at'   => 'datetime',
         'license_expire_date' => 'datetime',
+        'terms_agreed_at'     => 'datetime',
         'password'            => 'hashed', // Requires Laravel 10+. Use 'string' for older versions.
         'is_new'              => 'boolean',
         'approved'            => 'boolean', // ✅ CRITICAL: Ensures 0/1 becomes false/true
+        'has_encryption'      => 'boolean', // ✅ CRITICAL: prevents PDO "0" string being truthy
+        'dealers'             => 'boolean',
+        'shop_garage'         => 'boolean',
         'file_quota'          => 'integer',
-        'commission_per_file'  => 'decimal:2',
-        'billing_cycle_start'  => 'date',
+        'commission_per_file' => 'decimal:2',
     ];
 
     // =====================
@@ -122,13 +137,15 @@ class User extends Authenticatable
     public function isManager()            { return $this->role === self::ROLE_MANAGER; }
     public function isOperator()           { return $this->role === self::ROLE_OPERATOR; }
     public function isInsurance()          { return $this->role === self::ROLE_INSURANCE; }
+    public function isInsuranceAgent()     { return $this->role === self::ROLE_INSURANCE_AGENT; }
+    public function isInsuranceOrAgent()   { return in_array($this->role, [self::ROLE_INSURANCE, self::ROLE_INSURANCE_AGENT]); }
+    public function insuranceId()          { return $this->isInsuranceAgent() ? $this->parent_insurance_id : $this->id; }
     public function isBusinessOwner()      { return $this->role === self::ROLE_BUSINESS_OWNER; }
     public function isGarage()             { return $this->role === self::ROLE_GARAGE; }
     public function isShop()               { return $this->role === self::ROLE_SHOP; }
     public function isEmployee()           { return $this->role === self::ROLE_EMPLOYEE; }
     public function isMarketer()           { return $this->role === self::ROLE_MARKETER; }
     public function isIndividual()         { return $this->role === self::ROLE_INDIVIDUAL; }
-    public function isOthers()             { return $this->role === self::ROLE_Others; }
 
     // =====================
     // Permission Methods
@@ -148,7 +165,9 @@ class User extends Authenticatable
     public function withdrawalRequests() { return $this->hasMany(WithdrawalRequest::class, 'from'); }
     public function partners()           { return $this->hasMany(Partner::class, 'insurance_id'); }
     public function myRegistrations()    { return $this->hasMany(User::class, 'registered_by'); }
-    public function billingStatements()  { return $this->hasMany(BillingStatement::class, 'owner_id')->latest(); }
+    public function agents()             { return $this->hasMany(User::class, 'parent_insurance_id'); }
+    public function parentInsurance()    { return $this->belongsTo(User::class, 'parent_insurance_id'); }
+    public function insuranceCost()      { return $this->hasOne(InsuranceCost::class, 'user_id'); }
     public function inboxes()            { return $this->hasMany(ProformaInbox::class, 'user_id'); }
     public function myInbox()            { return $this->hasMany(Inbox::class, 'user_id')->latest(); }
     
@@ -164,17 +183,15 @@ class User extends Authenticatable
     public function sparePartPartners()
     {
         if ($this->role !== self::ROLE_INSURANCE) return collect();
-        return Partner::where('insurance_id', $this->id)
-            ->whereHas('partner', fn($q) => $q->where('role', self::ROLE_SHOP))
-            ->get()->pluck('partner');
+        $ids = Partner::where('insurance_id', $this->id)->pluck('partner_id');
+        return User::whereIn('id', $ids)->where('role', self::ROLE_SHOP)->orderBy('name')->get();
     }
 
     public function garagePartners()
     {
         if ($this->role !== self::ROLE_INSURANCE) return collect();
-        return Partner::where('insurance_id', $this->id)
-            ->whereHas('partner', fn($q) => $q->where('role', self::ROLE_GARAGE))
-            ->get()->pluck('partner');
+        $ids = Partner::where('insurance_id', $this->id)->pluck('partner_id');
+        return User::whereIn('id', $ids)->where('role', self::ROLE_GARAGE)->orderBy('name')->get();
     }
 
     // =====================
@@ -224,12 +241,17 @@ class User extends Authenticatable
         return \App\Models\Proforma::where('poster_id', $this->id)
             ->where('status', 'completed')
             ->where('verified', true)
+            ->where('is_new', true)
             ->count();
     }
 
     public function markReceivedProformasAsViewed()
     {
-        // No-op: is_new column does not exist on proformas table
+        \App\Models\Proforma::where('poster_id', $this->id)
+            ->where('status', 'completed')
+            ->where('verified', true)
+            ->where('is_new', true)
+            ->update(['is_new' => false]);
     }
     
     public function reviews()

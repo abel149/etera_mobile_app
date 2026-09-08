@@ -140,7 +140,7 @@
 								<div class="d-flex align-items-center justify-content-between">
 									<div>
 										<p class="mb-0">Total Customers</p>
-										<h5 class="mb-0">{{\App\Models\User::where('role','others')->count()}}</h5>
+										<h5 class="mb-0">{{\App\Models\User::where('role', \App\Models\User::ROLE_BUSINESS_OWNER)->count()}}</h5>
 									</div>
 									<div id="chart1"></div>
 								</div>
@@ -293,12 +293,18 @@
 							</tr>
 						</thead>
 									@php
-										$allProformas = \App\Models\Proforma::with('poster')->whereHas('poster')->where('processed_by', auth()->id())->orderBy('created_at', 'desc')->get();
+										$allProformasQuery = \App\Models\Proforma::with('poster')->whereHas('poster')->orderBy('created_at', 'desc');
+										if (!(auth()->user()->is_superadmin == 1)) {
+											$allProformasQuery->where(function ($q) {
+												$q->whereNull('processed_by')->orWhere('processed_by', auth()->id());
+											});
+										}
+										$allProformas = $allProformasQuery->paginate(20);
 									@endphp
 						<tbody id="proformaTableBody">
-						@foreach($allProformas as $proforma)
+							@foreach($allProformas as $proforma)
 							@php try { @endphp
-							<tr>
+							<tr data-file="{{ $proforma->file_number ?? 'N/A' }}">
 								<td>{{$proforma->file_number ?? 'N/A'}}</td>
                         @php
                           $label = $proforma->poster ? ($proforma->poster->role == 'business_owner' ? 'Business Owner' : ucfirst($proforma->poster->role)) : 'Unknown';
@@ -331,7 +337,8 @@
 								<td>
 									@if($proforma->isEteraCheretaMode())
 										<span class="badge rounded-pill bg-primary w-100" 
-											  data-remaining-time="{{ $proforma->timer_expires_at?->toISOString() }}">
+											  data-remaining-time="{{ $proforma->timer_expires_at?->toISOString() }}"
+											  data-proforma-id="{{ $proforma->id }}">
 											{{ $proforma->getFormattedRemainingTime() }}
 										</span>
 									@else
@@ -344,6 +351,61 @@
                             @endforeach
 									</tbody>
 						</table>
+						@if($allProformas->hasPages())
+						<div class="d-flex flex-column flex-sm-row align-items-center justify-content-between mt-3 px-1 gap-2">
+							<div class="text-muted" style="font-size:0.875rem;">
+								Showing <strong>{{ $allProformas->firstItem() ?? 0 }}</strong>
+								to <strong>{{ $allProformas->lastItem() ?? 0 }}</strong>
+								of <strong>{{ $allProformas->total() }}</strong> proformas
+							</div>
+							@php
+								$cur   = $allProformas->currentPage();
+								$last  = $allProformas->lastPage();
+								$range = collect();
+								for ($p = 1; $p <= $last; $p++) {
+									if ($p === 1 || $p === $last || abs($p - $cur) <= 1) {
+										$range->push(['type' => 'page', 'n' => $p]);
+									} elseif (abs($p - $cur) === 2) {
+										$range->push(['type' => 'dots']);
+									}
+								}
+								$pages = collect();
+								$prevDot = false;
+								foreach ($range as $item) {
+									if ($item['type'] === 'dots') {
+										if (!$prevDot) $pages->push($item);
+										$prevDot = true;
+									} else {
+										$pages->push($item);
+										$prevDot = false;
+									}
+								}
+							@endphp
+							<nav aria-label="Proformas pagination">
+								<ul class="pagination mb-0" style="gap:4px;">
+									<li class="page-item {{ $allProformas->onFirstPage() ? 'disabled' : '' }}">
+										<a class="page-link radius-30 px-3" href="{{ $allProformas->previousPageUrl() ?? '#' }}" style="border-radius:30px!important;">
+											<i class="bx bx-chevron-left"></i> Prev
+										</a>
+									</li>
+									@foreach($pages as $item)
+										@if($item['type'] === 'dots')
+											<li class="page-item disabled"><span class="page-link" style="border-radius:30px!important;">…</span></li>
+										@else
+											<li class="page-item {{ $item['n'] === $cur ? 'active' : '' }}">
+												<a class="page-link radius-30" href="{{ $allProformas->url($item['n']) }}" style="border-radius:30px!important;">{{ $item['n'] }}</a>
+											</li>
+										@endif
+									@endforeach
+									<li class="page-item {{ $allProformas->hasMorePages() ? '' : 'disabled' }}">
+										<a class="page-link radius-30 px-3" href="{{ $allProformas->nextPageUrl() ?? '#' }}" style="border-radius:30px!important;">
+											Next <i class="bx bx-chevron-right"></i>
+										</a>
+									</li>
+								</ul>
+							</nav>
+						</div>
+						@endif
 					</div>
 				</div>
 			</div>
@@ -412,12 +474,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 let remainingTimeCell = '<span class="text-muted">N/A</span>';
                 if (p.is_etera_chereta && p.timer_expires_at) {
-                    remainingTimeCell = '<span class="badge rounded-pill bg-primary w-100" data-remaining-time="' + p.timer_expires_at + '">' + (p.remaining_time || 'N/A') + '</span>';
+                    remainingTimeCell = '<span class="badge rounded-pill bg-primary w-100" data-remaining-time="' + p.timer_expires_at + '" data-proforma-id="' + p.id + '">' + (p.remaining_time || 'N/A') + '</span>';
                 }
 
                 const garageCell = p.is_from_others ? 'N/A' : (p.garage_count || 0) + ' Garages Applied';
 
                 const newRow = document.createElement('tr');
+                newRow.setAttribute('data-file', fileNum);
                 newRow.innerHTML = `
                     <td>${fileNum}</td>
                     <td>${p.from}</td>
@@ -446,6 +509,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
+            // Update existing rows statuses (catches timer-expired closures)
+            data.proformas.forEach(p => {
+                const fileNum = p.file_number || 'N/A';
+                const existingRow = document.querySelector('#proformaTableBody tr[data-file="' + fileNum + '"]');
+                if (!existingRow) return;
+                // Status cell is column 6 (index 5)
+                const statusCell = existingRow.cells[5];
+                if (statusCell) statusCell.innerHTML = buildStatusBadge(p.status);
+                // Timer cell is column 7 (index 6)
+                const timerCell = existingRow.cells[6];
+                if (timerCell && p.is_etera_chereta && p.timer_expires_at) {
+                    const badge = timerCell.querySelector('[data-remaining-time]');
+                    if (badge) {
+                        badge.setAttribute('data-remaining-time', p.timer_expires_at);
+                    }
+                }
+            });
+
             if (hasNew) {
                 console.log('🔔 New proformas detected and added to table');
             }
@@ -461,6 +542,50 @@ document.addEventListener('DOMContentLoaded', function() {
     // Poll every 30 seconds
     setInterval(pollProformas, 30000);
     console.log('✅ Admin dashboard polling started (every 30s)');
+
+    // ── Live countdown timer for Etera-Chereta badges ──────────────────────
+    function updateAllCountdowns() {
+        document.querySelectorAll('#proformaTableBody [data-remaining-time]').forEach(function(badge) {
+            var expiresAt = new Date(badge.getAttribute('data-remaining-time'));
+            var diffMs = expiresAt - Date.now();
+
+            if (diffMs <= 0) {
+                // Timer expired: show Expired badge and update status cell to Closed
+                if (!badge.classList.contains('bg-danger')) {
+                    badge.textContent = 'Expired';
+                    badge.classList.remove('bg-primary', 'bg-warning');
+                    badge.classList.add('bg-danger');
+
+                    var row = badge.closest('tr');
+                    if (row) {
+                        var statusCell = row.cells[5];
+                        if (statusCell) {
+                            var current = statusCell.querySelector('.badge');
+                            if (current && !current.textContent.trim().toLowerCase().includes('closed')) {
+                                statusCell.innerHTML = '<div class="badge rounded-pill bg-danger w-100">Closed</div>';
+                            }
+                        }
+                    }
+                }
+            } else {
+                var totalSec = Math.floor(diffMs / 1000);
+                var h = Math.floor(totalSec / 3600);
+                var m = Math.floor((totalSec % 3600) / 60);
+                var s = totalSec % 60;
+                badge.textContent = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+
+                // Turn orange when under 1 hour remaining
+                if (totalSec < 3600 && !badge.classList.contains('bg-warning')) {
+                    badge.classList.remove('bg-primary');
+                    badge.classList.add('bg-warning');
+                }
+            }
+        });
+    }
+
+    updateAllCountdowns();
+    setInterval(updateAllCountdowns, 1000);
+    // ───────────────────────────────────────────────────────────────────────
 });
 </script>
 

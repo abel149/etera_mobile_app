@@ -199,13 +199,7 @@
                                         <span class="text-danger">{{$message}}</span>
                                         @enderror
                                     </div>
-                                    <div class="col-12 col-lg-6">
-                                        <label for="InputPassword" class="form-label">License Plate Number (Code, City & Number)</label>
-                                        <input type="text" name="license_plate_number" value="{{old('license_plate_number')}}" class="form-control required-field" id="InputPassword" value="" placeholder="Example: 3OR-B22662">
-                                        @error('license_plate_number')
-                                        <span class="text-danger">{{$message}}</span>
-                                        @enderror
-                                    </div>
+                                   
                                     <div class="col-12 col-lg-6">
     <label class="form-label">VIN Number (17 characters)</label>
 

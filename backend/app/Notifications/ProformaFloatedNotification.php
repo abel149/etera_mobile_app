@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use App\Models\Proforma;
@@ -20,23 +19,7 @@ class ProformaFloatedNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        $channels = ['database'];
-        if (!empty($notifiable->device_token)) {
-            $channels[] = FcmChannel::class;
-        }
-        return $channels;
-    }
-
-    public function toFcm(object $notifiable): array
-    {
-        return [
-            'New Proforma Available',
-            "#{$this->proforma->file_number} — {$this->proforma->customer_name} ({$this->proforma->brand?->name})",
-            [
-                'type'        => 'proforma_floated',
-                'proforma_id' => (string) $this->proforma->id,
-            ],
-        ];
+        return ['database'];
     }
 
     public function toDatabase(object $notifiable): array

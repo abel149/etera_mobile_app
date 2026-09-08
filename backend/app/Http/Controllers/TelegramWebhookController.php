@@ -56,6 +56,75 @@ class TelegramWebhookController extends Controller
                 return response()->json(['ok' => true]);
             }
 
+            if (is_string($data) && strpos($data, 'hear_about_us_') === 0) {
+                $option = substr($data, strlen('hear_about_us_'));
+
+                $labels = [
+                    'facebook'  => 'Facebook',
+                    'instagram' => 'Instagram',
+                    'tiktok'    => 'TikTok',
+                    'others'    => 'Others',
+                ];
+                $label = $labels[$option] ?? ucfirst($option);
+
+                // Find user by chat ID
+                $responder = $chatId ? User::where('telegram_chat_id', (string) $chatId)->first() : null;
+
+                // Record the response (only once per user per option)
+                $alreadyAnswered = $responder
+                    ? \App\Models\SentEmail::where('user_id', $responder->id)
+                        ->where('type', 'telegram_survey_response')
+                        ->exists()
+                    : false;
+
+                if (!$alreadyAnswered) {
+                    \App\Models\SentEmail::log(
+                        'telegram_survey_response',
+                        'via-telegram',
+                        $responder?->name,
+                        $responder?->id,
+                        null,
+                        $label,
+                        'sent'
+                    );
+                }
+
+                // Reply with thank-you + a login_url button (opens in Chrome/Safari, not Telegram WebView)
+                if ($chatId) {
+                    try {
+                        $dashboardUrl = match($responder?->role) {
+                            'garage'    => config('app.url') . '/garage/',
+                            'shop'      => config('app.url') . '/spare-part-shops/proformas',
+                            'admin'     => config('app.url') . '/admin',
+                            'insurance' => config('app.url') . '/insurance',
+                            'others'    => config('app.url') . '/business-owner',
+                            'marketer'  => config('app.url') . '/marketer',
+                            'operator'  => config('app.url') . '/operator/dashboard',
+                            'employee'  => config('app.url') . '/employee',
+                            default     => config('app.url') . '/',
+                        };
+
+                        app(TelegramService::class)->sendMessageWithLoginUrlButton(
+                            (string) $chatId,
+                            "🙏 <b>Thank you for letting us know!</b>",
+                            "🏠 Go to My Account →",
+                            $dashboardUrl
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning('Telegram survey: reply failed', ['error' => $e->getMessage()]);
+                    }
+                }
+
+                // Delete the survey message to keep the chat clean
+                if ($chatId && $messageId) {
+                    try {
+                        app(TelegramService::class)->deleteMessage((string) $chatId, (int) $messageId);
+                    } catch (\Throwable $e) {}
+                }
+
+                return response()->json(['ok' => true]);
+            }
+
             if (is_string($data) && $data === 'tg_disconnect') {
                 try {
                     $user = null;
@@ -167,6 +236,16 @@ class TelegramWebhookController extends Controller
 
                     $user->update(['telegram_chat_id' => (string) $chatId]);
 
+                    // Send any missed billing notifications the user skipped by not being on Telegram
+                    try {
+                        app(TelegramService::class)->sendMissedBillingNotifications($user, (string) $chatId);
+                    } catch (\Throwable $e) {
+                        Log::warning('Telegram connect: sendMissedBillingNotifications failed', [
+                            'user_id' => $userId,
+                            'error'   => $e->getMessage(),
+                        ]);
+                    }
+
                     Log::info('Telegram chat ID linked', [
                         'user_id' => $userId,
                         'chat_id' => $chatId,
@@ -176,8 +255,8 @@ class TelegramWebhookController extends Controller
                     $botToken = config('services.telegram.bot_token', env('TELEGRAM_BOT_TOKEN', ''));
                     if ($botToken) {
                         $confirmText = "✅ <b>Connected!</b>\n\n"
-                            . "Hello {$telegramName}! Congratulations, Your Telegram is now linked to your etera account (<b>{$user->name}</b>).\n\n"
-                            . "you can now receive notifications. To continue with etera's services, go back to your browser and login.\n\n"
+                            . "Hello {$telegramName}! Your Telegram is now linked to your etera account (<b>{$user->name}</b>).\n\n"
+                            . "👉 <b>Switch back to your browser tab</b> — it will automatically redirect you to your account.\n\n"
                             . "To disconnect anytime, type <b>/end</b> or use the button below.";
 
                         try {
@@ -204,6 +283,19 @@ class TelegramWebhookController extends Controller
                             } catch (\Throwable $e2) {
                                 Log::warning('Telegram connect: fallback sendMessage failed', ['error' => $e2->getMessage()]);
                             }
+                        }
+                    }
+
+                    // Send "How did you hear about us?" survey once per user
+                    $surveySent = \App\Models\SentEmail::where('user_id', $userId)
+                        ->where('type', 'telegram_survey_sent')
+                        ->exists();
+                    if (!$surveySent) {
+                        try {
+                            app(TelegramService::class)->sendHowDidYouHearSurvey((string) $chatId);
+                            \App\Models\SentEmail::log('telegram_survey_sent', 'via-telegram', $user->name, $userId, null, 'How did you hear about us?', 'sent');
+                        } catch (\Throwable $e) {
+                            Log::warning('Telegram connect: sendHowDidYouHearSurvey failed', ['user_id' => $userId, 'error' => $e->getMessage()]);
                         }
                     }
 

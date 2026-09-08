@@ -13,13 +13,13 @@ class ProformaPart extends Model
 
     protected $fillable = [
         'proforma_id',
-        'name',
         'number',
         'grade',
         'country',
         'quantity',
         'condition',
         'component',
+        'repair_renew',
     ];
 
     protected $casts = [

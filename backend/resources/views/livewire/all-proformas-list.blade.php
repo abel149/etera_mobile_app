@@ -1,4 +1,4 @@
-<div>
+<div wire:poll.keep-alive.2m>
     <style>
         .sidebar-container {
             display: flex;
@@ -139,6 +139,47 @@
             color: var(--etera-text-muted) !important;
             border-color: rgba(255, 255, 255, 0.08) !important;
         }
+
+        .job-listing.partial-listing {
+            border-color: rgba(251, 146, 60, 0.35);
+            background: rgba(251, 146, 60, 0.05);
+        }
+
+        .job-listing.partial-listing:hover {
+            border-color: rgba(251, 146, 60, 0.6);
+            background: rgba(251, 146, 60, 0.1);
+        }
+
+        .badge-partial {
+            display: inline-block;
+            background: rgba(251, 146, 60, 0.2);
+            color: #fb923c;
+            border: 1px solid rgba(251, 146, 60, 0.4);
+            border-radius: 50px;
+            padding: 2px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .list-partial-button {
+            background: rgba(251, 146, 60, 0.15);
+            color: #fb923c !important;
+            border: 1px solid rgba(251, 146, 60, 0.35);
+            padding: 8px 15px;
+            font-size: 14px;
+            font-weight: 600;
+            display: inline-block;
+            border-radius: 50px;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+
+        .list-partial-button:hover {
+            background: rgba(251, 146, 60, 0.28);
+            color: #fff !important;
+        }
     </style>
 
     <main class="container py-4">
@@ -153,7 +194,7 @@
                             <h4 class="filter-label">Search by License Plate</h4>
                             <div class="input-with-icon mb-2">
                                 <input
-                                    wire:model.live="filters.license"
+                                    wire:model.live.debounce.300ms="filters.license"
                                     type="text"
                                     class="form-control form-control-sm"
                                     placeholder="Enter license plate">
@@ -178,7 +219,7 @@
                         <div>
                             <h4 class="filter-label">Car Type</h4>
                             <div class="btn-group w-100 flex-wrap" role="group">
-                                @foreach(['All', 'ICE', 'EV', 'Hybrid'] as $type)
+                                @foreach(['All', 'Sedan/S.U.V(GAS)', 'Sedan/S.U.V(EV)', 'Mini Van(GAS)', 'Mini Van(EV)', 'Isuzu/Bus(GAS)', 'Isuzu/Bus(EV)', 'Heavy'] as $type)
                                     <button
                                         wire:click="$set('filters.car_type', '{{ $type }}')"
                                         class="btn btn-xs flex-fill {{ ($filters['car_type'] ?? 'All') === $type ? 'btn-primary' : 'btn-outline-primary' }}">
@@ -261,7 +302,129 @@
                             @continue
                         @endif
 
-                        @if(!auth()->user()->isInMyInbox($proforma->id) && $proforma->isApplicableBy(auth()->user()))
+                        @php
+                            $partialRecords = $partialsByProformaId[$proforma->id] ?? collect();
+                            $hasPartials    = $partialRecords->isNotEmpty();
+                        @endphp
+
+                        @if($hasPartials)
+                            {{-- ── PARTIAL PROFORMA CARDS (one per group) ── --}}
+                            @foreach($partialRecords as $partialRecord)
+                            <a href="/spare-part-shops/proforma-details?proforma={{ $proforma->id }}&mode=partial&group={{ $partialRecord->inbox_group }}"
+                               class="job-listing partial-listing">
+
+                                <div class="job-listing-details">
+                                    <div class="job-listing-company-logo">
+                                        <img src="{{ asset('asset/images/company-logo-01.png') }}" alt="Company Logo">
+                                    </div>
+
+                                    <div class="job-listing-description">
+                                        <span class="badge-partial">&#x1F512; Partial Proforma</span>
+
+                                        @if($proforma->poster->role == 'garage')
+                                            <h3 class="job-listing-title h5 mb-1">Garage</h3>
+                                        @elseif($proforma->poster->role == 'insurance')
+                                            <h3 class="job-listing-title h5 mb-1">{{ $proforma->poster->name ?? 'N/A' }}</h3>
+                                        @else
+                                            <h3 class="job-listing-title h5 mb-1">{{ $proforma->file_number ?? 'N/A' }}</h3>
+                                        @endif
+
+                                        <div class="job-listing-footer">
+                                            <ul>
+                                                <li>
+                                                    <i class="icon-material-outline-directions-car"></i>
+                                                    {{ $proforma->year }}, {{ $proforma->brand?->name }}, {{ $proforma->model }} [{{ $proforma->license_plate_number }}]
+                                                </li>
+                                                <li>
+                                                    <i class="icon-material-outline-business"></i>
+                                                    {{ ucfirst($proforma->poster->role ?? 'N/A') }}
+                                                </li>
+                                                <li>
+                                                    <i class="icon-material-outline-edit"></i>
+                                                    {{ $partialRecord->parts_needed }} part(s) needed &bull; Group {{ $partialRecord->inbox_group }}
+                                                </li>
+                                                <li>
+                                                    <i class="icon-material-outline-access-time"></i>
+                                                    {{ $proforma->created_at->diffForHumans() }}
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <span class="list-partial-button radius-30">
+                                        Fill Missing Parts
+                                    </span>
+                                </div>
+                            </a>
+                            @endforeach
+
+                            {{-- ── FULL PROFORMA CARD (only if a truly empty/unclaimed group remains) ── --}}
+                            @php
+                                $requiredShops = (int)($proforma->required_number_of_shops ?? 0);
+                                // Count groups that have been started (any price saved, even partial).
+                                // Full card only makes sense when started groups < required,
+                                // meaning at least one group has no prices at all.
+                                $startedPriceGroups = $requiredShops > 0
+                                    ? \App\Models\ProformaPartPrice::where('proforma_id', $proforma->id)
+                                        ->whereNotNull('inbox_group')
+                                        ->distinct()
+                                        ->pluck('inbox_group')
+                                    : collect();
+                                $pdfGroups = $requiredShops > 0
+                                    ? $proforma->applications()
+                                        ->where('from', 'shop')
+                                        ->whereNotNull('inbox_group')
+                                        ->whereHas('pdf')
+                                        ->pluck('inbox_group')
+                                    : collect();
+                                $startedGroups = $startedPriceGroups->merge($pdfGroups)->unique()->count();
+                                $hasEmptyGroup = $requiredShops > 0 && $startedGroups < $requiredShops;
+                            @endphp
+                            @if(!auth()->user()->isInMyInbox($proforma->id) && $proforma->isApplicableBy(auth()->user()) && $hasEmptyGroup && $proforma->status === 'published')
+                            <a href="/spare-part-shops/proforma-details?proforma={{ $proforma->id }}&mode=full"
+                               class="job-listing">
+
+                                <div class="job-listing-details">
+                                    <div class="job-listing-company-logo">
+                                        <img src="{{ asset('asset/images/company-logo-01.png') }}" alt="Company Logo">
+                                    </div>
+
+                                    <div class="job-listing-description">
+                                        @if($proforma->poster->role == 'garage')
+                                            <h3 class="job-listing-title h5 mb-2">Garage</h3>
+                                        @elseif($proforma->poster->role == 'insurance')
+                                            <h3 class="job-listing-title h5 mb-2">{{ $proforma->poster->name ?? 'N/A' }}</h3>
+                                        @else
+                                            <h3 class="job-listing-title h5 mb-2">{{ $proforma->file_number ?? 'N/A' }}</h3>
+                                        @endif
+
+                                        <div class="job-listing-footer">
+                                            <ul>
+                                                <li>
+                                                    <i class="icon-material-outline-directions-car"></i>
+                                                    {{ $proforma->year }}, {{ $proforma->brand?->name }}, {{ $proforma->model }} [{{ $proforma->license_plate_number }}]
+                                                </li>
+                                                <li>
+                                                    <i class="icon-material-outline-business"></i>
+                                                    {{ ucfirst($proforma->poster->role ?? 'N/A') }}
+                                                </li>
+                                                <li>
+                                                    <i class="icon-material-outline-access-time"></i>
+                                                    {{ $proforma->created_at->diffForHumans() }}
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <span class="list-apply-button radius-30">
+                                        Apply Now
+                                    </span>
+                                </div>
+                            </a>
+                            @endif
+
+                        @elseif(!auth()->user()->isInMyInbox($proforma->id) && $proforma->isApplicableBy(auth()->user()))
+                            {{-- ── FRESH PROFORMA CARD ── --}}
                             <a href="/spare-part-shops/proforma-details?proforma={{ $proforma->id }}"
                                class="job-listing">
 
@@ -309,6 +472,7 @@
                                 </div>
                             </a>
                         @endif
+
                     @empty
                         <div class="alert alert-light text-center border">
                             No proformas found.

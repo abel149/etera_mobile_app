@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\PaidUser;
 use App\Models\ProformaInvoice;
 use App\Models\Proforma;
+use App\Models\User;
 
 class UserBalanceController extends Controller
 {
@@ -33,7 +34,7 @@ class UserBalanceController extends Controller
         }
 
         // 2️⃣ Outgoing: Invoices (Outgoing -)
-        if (in_array($user->role, ['garage', 'insurance'])) {
+        if (in_array($user->role, ['garage', 'insurance', 'insurance_agent'])) {
             if ($user->role === 'garage') {
                 $insuredProformas = Proforma::where('insured', 0)
                     ->where('poster_id', $user->id)
@@ -110,13 +111,79 @@ class UserBalanceController extends Controller
             ];
         })->toArray();
 
+        // Aggregated agent balances for parent insurance users only
+        $agents = collect();
+        $companyTotals = [
+            'pending_to_etera' => (float) ($summary['pending_to_etera'] ?? 0),
+            'paid_to_etera'    => (float) ($summary['paid_to_etera'] ?? 0),
+        ];
+
+        if ($user->role === 'insurance') {
+            $agentUsers = \App\Models\User::where('parent_insurance_id', $user->id)
+                ->where('role', 'insurance_agent')
+                ->orderBy('name')
+                ->get();
+
+            $agents = $agentUsers->map(function ($agent) {
+                $agentSummary = $this->computeInsuranceToEteraTotals($agent);
+
+                return [
+                    'id'               => $agent->id,
+                    'name'             => $agent->name,
+                    'phone_number'     => $agent->phone_number,
+                    'pending_to_etera' => $agentSummary['pending_to_etera'],
+                    'paid_to_etera'    => $agentSummary['paid_to_etera'],
+                ];
+            });
+
+            $companyTotals['pending_to_etera'] += (float) $agents->sum('pending_to_etera');
+            $companyTotals['paid_to_etera']    += (float) $agents->sum('paid_to_etera');
+        }
+
         // Role-based view
-        if($user->role === 'insurance'){
-            return view('insurance.balance', compact('user', 'transactionsArray', 'summary'));
+        if(in_array($user->role, ['insurance', 'insurance_agent'])){
+            return view('insurance.balance', compact('user', 'transactionsArray', 'summary', 'agents', 'companyTotals'));
         } elseif($user->role === 'operator'){
             return view('operator.balance', compact('user', 'transactionsArray', 'summary'));
         } else {
             return view('spare-part.balance', compact('user', 'transactionsArray', 'summary'));
         }
+    }
+
+    /**
+     * Compute the pending and paid "to Etera" invoice totals for a single
+     * insurance/insurance_agent user, based on their insured proformas.
+     */
+    private function computeInsuranceToEteraTotals(User $user): array
+    {
+        $pending = 0.0;
+        $paid = 0.0;
+
+        $insuredProformas = Proforma::where('insured', 1)
+            ->where('poster_id', $user->id)
+            ->get();
+
+        foreach ($insuredProformas as $proforma) {
+            $latestInvoice = ProformaInvoice::where('proforma_id', $proforma->id)
+                ->orderByDesc('created_at')
+                ->first();
+
+            if (!$latestInvoice) {
+                continue;
+            }
+
+            $amount = abs((float) $latestInvoice->total_amount);
+
+            if ($latestInvoice->is_paid) {
+                $paid += $amount;
+            } else {
+                $pending += $amount;
+            }
+        }
+
+        return [
+            'pending_to_etera' => $pending,
+            'paid_to_etera'    => $paid,
+        ];
     }
 }

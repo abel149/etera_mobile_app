@@ -282,6 +282,84 @@
             color: #9ca3af;
         }
 
+        /* ─── Service Breakdown ──────────────────────── */
+        .service-details {
+            background: #f8fafc;
+            border: 1px solid rgba(22,163,74,0.1);
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 0;
+        }
+        .service-details-title {
+            font-size: 0.62rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #16a34a;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .service-type-badge {
+            display: inline-block;
+            background: rgba(22,163,74,0.08);
+            color: #15803d;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 3px 12px;
+            border-radius: 999px;
+            margin-bottom: 12px;
+        }
+        .svc-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.83rem;
+        }
+        .svc-table th {
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #9ca3af;
+            padding: 0 10px 6px;
+            text-align: center;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .svc-table th:first-child { text-align: left; padding-left: 0; }
+        .svc-table td {
+            padding: 7px 10px;
+            color: #374151;
+            border-bottom: 1px solid #f9fafb;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .svc-table td:first-child { text-align: left; padding-left: 0; color: #6b7280; font-size: 0.81rem; }
+        .svc-table tr:last-child td { border-bottom: none; }
+        .svc-val { font-weight: 600; color: #111827; }
+        .rate-full    { color: #16a34a; font-weight: 700; font-size: 0.78rem; }
+        .rate-partial { color: #d97706; font-weight: 700; font-size: 0.78rem; }
+        .rate-zero    { color: #dc2626; font-weight: 700; font-size: 0.78rem; }
+        .partial-badge {
+            display: inline-flex; align-items: center; gap: 3px;
+            background: rgba(245,158,11,0.12); color: #b45309;
+            font-size: 0.7rem; font-weight: 700;
+            padding: 2px 8px; border-radius: 999px;
+        }
+        .fill-bar-row { margin-top: 10px; }
+        .fill-bar-wrap { display: flex; align-items: center; gap: 10px; }
+        .fill-bar {
+            flex: 1; height: 5px;
+            background: #e5e7eb; border-radius: 999px; overflow: hidden;
+        }
+        .fill-bar-inner {
+            height: 100%; border-radius: 999px;
+            background: linear-gradient(90deg, #16a34a, #10b981);
+        }
+        .fill-bar-inner.partial { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .fill-note { font-size: 0.73rem; color: #b45309; margin-top: 5px; }
+        .svc-divider { border: none; border-top: 1px dashed #e9ecef; margin: 6px 0; }
+
         /* ═══ Print — fit on ONE page ═══════════════ */
         @media print {
             @page {
@@ -388,6 +466,65 @@
 @php
     $transactionUrl = url('/transaction/' . $invoice->sku);
     $qrCodeUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode($transactionUrl);
+
+    // ── Service breakdown stats ──────────────────────────────────
+    $totalParts      = $proforma->parts()->count();
+    $isEteraChereta  = $proforma->isEteraCheretaMode();
+    $isGarageOnly    = $proforma->isGarageOnlyInsurance();
+    $isShopOnly      = $proforma->isShopOnlyInsurance();
+    $isShopGarage    = $proforma->isShopGarageInsurance();
+    $isInsurance     = $invoice->type === 'insurance';
+    $isRegular       = $invoice->type === 'regular';
+
+    $requiredShops   = (int)($proforma->required_number_of_shops ?? 0);
+    $requiredGarages = (int)($proforma->required_number_of_garages ?? 0);
+
+    $shopApps        = $proforma->applicationsFromShops()->get();
+    $garageApps      = $proforma->applicationsFromGarages()->get();
+    $filledShops     = $shopApps->count();
+    $filledGarages   = $garageApps->count();
+
+    $partsFilled     = (int)$shopApps->sum('filled_parts_count');
+    $totalPartSlots  = ($isInsurance && !$isGarageOnly && $totalParts > 0)
+                        ? ($totalParts * max(1, $requiredShops))
+                        : 0;
+
+    $fillPct         = $totalPartSlots > 0
+                        ? min(100, round(($partsFilled / $totalPartSlots) * 100, 1))
+                        : null;
+    $isPartial       = $fillPct !== null && $fillPct < 100;
+
+    $shopCountFillPct  = $requiredShops  > 0 ? min(100, round(($filledShops   / $requiredShops)   * 100, 1)) : null;
+    $garageFillPct     = $requiredGarages > 0 ? min(100, round(($filledGarages / $requiredGarages) * 100, 1)) : null;
+
+    // Type label
+    if ($isEteraChereta)                                               $typeLabel = 'Etera Chereta';
+    elseif ($isGarageOnly)                                             $typeLabel = 'Insurance – Garage Only';
+    elseif ($isShopOnly)                                               $typeLabel = 'Insurance – Shop Only';
+    elseif ($isShopGarage || ($isInsurance && $requiredShops > 0 && $requiredGarages > 0))
+                                                                       $typeLabel = 'Insurance – Shop & Garage';
+    elseif ($isInsurance)                                              $typeLabel = 'Insurance';
+    elseif ($isRegular)                                                $typeLabel = 'Regular Proforma';
+    else                                                               $typeLabel = ucfirst(str_replace('_', ' ', $invoice->type));
+
+    // Billing table description
+    if ($isEteraChereta) {
+        $chargeDescription = 'Platform Service – Etera Chereta (Flat Rate)';
+    } elseif ($isGarageOnly) {
+        $chargeDescription = "Garage Proformas — {$filledGarages} of {$requiredGarages} group" . ($requiredGarages != 1 ? 's' : '') . ' received';
+    } elseif ($isShopGarage || ($isInsurance && $requiredGarages > 0)) {
+        $sd = $totalPartSlots > 0 ? "{$partsFilled}/{$totalPartSlots} part slots priced" : "{$filledShops}/{$requiredShops} shops";
+        $gd = "{$filledGarages}/{$requiredGarages} garage groups";
+        $chargeDescription = "Shop ({$sd}) + Garage ({$gd})";
+    } elseif ($isInsurance) {
+        $sd = $totalPartSlots > 0 ? "{$partsFilled} of {$totalPartSlots} part slots priced" : "{$filledShops} of {$requiredShops} shops received";
+        $chargeDescription = "Shop Proformas — {$sd}";
+    } elseif ($isRegular) {
+        $n = $invoice->requested_count;
+        $chargeDescription = "Platform Service — {$n} proforma" . ($n != 1 ? 's' : '') . ' received';
+    } else {
+        $chargeDescription = 'Platform Service Charge';
+    }
 @endphp
 
 <div class="invoice-wrapper">
@@ -435,6 +572,110 @@
 
         <div class="invoice-divider"></div>
 
+        {{-- Service Breakdown Section --}}
+        <div class="service-details">
+            <div class="service-details-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                Service Breakdown
+            </div>
+            <div class="service-type-badge">{{ $typeLabel }}</div>
+
+            @if(!$isEteraChereta)
+            <table class="svc-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Requested</th>
+                        <th>Received</th>
+                        <th>Fill Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if(!$isGarageOnly && $requiredShops > 0)
+                    <tr>
+                        <td>Shop Proformas</td>
+                        <td><span class="svc-val">{{ $requiredShops }}</span></td>
+                        <td><span class="svc-val">{{ $filledShops }}</span></td>
+                        <td>
+                            @if($shopCountFillPct >= 100)
+                                <span class="rate-full">&#10003; 100%</span>
+                            @elseif($shopCountFillPct > 0)
+                                <span class="rate-partial">{{ $shopCountFillPct }}%</span>
+                            @else
+                                <span class="rate-zero">0%</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @endif
+
+                    @if(!$isShopOnly && $requiredGarages > 0)
+                    <tr>
+                        <td>Garage Proformas</td>
+                        <td><span class="svc-val">{{ $requiredGarages }}</span></td>
+                        <td><span class="svc-val">{{ $filledGarages }}</span></td>
+                        <td>
+                            @if($garageFillPct >= 100)
+                                <span class="rate-full">&#10003; 100%</span>
+                            @elseif($garageFillPct > 0)
+                                <span class="rate-partial">{{ $garageFillPct }}%</span>
+                            @else
+                                <span class="rate-zero">0%</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @endif
+
+                    @if($totalParts > 0 && !$isGarageOnly)
+                    <tr><td colspan="4"><hr class="svc-divider" style="margin:2px 0;"></td></tr>
+                    <tr>
+                        <td>Parts per Proforma</td>
+                        <td><span class="svc-val">{{ $totalParts }}</span></td>
+                        <td style="color:#9ca3af;font-size:0.78rem;">—</td>
+                        <td style="color:#9ca3af;font-size:0.72rem;">on file</td>
+                    </tr>
+                    @if($totalPartSlots > 0)
+                    <tr>
+                        <td>Part Slots Priced</td>
+                        <td><span class="svc-val">{{ $totalPartSlots }}</span></td>
+                        <td><span class="svc-val">{{ $partsFilled }}</span></td>
+                        <td>
+                            @if($fillPct >= 100)
+                                <span class="rate-full">&#10003; 100%</span>
+                            @elseif($fillPct > 0)
+                                <span class="partial-badge">&#9888; {{ $fillPct }}%</span>
+                            @else
+                                <span class="rate-zero">0%</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @endif
+                    @endif
+                </tbody>
+            </table>
+
+            @if($totalPartSlots > 0)
+            <div class="fill-bar-row">
+                <div class="fill-bar-wrap">
+                    <div class="fill-bar">
+                        <div class="fill-bar-inner {{ $isPartial ? 'partial' : '' }}" style="width:{{ $fillPct ?? 0 }}%;"></div>
+                    </div>
+                    <span style="font-size:0.74rem;color:#6b7280;white-space:nowrap;">{{ $partsFilled }} / {{ $totalPartSlots }} part slots</span>
+                </div>
+                @if($isPartial)
+                <div class="fill-note">&#9888; Partial fill — charge is prorated to {{ $fillPct }}% of the full service fee</div>
+                @endif
+            </div>
+            @endif
+
+            @else
+            <div style="font-size:0.82rem;color:#6b7280;line-height:1.6;">
+                Open competition, timer-based proforma. A flat platform fee applies regardless of the number of shop applications received.
+            </div>
+            @endif
+        </div>
+
+        <div class="invoice-divider" style="margin-top:18px;"></div>
+
         {{-- Billing Table with Stamp Watermark --}}
         <div class="billing-table-wrapper">
         <img src="{{ asset('assets/invoice/images/stamp.png') }}" alt="etera Stamp" class="table-watermark">
@@ -447,7 +688,7 @@
             </thead>
             <tbody>
                 <tr>
-                    <td>Platform Service Charge</td>
+                    <td>{{ $chargeDescription }}</td>
                     <td>{{ number_format($invoice->unit_price ?: $invoice->hourly_price, 2) }} Birr</td>
                 </tr>
                 <tr>

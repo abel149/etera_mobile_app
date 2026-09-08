@@ -148,7 +148,7 @@ class AddBusinessOwnerForm extends Component
             'location' => $this->location,
             // 'business_license_number' => $this->business_license_number,
             // 'license_expire_date' => $this->license_expiry_date,
-            'role' => 'others',
+            'role' => \App\Models\User::ROLE_BUSINESS_OWNER,
             'email' => $this->email,
             'password' => Hash::make($this->password),
 	    'approved' => 1,

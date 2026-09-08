@@ -71,6 +71,13 @@
                   <td class="proportional">{{ $proforma->customer_phone_number ?? 'N/A' }}</td>
                 </tr>
                 <tr>
+                  <td class="no-wrap"><b>Agent Phone</b></td>
+                  <td class="proportional">{{ $proforma->agent_phone_number ?? 'N/A' }}</td>
+                  <td class="no-wrap"><b>Poster Phone</b></td>
+                  <td class="proportional">{{ $proforma->poster->phone_number ?? 'N/A' }}</td>
+                </tr>
+
+                <tr>
                   <td class="no-wrap"><b>Car</b></td>
                   <td class="proportional">{{ $proforma->car_type ?? 'N/A' }} {{ $proforma->brand->name ?? 'N/A' }}</td>
                   <td class="no-wrap"><b>Needed Parts</b></td>
@@ -79,6 +86,12 @@
                       data-bs-toggle="modal" data-bs-target="#partsModal">
                       {{ $proforma->parts->count() }} Parts
                     </span>
+                    @php $progress = $proforma->partsPricingProgress(); @endphp
+                    @if($progress['total'] > 0)
+                    <span class="badge {{ $progress['filled'] >= $progress['total'] ? 'bg-success' : 'bg-warning' }} ms-2" style="font-size: 0.85rem;">
+                      Parts Priced: {{ $progress['filled'] }}/{{ $progress['total'] }}
+                    </span>
+                    @endif
                   </td>
                 </tr>
                 <tr>
@@ -87,6 +100,14 @@
                   <td class="no-wrap"><b>VIN Number</b></td>
                   <td class="proportional">{{ $proforma->chassis_number ?? 'N/A' }}</td>
                 </tr>
+                @if($proforma->call_customer)
+                <tr>
+                  <td class="no-wrap"><b>Call Customer</b></td>
+                  <td class="proportional" colspan="3">
+                    <span class="badge bg-warning text-dark"><i class="bx bx-phone-call me-1"></i>Call Customer</span>
+                  </td>
+                </tr>
+                @endif
                 <tr>
                   <td class="no-wrap"><b>Proforma Requested</b></td>
                   <td class="proportional">{{ $proforma->number_of_proformas ?? 'N/A' }}</td>
@@ -123,12 +144,45 @@
             </table>
           </div>
 
-          @if($proforma->isFromInsurance() && $proforma->status == "pending")
+          @if($proforma->isFromInsurance() && in_array($proforma->status, ['pending','opened','published']))
             <livewire:publish-proforma :proforma="$proforma" />
-          @elseif($proforma->isFromOthers() && $proforma->status == "pending")
+          @elseif($proforma->isFromOthers() && in_array($proforma->status, ['pending','opened','published']))
             <livewire:publish-proforma-from-others :proforma="$proforma" />
           @endif
+
+          @if($proforma->status === 'pending')
+          <div class="mt-3">
+            <button type="button" class="btn btn-danger btn-sm"
+                    data-bs-toggle="modal" data-bs-target="#rejectProformaModal">
+              Reject
+            </button>
+          </div>
+          @endif
         </form>
+
+        @if($proforma->status === 'pending')
+        <div class="modal fade" id="rejectProformaModal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <form action="{{ route('proformas.reject', $proforma->id) }}" method="POST">
+                @csrf
+                <div class="modal-header">
+                  <h5 class="modal-title text-danger">Reject Proforma #{{ $proforma->file_number }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <p>To confirm rejection, type <strong>reject</strong> below:</p>
+                  <input type="text" name="confirmation" class="form-control" placeholder="Type 'reject' here" required autocomplete="off">
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                  <button type="submit" class="btn btn-danger">Reject</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        @endif
       </div>
     </div>
 
