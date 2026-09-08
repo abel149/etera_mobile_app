@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/proforma.dart';
 import '../../providers/auth_provider.dart';
+import 'proforma_invoice_print_screen.dart';
 import '../../services/api_service.dart';
+import '../../widgets/authenticated_network_image.dart';
 import '../../widgets/etera_card.dart';
 
 /// Formal invoice view of a completed proforma.
@@ -169,6 +171,8 @@ class _ReceivedProformaDetailScreenState
                   application: e.value,
                   parts: item.parts,
                   isBest: e.key == 0,
+                  fileNumber: item.fileNumber,
+                  vehicleInfo: '${item.brandName} ${item.model} ${item.year}',
                 )),
           ] else
             EteraCard(
@@ -213,12 +217,16 @@ class _InvoiceCard extends StatelessWidget {
   final ProformaApplication application;
   final List<ProformaPartItem> parts;
   final bool isBest;
+  final String fileNumber;
+  final String vehicleInfo;
 
   const _InvoiceCard({
     required this.rank,
     required this.application,
     required this.parts,
     required this.isBest,
+    required this.fileNumber,
+    required this.vehicleInfo,
   });
 
   @override
@@ -243,17 +251,23 @@ class _InvoiceCard extends StatelessWidget {
         ),
       ),
       child: Stack(children: [
-        // Stamp watermark
+        // Stamp watermark background
         if (ap.stampImageUrl != null)
           Positioned(
-            bottom: 12, right: 12,
+            bottom: 40, right: 16,
             child: Opacity(
-              opacity: 0.18,
-              child: ClipOval(
-                child: Image.network(
-                  ap.stampImageUrl!,
-                  width: 80, height: 80, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              opacity: 0.30,
+              child: Transform.rotate(
+                angle: 0.18,
+                child: ClipOval(
+                  child: AuthenticatedNetworkImage(
+                    url: ap.stampImageUrl!,
+                    width: 120,
+                    height: 120,
+                    fit: BoxFit.cover,
+                    placeholder: const SizedBox(width: 120, height: 120),
+                    errorBuilder: (_) => const SizedBox.shrink(),
+                  ),
                 ),
               ),
             ),
@@ -289,9 +303,36 @@ class _InvoiceCard extends StatelessWidget {
                   Text(typeLabel, style: TextStyle(fontSize: 11, color: isBest ? Colors.white70 : typeColor)),
                 ]),
               ])),
+              // Stamp image badge in header
+              if (ap.stampImageUrl != null)
+                Container(
+                  width: 44, height: 44,
+                  margin: const EdgeInsets.only(left: 8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isBest ? Colors.white.withValues(alpha: 0.6) : EteraTheme.teal.withValues(alpha: 0.4),
+                      width: 2,
+                    ),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+                  ),
+                  child: ClipOval(
+                    child: AuthenticatedNetworkImage(
+                      url: ap.stampImageUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: const SizedBox.expand(),
+                      errorBuilder: (_) => Icon(
+                        Icons.store_rounded,
+                        size: 20,
+                        color: isBest ? Colors.white70 : EteraTheme.teal,
+                      ),
+                    ),
+                  ),
+                ),
               if (isBest)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  margin: const EdgeInsets.only(left: 6),
                   decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
                   child: const Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.star_rounded, size: 12, color: Colors.white),
@@ -365,6 +406,32 @@ class _InvoiceCard extends StatelessWidget {
               const SizedBox(height: 4),
               const Text('* Prices exclude VAT',
                   style: TextStyle(fontSize: 10, color: EteraTheme.textMuted)),
+              const SizedBox(height: 12),
+              // Print / Download button
+              SizedBox(
+                width: double.infinity,
+                child: Builder(builder: (ctx) => ElevatedButton.icon(
+                  icon: const Icon(Icons.print_outlined, size: 16),
+                  label: const Text('Select & Print Invoice'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: EteraTheme.teal,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => Navigator.push(
+                    ctx,
+                    MaterialPageRoute(
+                      builder: (_) => ProformaInvoicePrintScreen(
+                        application: application,
+                        parts: parts,
+                        fileNumber: fileNumber,
+                        vehicleInfo: vehicleInfo,
+                      ),
+                    ),
+                  ),
+                )),
+              ),
             ]),
           ),
         ]),

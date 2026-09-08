@@ -12,6 +12,7 @@ import 'screens/garage/garage_inbox_detail_screen.dart';
 import 'config/theme.dart';
 import 'providers/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/role_selection_screen.dart';
 import 'screens/auth/individual_register_screen.dart';
 import 'screens/auth/business_owner_register_screen.dart';
@@ -40,8 +41,9 @@ void main() async {
 
   final auth = AuthProvider();
   final restored = await auth.tryRestoreSession();
-  final startRoute =
-      (restored && auth.user != null && auth.user!.approved) ? '/home' : '/login';
+  final startRoute = (restored && auth.user != null && auth.user!.approved)
+      ? '/home'
+      : '/login';
 
   // If restored, register FCM token and cache role for notification routing
   if (restored && auth.user != null) {
@@ -71,23 +73,26 @@ class EteraApp extends StatelessWidget {
         initialRoute: startRoute,
         routes: {
           '/login': (_) => const LoginScreen(),
+          '/forgot-password': (_) => const ForgotPasswordScreen(),
           '/register': (_) => const RoleSelectionScreen(),
           '/register/individual': (_) => const IndividualRegisterScreen(),
-          '/register/business-owner': (_) => const BusinessOwnerRegisterScreen(),
+          '/register/business-owner': (_) =>
+              const BusinessOwnerRegisterScreen(),
           '/register/garage-shop': (_) => const GarageShopRegisterScreen(),
           '/pending': (_) => const PendingApprovalScreen(),
           '/home': (_) => const HomeScreen(),
           '/create-proforma': (_) => const CreateProformaScreen(),
-          '/insurance-create-proforma': (_) => const InsuranceCreateProformaScreen(),
+          '/insurance-create-proforma': (_) =>
+              const InsuranceCreateProformaScreen(),
           '/proforma-detail': (_) => const ProformaDetailScreen(),
           '/bo-proforma-detail': (_) => const BOProformaDetailScreen(),
           '/garage-file-detail': (_) => const GarageMyFileDetailScreen(),
-          '/notifications':          (_) => const NotificationsScreen(),
-          '/shop-proforma-detail':    (ctx) {
+          '/notifications': (_) => const NotificationsScreen(),
+          '/shop-proforma-detail': (ctx) {
             final id = ModalRoute.of(ctx)!.settings.arguments as int;
             return ShopProformaDetailScreen(proformaId: id);
           },
-          '/admin-proforma-detail':   (ctx) {
+          '/admin-proforma-detail': (ctx) {
             final id = ModalRoute.of(ctx)!.settings.arguments as int;
             return AdminProformaDetailScreen(proformaId: id);
           },
@@ -101,8 +106,8 @@ class EteraApp extends StatelessWidget {
           },
           '/admin-approvals': (_) => const NotificationsScreen(),
           '/received-proforma-detail': (ctx) {
-            final args = ModalRoute.of(ctx)!.settings.arguments
-                as Map<String, dynamic>;
+            final args =
+                ModalRoute.of(ctx)!.settings.arguments as Map<String, dynamic>;
             return ReceivedProformaDetailScreen(
               proformaId: args['id'] as int,
               detailUrl: args['url'] as String,

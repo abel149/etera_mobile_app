@@ -35,7 +35,12 @@ class AuthService {
       final user = User.fromJson(data['user']);
       final token = data['token'] as String;
       await ApiService.saveToken(token);
-      return AuthResult(success: true, message: res['message'], user: user, token: token);
+      return AuthResult(
+        success: true,
+        message: res['message'],
+        user: user,
+        token: token,
+      );
     }
 
     // Pending approval
@@ -49,7 +54,10 @@ class AuthService {
       );
     }
 
-    return AuthResult(success: false, message: res['message'] ?? 'Login failed');
+    return AuthResult(
+      success: false,
+      message: res['message'] ?? 'Login failed',
+    );
   }
 
   // ─── Logout ─────────────────────────────────────────────────
@@ -57,6 +65,38 @@ class AuthService {
     final res = await ApiService.post(ApiConfig.logout, {}, withAuth: true);
     await ApiService.clearToken();
     return res['success'] == true;
+  }
+
+  static Future<AuthResult> requestPasswordReset(String identifier) async {
+    final res = await ApiService.post(ApiConfig.forgotPassword, {
+      'identifier': identifier,
+    });
+
+    return AuthResult(
+      success: res['success'] == true,
+      message: res['message'] ?? 'Unable to send reset code',
+      errors: res['errors'] as Map<String, dynamic>?,
+    );
+  }
+
+  static Future<AuthResult> resetPassword({
+    required String identifier,
+    required String otp,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    final res = await ApiService.post(ApiConfig.resetPassword, {
+      'identifier': identifier,
+      'otp': otp,
+      'password': password,
+      'password_confirmation': passwordConfirmation,
+    });
+
+    return AuthResult(
+      success: res['success'] == true,
+      message: res['message'] ?? 'Unable to reset password',
+      errors: res['errors'] as Map<String, dynamic>?,
+    );
   }
 
   // ─── Fetch brands ──────────────────────────────────────────
@@ -92,7 +132,12 @@ class AuthService {
       final token = data['token'] as String?;
       if (token != null) await ApiService.saveToken(token);
       final user = User.fromJson(data['user'] as Map<String, dynamic>);
-      return AuthResult(success: true, message: res['message'], user: user, token: token);
+      return AuthResult(
+        success: true,
+        message: res['message'],
+        user: user,
+        token: token,
+      );
     }
 
     return AuthResult(
@@ -129,15 +174,14 @@ class AuthService {
     if (email != null && email.isNotEmpty) fields['email'] = email;
     if (bankName != null) fields['bank_name'] = bankName;
     if (accountNumber != null) fields['account_number'] = accountNumber;
-    if (licenseExpireDate != null) fields['license_expire_date'] = licenseExpireDate;
+    if (licenseExpireDate != null) {
+      fields['license_expire_date'] = licenseExpireDate;
+    }
 
     final res = await ApiService.postMultipart(
       ApiConfig.registerBusinessOwner,
       fields: fields,
-      files: {
-        'license_image': licenseImage,
-        'stamp_image': stampImage,
-      },
+      files: {'license_image': licenseImage, 'stamp_image': stampImage},
     );
 
     return _parseRegistrationResult(res);
@@ -171,7 +215,9 @@ class AuthService {
       'terms': '1',
     };
 
-    if (licenseExpireDate != null) fields['license_expire_date'] = licenseExpireDate;
+    if (licenseExpireDate != null) {
+      fields['license_expire_date'] = licenseExpireDate;
+    }
     if (email != null && email.isNotEmpty) fields['email'] = email;
     if (bankName != null) fields['bank_name'] = bankName;
     if (accountNumber != null) fields['account_number'] = accountNumber;
@@ -185,10 +231,7 @@ class AuthService {
     final res = await ApiService.postMultipart(
       ApiConfig.registerGarageShop,
       fields: fields,
-      files: {
-        'license_image': licenseImage,
-        'stamp_image': stampImage,
-      },
+      files: {'license_image': licenseImage, 'stamp_image': stampImage},
     );
 
     return _parseRegistrationResult(res);

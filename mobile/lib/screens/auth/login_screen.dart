@@ -48,7 +48,9 @@ class _LoginScreenState extends State<LoginScreen> {
           content: Text(result.message),
           backgroundColor: EteraTheme.error,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
@@ -113,8 +115,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text(
                       'Please sign in to your account',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: EteraTheme.textMuted,
-                          ),
+                        color: EteraTheme.textMuted,
+                      ),
                     ),
                     const SizedBox(height: 36),
 
@@ -172,6 +174,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: EteraTheme.textMuted,
                           ),
                         ),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/forgot-password'),
+                          child: const Text(
+                            'Forgot Password?',
+                            style: TextStyle(
+                              color: EteraTheme.green,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 28),
@@ -193,10 +208,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         const Text(
                           "Don't have an account? ",
-                          style: TextStyle(color: EteraTheme.textMuted, fontSize: 14),
+                          style: TextStyle(
+                            color: EteraTheme.textMuted,
+                            fontSize: 14,
+                          ),
                         ),
                         GestureDetector(
-                          onTap: () => Navigator.pushNamed(context, '/register'),
+                          onTap: () =>
+                              Navigator.pushNamed(context, '/register'),
                           child: const Text(
                             'Sign up here',
                             style: TextStyle(

@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Low-level HTTP helper that injects the Bearer token automatically.
 class ApiService {
   static const String _tokenKey = 'auth_token';
+  static final Map<String, Uint8List> _imageCache = {};
 
   // ─── Token helpers ───────────────────────────────────────────
   static Future<String?> getToken() async {
@@ -34,6 +37,35 @@ class ApiService {
       if (token != null) headers['Authorization'] = 'Bearer $token';
     }
     return headers;
+  }
+
+  // ─── Authenticated image fetch ─────────────────────────────
+  static Future<Uint8List?> loadImageBytes(
+    String url, {
+    bool withAuth = true,
+    bool useCache = true,
+  }) async {
+    if (useCache && _imageCache.containsKey(url)) {
+      return _imageCache[url];
+    }
+
+    try {
+      final token = withAuth ? await getToken() : null;
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'image/*',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        if (useCache) _imageCache[url] = response.bodyBytes;
+        return response.bodyBytes;
+      }
+    } catch (_) {
+      // Caller handles null.
+    }
+    return null;
   }
 
   // ─── GET ────────────────────────────────────────────────────
