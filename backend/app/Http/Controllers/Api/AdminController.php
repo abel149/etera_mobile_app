@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Notifications\DatabaseNotification;
 use App\Events\ProformaPublished;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 
 
@@ -327,7 +329,7 @@ class AdminController extends Controller
         return response()->json(['success' => true, 'message' => 'User deleted successfully!']);
     }
     // API endpoint for admin dashboard real-time polling
-    function dashboard() {
+    public function dashboard() {
         if (!auth()->check() || !in_array(auth()->user()->role, ['admin', 'superadmin'])) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -339,7 +341,7 @@ class AdminController extends Controller
                 ->whereHas('poster')
                 ->orderBy('created_at', 'desc');
 
-            if (!(auth()->user()->is_superadmin == 1)) {
+            if (!auth()->user()->isSuperAdmin()) {
                 $proformasQuery->where(function ($q) {
                     $q->whereNull('processed_by')->orWhere('processed_by', auth()->id());
                 });
@@ -381,7 +383,7 @@ class AdminController extends Controller
     }
     
 // API endpoint for notification bell polling (all roles)
-    function notifications() {
+    public function notifications() {
         if (!auth()->check()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -404,7 +406,7 @@ class AdminController extends Controller
         ]);
     }
     // Mark notifications as read
- function markAsRead() {
+    public function markAsRead() {
         if (!auth()->check()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -421,7 +423,7 @@ class AdminController extends Controller
             'unread_count' => $user->unreadNotifications()->count(),
         ]);
     }
-   function proformaStatus(){
+   public function proformaStatus(){
      $proformas = \App\Models\Proforma::with(['brand', 'processedBy'])
                  ->whereNotNull('processed_by')
                  ->orderBy('updated_at', 'desc')
@@ -442,7 +444,7 @@ class AdminController extends Controller
    /*
     admin managment
     */
-   function createAdmin(Request $request)
+   public function createAdmin(Request $request)
    {
      $validated = $request->validate([
          'name'         => 'required|string|max:255',
@@ -450,32 +452,35 @@ class AdminController extends Controller
          'email'        => 'nullable|email|unique:users,email',
      ]);
 
+            $tempPassword = Str::random(10);
             $user = User::create([
-                'name'         => $validated['name'],
-                'email'        => $validated['email'] ?? null,
-                'phone_number' => $validated['phone_number'],
-                'password' => bcrypt('123456'),
-                'role' => 'admin',
-                'approved' => true,
+                'name'          => $validated['name'],
+                'email'         => $validated['email'] ?? null,
+                'phone_number'  => $validated['phone_number'],
+                'password'      => Hash::make($tempPassword),
+                'role'          => 'admin',
+                'approved'      => true,
                 'registered_by' => auth()->id(),
             ]);
-             return response()->json([
-            'success' => true,
-            'message' => 'admin_created ,created successfully! Default password: 123456',
-            'data'=>[
-                'admin' => $user->name
-            ]
-        ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Admin created successfully.',
+                'data'    => [
+                    'admin'         => $user->name,
+                    'temp_password' => $tempPassword,
+                ],
+            ]);
             
    }
-   function admins()
+   public function admins()
    {
      $admins = \App\Models\User::whereIn('role', ['admin', 'superadmin'])
          ->orderBy('role')->orderBy('name')
          ->get(['id', 'name', 'email', 'phone_number', 'role', 'created_at']);
      return response()->json(['success' => true, 'data' => $admins]);
    }
-   function updateAdmin(Request $request, $id){
+   public function updateAdmin(Request $request, $id){
     if (auth()->user()->role !== 'superadmin') {
                 return response()->json(['success' => false, 'message' => 'Superadmin access required.'], 403);
             }
@@ -503,7 +508,7 @@ class AdminController extends Controller
 
             return response()->json(['success' => true, 'message' => 'Admin updated successfully!']);
    }
-   function deleteAdmin($id)
+   public function deleteAdmin($id)
    {
        if (!auth()->user()->isSuperAdmin()) {
            return response()->json(['success' => false, 'message' => 'Superadmin access required.'], 403);
@@ -521,7 +526,7 @@ class AdminController extends Controller
     /*
     insurance view
     */
-   function insurances(){
+   public function insurances(){
      $insurances = \App\Models\User::where('role', 'insurance')
             ->where('registered_by', auth()->id())
             ->get();
@@ -536,7 +541,7 @@ class AdminController extends Controller
    /*
     spare part shop managment
     */
-   function spareparts(Request $request)
+   public function spareparts(Request $request)
    {
      $query = \App\Models\User::where('role', 'shop')->with('brands');
 
@@ -610,7 +615,7 @@ class AdminController extends Controller
     /**
      * Assign operator to manager
      */
-    public function assignOperatorToManager(Request $request, $operatorId)
+    public function assignOperatorToManager(Request $request, $operator)
     {
         if (!auth()->user()->isSuperAdmin()) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
@@ -620,10 +625,10 @@ class AdminController extends Controller
             'manager_id' => 'required|exists:users,id',
         ]);
 
-        $operator = User::findOrFail($operatorId);
-        $manager = User::findOrFail($request->manager_id);
+        $operatorUser = User::findOrFail($operator);
+        $manager      = User::findOrFail($request->manager_id);
 
-        if (!$operator->isOperator()) {
+        if (!$operatorUser->isOperator()) {
             return response()->json(['success' => false, 'message' => 'User is not an operator'], 400);
         }
 
@@ -633,8 +638,8 @@ class AdminController extends Controller
 
         // Create or update the employee-manager relationship
         \App\Models\EmployeeManager::updateOrCreate(
-            ['employee_id' => $operatorId],
-            ['manager_id' => $request->manager_id]
+            ['employee_id' => $operator],
+            ['manager_id'  => $request->manager_id]
         );
 
         return response()->json([
@@ -646,7 +651,7 @@ class AdminController extends Controller
     /**
      * Set operator file quota
      */
-    public function setOperatorQuota(Request $request, $operatorId)
+    public function setOperatorQuota(Request $request, $operator)
     {
         if (!auth()->user()->isSuperAdmin()) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
@@ -656,13 +661,13 @@ class AdminController extends Controller
             'file_quota' => 'required|integer|min:0|max:1000',
         ]);
 
-        $operator = User::findOrFail($operatorId);
+        $operatorUser = User::findOrFail($operator);
 
-        if (!$operator->isOperator()) {
+        if (!$operatorUser->isOperator()) {
             return response()->json(['success' => false, 'message' => 'User is not an operator'], 400);
         }
 
-        $operator->update(['file_quota' => $request->file_quota]);
+        $operatorUser->update(['file_quota' => $request->file_quota]);
 
         return response()->json([
             'success' => true,
@@ -674,7 +679,7 @@ class AdminController extends Controller
     /**
      * Set operator commission per file
      */
-    public function setOperatorCommission(Request $request, $operatorId)
+    public function setOperatorCommission(Request $request, $operator)
     {
         if (!auth()->user()->isSuperAdmin()) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
@@ -684,13 +689,13 @@ class AdminController extends Controller
             'commission_per_file' => 'required|numeric|min:0|max:100000',
         ]);
 
-        $operator = User::findOrFail($operatorId);
+        $operatorUser = User::findOrFail($operator);
 
-        if (!$operator->isOperator()) {
+        if (!$operatorUser->isOperator()) {
             return response()->json(['success' => false, 'message' => 'User is not an operator'], 400);
         }
 
-        $operator->update(['commission_per_file' => $request->commission_per_file]);
+        $operatorUser->update(['commission_per_file' => $request->commission_per_file]);
 
         return response()->json([
             'success' => true,

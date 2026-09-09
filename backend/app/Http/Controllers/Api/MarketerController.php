@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\User;  // Changed to User model
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class MarketerController extends Controller
 {
@@ -18,25 +20,26 @@ class MarketerController extends Controller
                 'password' => 'nullable|min:6' // password can be null
             ]);
 
-            // If password is null, default to 123456
-            $password = $request->password ?: '123456';
+            // Use provided password or generate a secure random one
+            $plainPassword = $request->filled('password') ? $request->password : Str::random(10);
 
             $user = User::create([
-                'name' => $request->name,
-                'email' => $request->email,
-                'phone_number' => $request->phone_number,
-                'password' => bcrypt($password),
-                'role' => 'marketer',
-                'registered_by' => auth()->user()->id
+                'name'          => $request->name,
+                'email'         => $request->email,
+                'phone_number'  => $request->phone_number,
+                'password'      => Hash::make($plainPassword),
+                'role'          => 'marketer',
+                'registered_by' => auth()->user()->id,
             ]);
 
-             return response()->json([
-                'success' => true, 
-                'message' => 'Employee createdsuccessfully.',
-                'data' => [
-                    'user' => $user,
-                ]
-             ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Marketer created successfully.',
+                'data'    => [
+                    'user'          => $user,
+                    'temp_password' => $request->filled('password') ? null : $plainPassword,
+                ],
+            ]);
     
         } catch (\Illuminate\Validation\ValidationException $e) {
             // Flatten validation errors to a single string for easier display
@@ -107,9 +110,8 @@ class MarketerController extends Controller
     
        // Check if a new password is provided and update it
     if ($request->filled('password')) {
-        // Hash the new password using bcrypt
-        $marketer->password = bcrypt($request->password);
-        $marketer->save();  // Save the new password
+        $marketer->password = Hash::make($request->password);
+        $marketer->save();
     }
 
         // Return JSON for API

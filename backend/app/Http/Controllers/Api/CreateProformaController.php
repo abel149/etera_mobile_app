@@ -15,24 +15,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
-class CreateProfoermaController extends Controller {
+class CreateProformaController extends Controller
+{
 
     public function store(Request $request){
         
-        //log file for debug
-    
-       Log::info('📝 POST request to business-owner/create-file received', [
-                'user_id' => auth()->id(),
-                'user_type' => 'business-owner',
-                'has_files' => $request->hasFile('parts.photo'),
-                'all_input_keys' => array_keys($request->all()),
-                'files_count' => $request->hasFile('parts.photo') ? count($request->file('parts.photo')) : 0,
-            ]);
-        Log::debug('📥 Full Request Data Snapshot', [
-                'raw_input' => $request->except(['voice_note']),
-                'voice_note_present' => $request->filled('voice_note'),
-            ]);
-            
             // 🔹 Step 1 — Validate input
             try {
                 $validatedData = $request->validate([

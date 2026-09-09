@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class AdminMobileController extends Controller
 {
@@ -261,11 +262,12 @@ class AdminMobileController extends Controller
             'email'        => ['nullable', 'email', 'unique:users,email'],
         ]);
 
+        $tempPassword = Str::random(10);
         $admin = User::create([
             'name'          => $validated['name'],
             'phone_number'  => $validated['phone_number'],
             'email'         => $validated['email'] ?? null,
-            'password'      => Hash::make('123456'),
+            'password'      => Hash::make($tempPassword),
             'role'          => 'admin',
             'approved'      => true,
             'registered_by' => auth()->id(),
@@ -273,13 +275,14 @@ class AdminMobileController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Admin created. Default password: 123456',
+            'message' => 'Admin created successfully.',
             'data'    => [
-                'id'           => $admin->id,
-                'name'         => $admin->name,
-                'phone_number' => $admin->phone_number,
-                'email'        => $admin->email,
-                'role'         => $admin->role,
+                'id'            => $admin->id,
+                'name'          => $admin->name,
+                'phone_number'  => $admin->phone_number,
+                'email'         => $admin->email,
+                'role'          => $admin->role,
+                'temp_password' => $tempPassword,
             ],
         ], 201);
     }

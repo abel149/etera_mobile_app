@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\ProformaCreated;
 use App\Http\Controllers\Controller;
+use App\Traits\HasEmployeeManagement;
 use App\Http\Resources\ApplicationResource;
 use App\Http\Resources\PartResource;
 use App\Http\Resources\ProformaResource;
@@ -16,11 +17,15 @@ use App\Models\User;
 use App\Models\ProformaInvoice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class InsuranceController extends Controller
 {
+    use HasEmployeeManagement;
+
     // =========================================================================
     // GET /api/v1/insurance/dashboard
     // Summary card + all own proformas
@@ -496,105 +501,8 @@ class InsuranceController extends Controller
     // =========================================================================
     // GET /api/v1/insurance/employees
     // =========================================================================
-    public function listEmployees()
-    {
-        $user      = auth()->user();
-        $employees = \App\Models\User::where('registered_by', $user->id)
-            ->where('role', 'employee')
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'data'    => \App\Http\Resources\UserResource::collection($employees),
-        ]);
-    }
-
-    // =========================================================================
-    // POST /api/v1/insurance/employees
-    // Single: { "name":…, "phone_number":…, "password":…, "password_confirmation":… }
-    // Bulk:   { "employees": [ {…}, {…} ] }   max 10 total
-    // =========================================================================
-    public function createEmployee(Request $request)
-    {
-        $user         = auth()->user();
-        $currentCount = \App\Models\User::where('registered_by', $user->id)->where('role', 'employee')->count();
-        $isBulk       = $request->has('employees');
-
-        if ($isBulk) {
-            $validated = $request->validate([
-                'employees'                => ['required', 'array', 'min:1', 'max:10'],
-                'employees.*.name'         => ['required', 'string', 'max:255'],
-                'employees.*.phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'distinct', 'unique:users,phone_number'],
-                'employees.*.email'        => ['nullable', 'email', 'distinct', 'unique:users,email'],
-                'employees.*.password'     => ['required', 'string', 'min:6', 'confirmed'],
-            ]);
-            $newCount = count($validated['employees']);
-        } else {
-            $validated = $request->validate([
-                'name'         => ['required', 'string', 'max:255'],
-                'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
-                'email'        => ['nullable', 'email', 'unique:users,email'],
-                'password'     => ['required', 'string', 'min:6', 'confirmed'],
-            ]);
-            $newCount = 1;
-        }
-
-        if ($currentCount + $newCount > 10) {
-            return response()->json([
-                'success' => false,
-                'message' => "Cannot add {$newCount} employee(s). You have {$currentCount}/10 already. Limit is 10.",
-            ], 422);
-        }
-
-        $created = [];
-        DB::beginTransaction();
-        try {
-            foreach ($isBulk ? $validated['employees'] : [$validated] as $data) {
-                $created[] = \App\Models\User::create([
-                    'name'          => $data['name'],
-                    'phone_number'  => $data['phone_number'],
-                    'email'         => $data['email'] ?? null,
-                    'password'      => \Illuminate\Support\Facades\Hash::make($data['password']),
-                    'role'          => 'employee',
-                    'approved'      => true,
-                    'registered_by' => $user->id,
-                ]);
-            }
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => count($created) . ' employee(s) created successfully.',
-                'data'    => \App\Http\Resources\UserResource::collection(collect($created)),
-            ], 201);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('Insurance employee creation failed', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Employee creation failed. Please try again.'], 500);
-        }
-    }
-
-    // =========================================================================
-    // DELETE /api/v1/insurance/employees/{id}
-    // =========================================================================
-    public function deleteEmployee($id)
-    {
-        $user     = auth()->user();
-        $employee = \App\Models\User::where('id', $id)
-            ->where('registered_by', $user->id)
-            ->where('role', 'employee')
-            ->first();
-
-        if (!$employee) {
-            return response()->json(['success' => false, 'message' => 'Employee not found.'], 404);
-        }
-
-        $employee->delete();
-
-        return response()->json(['success' => true, 'message' => 'Employee removed successfully.']);
-    }
+    // Employee management (listEmployees / createEmployee / deleteEmployee)
+    // provided by HasEmployeeManagement trait
 
 
 
@@ -612,26 +520,27 @@ class InsuranceController extends Controller
                 'password' => 'nullable|min:6' // password can be null
             ]);
 
-            // If password is null, default to 123456
-            $password = $request->password ?: '123456';
+            // Use provided password or generate a secure random one
+            $plainPassword = $request->filled('password') ? $request->password : Str::random(10);
 
             $user = User::create([
-                'name' => $request->name,
-                'email' => $request->email,
-                'phone_number' => $request->phone_number,
-                'password' => bcrypt($password),
-                'role' => 'insurance',
-                'approved' => true,
-                'registered_by' => auth()->user()->id
+                'name'          => $request->name,
+                'email'         => $request->email,
+                'phone_number'  => $request->phone_number,
+                'password'      => Hash::make($plainPassword),
+                'role'          => 'insurance',
+                'approved'      => true,
+                'registered_by' => auth()->user()->id,
             ]);
 
-             return response()->json([
-                'success' => true, 
-                'message' => 'Employee created successfully.',
-                'data' => [
-                    'user' => $user,
-                ]
-             ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Insurance user created successfully.',
+                'data'    => [
+                    'user'          => $user,
+                    'temp_password' => $request->filled('password') ? null : $plainPassword,
+                ],
+            ]);
     
         } catch (\Illuminate\Validation\ValidationException $e) {
             // Flatten validation errors to a single string for easier display

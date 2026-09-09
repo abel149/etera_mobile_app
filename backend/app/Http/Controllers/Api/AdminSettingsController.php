@@ -63,7 +63,14 @@ class AdminSettingsController extends Controller
             'insurance_proforma' => 'nullable|numeric|min:0',
         ]);
 
-        Cost::create($request->all());
+        Cost::create($request->only([
+            '1_proforma_cost',
+            '2_proforma_cost',
+            '3_proforma_cost',
+            '4_proforma_cost',
+            'etera_chereta_cost',
+            'insurance_proforma',
+        ]));
 
         return response()->json([
            'success' => true,
@@ -98,10 +105,12 @@ class AdminSettingsController extends Controller
 
         $commission = Commission::first();
 
+        $fields = $request->only(['shopPay', 'garagePay', 'insurancePay', 'othersPay']);
+
         if ($commission) {
-            $commission->update($request->all());
+            $commission->update($fields);
         } else {
-            Commission::create($request->all());
+            Commission::create($fields);
         }
 
         return response()->json([

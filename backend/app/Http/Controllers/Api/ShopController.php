@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\HasEmployeeManagement;
 use App\Http\Resources\ApplicationResource;
 use App\Http\Resources\PartResource;
 use App\Http\Resources\ProformaResource;
@@ -23,9 +24,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ShopController extends Controller
 {
+    use HasEmployeeManagement;
+
     // =========================================================================
     // Resolve the "owner" user ID.
     // An employee of a shop has registered_by = shop owner ID, so all data
@@ -455,124 +459,10 @@ class ShopController extends Controller
     // GET /api/v1/shop/employees
     // List all employees registered under this shop.
     // =========================================================================
-    public function listEmployees()
-    {
-        $ownerId   = $this->getOwnerId();
-        $employees = User::where('registered_by', $ownerId)
-            ->where('role', 'employee')
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'data'    => UserResource::collection($employees),
-        ]);
-    }
-
+    // Employee management (listEmployees / createEmployee / deleteEmployee)
+    // provided by HasEmployeeManagement trait
     // =========================================================================
-    // POST /api/v1/shop/employees
-    // Create one or multiple employees at once.
-    //
-    // Single employee:
-    //   { "name": "...", "phone_number": "...", "password": "...", "password_confirmation": "..." }
-    //
-    // Multiple employees (array):
-    //   { "employees": [
-    //       { "name": "...", "phone_number": "...", "password": "...", "password_confirmation": "..." },
-    //       { "name": "...", "phone_number": "...", "password": "...", "password_confirmation": "..." }
-    //   ]}
-    //
-    // Max 10 employees total per shop.
-    // =========================================================================
-    public function createEmployee(Request $request)
-    {
-        $ownerId      = $this->getOwnerId();
-        $currentCount = User::where('registered_by', $ownerId)->where('role', 'employee')->count();
 
-        $isBulk = $request->has('employees');
-
-        if ($isBulk) {
-            $validated = $request->validate([
-                'employees'                       => ['required', 'array', 'min:1', 'max:10'],
-                'employees.*.name'                => ['required', 'string', 'max:255'],
-                'employees.*.phone_number'        => ['required', 'string', 'regex:/^\d{10}$/', 'distinct', 'unique:users,phone_number'],
-                'employees.*.email'               => ['nullable', 'email', 'distinct', 'unique:users,email'],
-                'employees.*.password'            => ['required', 'string', 'min:6', 'confirmed'],
-            ]);
-
-            $newCount = count($validated['employees']);
-        } else {
-            $validated = $request->validate([
-                'name'         => ['required', 'string', 'max:255'],
-                'phone_number' => ['required', 'string', 'regex:/^\d{10}$/', 'unique:users,phone_number'],
-                'email'        => ['nullable', 'email', 'unique:users,email'],
-                'password'     => ['required', 'string', 'min:6', 'confirmed'],
-            ]);
-
-            $newCount = 1;
-        }
-
-        if ($currentCount + $newCount > 10) {
-            return response()->json([
-                'success' => false,
-                'message' => "Cannot add {$newCount} employee(s). You have {$currentCount}/10 already. Limit is 10 per shop.",
-            ], 422);
-        }
-
-        $created = [];
-
-        DB::beginTransaction();
-        try {
-            $list = $isBulk ? $validated['employees'] : [$validated];
-
-            foreach ($list as $data) {
-                $employee = User::create([
-                    'name'          => $data['name'],
-                    'phone_number'  => $data['phone_number'],
-                    'email'         => $data['email'] ?? null,
-                    'password'      => Hash::make($data['password']),
-                    'role'          => 'employee',
-                    'approved'      => true,
-                    'registered_by' => $ownerId,
-                ]);
-                $created[] = $employee;
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => count($created) . ' employee(s) created successfully.',
-                'data'    => UserResource::collection(collect($created)),
-            ], 201);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Shop employee creation failed', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Employee creation failed. Please try again.'], 500);
-        }
-    }
-
-    // =========================================================================
-    // DELETE /api/v1/shop/employees/{id}
-    // Remove an employee registered under this shop.
-    // =========================================================================
-    public function deleteEmployee($id)
-    {
-        $ownerId  = $this->getOwnerId();
-        $employee = User::where('id', $id)
-            ->where('registered_by', $ownerId)
-            ->where('role', 'employee')
-            ->first();
-
-        if (!$employee) {
-            return response()->json(['success' => false, 'message' => 'Employee not found.'], 404);
-        }
-
-        $employee->delete();
-
-        return response()->json(['success' => true, 'message' => 'Employee removed successfully.']);
-    }
     /**
      * shop management for the admin side
      */
@@ -599,8 +489,8 @@ public function createShop(Request $request)
         'stamp_image' => 'required|file|image',
     ]);
 
-    // Default password handling
-    $password = $request->password ?? '123456';
+    // Use provided password or generate a secure random one
+    $plainPassword = $request->filled('password') ? $request->password : Str::random(10);
 
     // Generate UNIQUE store_id
     do {
@@ -621,7 +511,7 @@ public function createShop(Request $request)
         'name' => $request->name,
         'email' => $request->email,
         'phone_number' => $request->phone_number,
-        'password' => bcrypt($password),
+        'password' => Hash::make($plainPassword),
         'location' => $request->location,
         'role' => 'shop',
         'tin_number' => $request->tin_number,
@@ -641,10 +531,11 @@ public function createShop(Request $request)
 
     return response()->json([
         'success' => true,
-        'message' => 'Shop created successfully! Default password: 123456',
-        'data' => [
-            'user' => $user
-        ]
+        'message' => 'Shop created successfully.',
+        'data'    => [
+            'user'          => $user,
+            'temp_password' => $request->filled('password') ? null : $plainPassword,
+        ],
     ]);
 }
 

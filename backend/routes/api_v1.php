@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillingController;
 use App\Http\Controllers\Api\BusinessOwnerController;
-use App\Http\Controllers\Api\CreateProfoermaController;
+use App\Http\Controllers\Api\CreateProformaController;
 use App\Http\Controllers\Api\RegisterController;
 use App\Http\Controllers\Api\GarageController;
 use App\Http\Controllers\Api\InsuranceController;
@@ -199,12 +199,12 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware(['auth:sanctum', 'role:others'])->prefix('others')->group(function () {
 
     // Dashboard & Proformas
-    Route::get('/dashboard',                          [CreateProfoermaController::class, 'dashboard']);
-    Route::post('/create-file',                       [CreateProfoermaController::class, 'store']);
-    Route::get('/proformas',                          [CreateProfoermaController::class, 'index']);
-    Route::get('/proformas/{id}',                     [CreateProfoermaController::class, 'show']);
-    Route::post('/proformas/{id}/request-close',      [CreateProfoermaController::class, 'requestClose']);
-    Route::get('/received-proformas',                 [CreateProfoermaController::class, 'receivedProformas']);
+    Route::get('/dashboard',                          [CreateProformaController::class, 'dashboard']);
+    Route::post('/create-file',                       [CreateProformaController::class, 'store']);
+    Route::get('/proformas',                          [CreateProformaController::class, 'index']);
+    Route::get('/proformas/{id}',                     [CreateProformaController::class, 'show']);
+    Route::post('/proformas/{id}/request-close',      [CreateProformaController::class, 'requestClose']);
+    Route::get('/received-proformas',                 [CreateProformaController::class, 'receivedProformas']);
 
 });
 
@@ -277,7 +277,13 @@ Route::middleware(['auth:sanctum', 'role:garage,employee'])->prefix('garage')->g
 
 });
 
-Route::middleware(['auth:sanctum', 'role:insurance'])->prefix('insurance')->group(function () {
+
+// -----------------------------------------------------------------------
+// Protected: insurance routes  (role: insurance)
+// All prefixed /api/v1/insurance/...
+// -----------------------------------------------------------------------
+
+Route::middleware(['auth:sanctum', 'role:insurance,employee'])->prefix('insurance')->group(function () {
     Route::get('/dashboard',                         [InsuranceController::class, 'dashboard']);
     Route::get('/proformas',                         [InsuranceController::class, 'index']);
     Route::post('/create-file',                      [InsuranceController::class, 'store']);
@@ -409,9 +415,9 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->prefix('admin')->group(f
     
    //operator managment 
    Route::get('/operators', [AdminController::class, 'listOperators']);
-   Route::post('/assign-manager/{opretor}', [AdminController::class , 'assignOperatorToManager']);
-   Route::post('/set-quota/{opretor}', [AdminController::class , 'setOperatorQuota']);
-   Route::post('/set-commission/{opretor}', [AdminController::class , 'setOperatorCommission']);
+   Route::post('/assign-manager/{operator}', [AdminController::class, 'assignOperatorToManager']);
+   Route::post('/set-quota/{operator}',      [AdminController::class, 'setOperatorQuota']);
+   Route::post('/set-commission/{operator}', [AdminController::class, 'setOperatorCommission']);
    Route::get('/commissions', [AdminController::class, 'viewAllCommissions']);
 
    //garage managment
