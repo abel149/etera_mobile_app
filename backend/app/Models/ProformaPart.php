@@ -13,6 +13,7 @@ class ProformaPart extends Model
 
     protected $fillable = [
         'proforma_id',
+        'name',
         'number',
         'grade',
         'country',

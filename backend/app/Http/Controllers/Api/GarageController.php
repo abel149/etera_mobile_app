@@ -350,7 +350,7 @@ class GarageController extends Controller
 
             foreach ($validated['parts'] as $partData) {
                 $part = $proforma->parts()->create([
-                    'name'      =>$partData['name'],
+                    'name'      => $partData['name'],
                     'number'    => $partData['number'],
                     'grade'     => $partData['grade'],
                     'country'   => $partData['country'],

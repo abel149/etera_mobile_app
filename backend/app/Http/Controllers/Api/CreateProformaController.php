@@ -100,7 +100,7 @@ class CreateProformaController extends Controller
 
                 foreach ($partsData['condition'] as $index => $condition) {
                     $part = $proforma->parts()->create([
-                        'name'      => $partsData['name'][$index] ?? null,
+                        'name'      => $partsData['name'][$index],
                         'number'    => $partsData['number'][$index] ?? null,
                         'grade'     => $partsData['grade'][$index] ?? null,
                         'country'   => $partsData['country'][$index] ?? null,

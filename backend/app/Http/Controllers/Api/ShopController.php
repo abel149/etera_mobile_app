@@ -236,6 +236,8 @@ class ShopController extends Controller
                     ], 422);
                 }
 
+                $partsProcessed = 0;
+
                 if ($isEncrypted) {
                     // Encrypted path — validate encrypted fields only
                     $request->validate([
@@ -273,8 +275,6 @@ class ShopController extends Controller
                             'encrypted_aes_key' => $request->encrypted_aes_key,
                         ]);
                     }
-
-                    $partsProcessed = 0;
 
                 } else {
                     // Plain path — validate per-part unit prices

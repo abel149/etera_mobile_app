@@ -118,8 +118,8 @@ class InsuranceController extends Controller
             'garage_partners'       => ['nullable', 'array'],
             'garage_partners.*'     => ['integer', 'exists:users,id'],
             'parts'                 => ['required', 'array', 'min:1'],
-            'parts.*.number'        => ['required', 'string'],
-            'parts.*.name'          => ['nullable', 'string'],
+            'parts.*.number'        => ['nullable', 'string'],
+            'parts.*.name'          => ['required', 'string'],
             'parts.*.grade'         => ['required', 'string'],
             'parts.*.country'       => ['nullable', 'string'],
             'parts.*.quantity'      => ['nullable', 'integer', 'min:1'],
@@ -168,8 +168,8 @@ class InsuranceController extends Controller
             // Parts
             foreach ($validated['parts'] as $partData) {
                 $proforma->parts()->create([
-                    'number'    => $partData['number'],
-                    'name'      => $partData['name']      ?? null,
+                    'number'    => $partData['number'] ?? null,
+                    'name'      => $partData['name'],
                     'grade'     => $partData['grade'],
                     'country'   => $partData['country']   ?? null,
                     'quantity'  => $partData['quantity']  ?? 1,
