@@ -323,10 +323,11 @@ class ShopController extends Controller
                             )->id;
 
                             $application->prices()->create([
-                                'car_part_id' => $carPartId,
-                                'quantity'    => $quantity,
-                                'unit_price'  => $unitPrice,
-                                'part_total'  => $unitPrice * $quantity,
+                                'car_part_id'      => $carPartId,
+                                'proforma_part_id' => $part->id,
+                                'quantity'         => $quantity,
+                                'unit_price'       => $unitPrice,
+                                'part_total'       => $unitPrice * $quantity,
                             ]);
 
                             $partsProcessed++;
