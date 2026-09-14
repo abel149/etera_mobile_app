@@ -53,10 +53,10 @@ class ProformaVerificationService
 
         // Load commission rates
         $commissions = Commission::first();
-        $shopPay = $commissions->shopPay ?? 0;
-        $garagePay = $commissions->garagePay ?? 0;
-        $operatorPay = $commissions->operatorPay ?? 0;
-        $othersPay = $commissions->othersPay ?? 0;
+        $shopPay = $commissions?->shopPay ?? 0;
+        $garagePay = $commissions?->garagePay ?? 0;
+        $operatorPay = $commissions?->operatorPay ?? 0;
+        $othersPay = $commissions?->othersPay ?? 0;
 
         Log::info('Commission rates loaded', [
             'shopPay' => $shopPay,

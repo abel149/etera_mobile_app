@@ -400,16 +400,23 @@ class AdminMobileController extends Controller
         // Billing amount — shown when status=closed so admin knows what to collect
         $billingAmount = null;
         if ($proforma->status === 'closed') {
-            $closer  = new \App\Services\ProformaClosingService();
-            $billing = $closer->calculateBilling($proforma);
-            if ($billing) {
-                $total    = (float) $billing['total'];
-                $subtotal = round($total / 1.15, 2);
-                $billingAmount = [
-                    'subtotal'     => $subtotal,
-                    'vat_amount'   => round($total - $subtotal, 2),
-                    'total_amount' => $total,
-                ];
+            try {
+                $closer  = new \App\Services\ProformaClosingService();
+                $billing = $closer->calculateBilling($proforma);
+                if ($billing) {
+                    $total    = (float) $billing['total'];
+                    $subtotal = round($total / 1.15, 2);
+                    $billingAmount = [
+                        'subtotal'     => $subtotal,
+                        'vat_amount'   => round($total - $subtotal, 2),
+                        'total_amount' => $total,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to calculate billing for proforma detail', [
+                    'proforma_id' => $proforma->id,
+                    'error'       => $e->getMessage(),
+                ]);
             }
         }
 
