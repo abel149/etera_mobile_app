@@ -5,6 +5,8 @@ import '../../models/proforma.dart';
 import '../../providers/auth_provider.dart';
 import 'proforma_invoice_print_screen.dart';
 import '../../services/api_service.dart';
+import '../../services/encryption_service.dart';
+import '../../utils/e2e_crypto.dart';
 import '../../widgets/authenticated_network_image.dart';
 import '../../widgets/etera_card.dart';
 
@@ -212,7 +214,7 @@ class _ReceivedProformaDetailScreenState
 }
 
 // ─── Formal invoice card per shop/garage ─────────────────────────
-class _InvoiceCard extends StatelessWidget {
+class _InvoiceCard extends StatefulWidget {
   final int rank;
   final ProformaApplication application;
   final List<ProformaPartItem> parts;
@@ -230,7 +232,112 @@ class _InvoiceCard extends StatelessWidget {
   });
 
   @override
+  State<_InvoiceCard> createState() => _InvoiceCardState();
+}
+
+class _InvoiceCardState extends State<_InvoiceCard> {
+  bool _decrypting = false;
+  String? _decryptError;
+  Map<int, double> _decryptedUnitPrices = {}; // proforma_part_id → unit_price
+  double _decryptedTotal = 0;
+  bool _decrypted = false;
+
+  bool get _isEncrypted => widget.application.amountIsEncrypted ||
+      widget.application.partsPricing.any((p) => p.priceIsEncrypted);
+
+  Future<void> _decrypt() async {
+    setState(() { _decrypting = true; _decryptError = null; });
+
+    final pin = await _showPinDialog();
+    if (pin == null || !mounted) {
+      setState(() => _decrypting = false);
+      return;
+    }
+
+    try {
+      final pkRes = await EncryptionService.getPrivateKey();
+      if (pkRes['success'] != true) {
+        setState(() { _decrypting = false; _decryptError = 'Could not fetch private key.'; });
+        return;
+      }
+
+      final privateKeyPem = unwrapPrivateKey(
+        pkRes['encrypted_private_key'] as String,
+        pkRes['key_iv'] as String,
+        pkRes['key_salt'] as String,
+        pin,
+      );
+
+      final decryptedUnits = <int, double>{};
+      double subtotal = 0;
+
+      for (final p in widget.application.partsPricing) {
+        if (p.priceIsEncrypted && p.encryptedUnitPrice != null) {
+          final unitPrice = decryptAmount(p.encryptedUnitPrice!, privateKeyPem);
+          final partId = p.proformaPartId ?? p.carPartId;
+          decryptedUnits[partId] = unitPrice;
+          // Find matching part to get quantity
+          final matchingPart = widget.parts.where((pt) => pt.id == partId).firstOrNull;
+          final qty = matchingPart?.quantity ?? 1;
+          subtotal += unitPrice * qty;
+        }
+      }
+
+      // Garage path: decrypt total amount directly
+      double total = 0;
+      if (widget.application.encryptedAmount != null) {
+        total = decryptAmount(widget.application.encryptedAmount!, privateKeyPem);
+      } else {
+        final discount = widget.application.discountPct;
+        total = subtotal - (subtotal * discount / 100);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _decrypting = false;
+        _decryptedUnitPrices = decryptedUnits;
+        _decryptedTotal = total;
+        _decrypted = true;
+      });
+    } on FormatException {
+      if (!mounted) return;
+      setState(() { _decrypting = false; _decryptError = 'Wrong PIN. Please try again.'; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _decrypting = false; _decryptError = 'Decryption failed: $e'; });
+    }
+  }
+
+  Future<String?> _showPinDialog() {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Enter Your Encryption PIN'),
+        content: TextField(
+          controller: ctrl,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'PIN',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            style: ElevatedButton.styleFrom(backgroundColor: EteraTheme.green),
+            child: const Text('Decrypt', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final application = widget.application;
     final isShop = application.from == 'shop';
     final typeColor = isShop ? EteraTheme.green : EteraTheme.teal;
     final typeLabel = isShop ? 'Spare Part Shop' : 'Garage';
@@ -238,16 +345,20 @@ class _InvoiceCard extends StatelessWidget {
     final ap = application.applicant;
     final hasPricing = application.partsPricing.isNotEmpty;
 
+    // Use decrypted values if available, otherwise fall back to plain values
+    final displaySubtotal = _decrypted ? _decryptedTotal + (application.discountAmount) : application.subtotal;
+    final displayNetTotal = _decrypted ? _decryptedTotal : application.netTotal;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: EteraTheme.bgLight,
         borderRadius: BorderRadius.circular(EteraTheme.radiusMd),
         border: Border.all(
-          color: isBest
+          color: widget.isBest
               ? EteraTheme.green.withValues(alpha: 0.5)
               : Colors.white.withValues(alpha: 0.08),
-          width: isBest ? 1.5 : 1,
+          width: widget.isBest ? 1.5 : 1,
         ),
       ),
       child: Stack(children: [
@@ -278,29 +389,29 @@ class _InvoiceCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              gradient: isBest ? EteraTheme.primaryGradient : null,
-              color: isBest ? null : EteraTheme.bgLight,
+              gradient: widget.isBest ? EteraTheme.primaryGradient : null,
+              color: widget.isBest ? null : EteraTheme.bgLight,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(EteraTheme.radiusMd)),
             ),
             child: Row(children: [
               Container(
                 width: 32, height: 32,
                 decoration: BoxDecoration(
-                  color: isBest ? Colors.white.withValues(alpha: 0.2) : EteraTheme.green.withValues(alpha: 0.15),
+                  color: widget.isBest ? Colors.white.withValues(alpha: 0.2) : EteraTheme.green.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: Center(child: Text('#$rank',
+                child: Center(child: Text('#${widget.rank}',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-                        color: isBest ? Colors.white : EteraTheme.green))),
+                        color: widget.isBest ? Colors.white : EteraTheme.green))),
               ),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(ap.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15,
-                    color: isBest ? Colors.white : null)),
+                    color: widget.isBest ? Colors.white : null)),
                 Row(children: [
-                  Icon(typeIcon, size: 11, color: isBest ? Colors.white70 : typeColor),
+                  Icon(typeIcon, size: 11, color: widget.isBest ? Colors.white70 : typeColor),
                   const SizedBox(width: 3),
-                  Text(typeLabel, style: TextStyle(fontSize: 11, color: isBest ? Colors.white70 : typeColor)),
+                  Text(typeLabel, style: TextStyle(fontSize: 11, color: widget.isBest ? Colors.white70 : typeColor)),
                 ]),
               ])),
               // Stamp image badge in header
@@ -311,7 +422,7 @@ class _InvoiceCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: isBest ? Colors.white.withValues(alpha: 0.6) : EteraTheme.teal.withValues(alpha: 0.4),
+                      color: widget.isBest ? Colors.white.withValues(alpha: 0.6) : EteraTheme.teal.withValues(alpha: 0.4),
                       width: 2,
                     ),
                     boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
@@ -324,12 +435,12 @@ class _InvoiceCard extends StatelessWidget {
                       errorBuilder: (_) => Icon(
                         Icons.store_rounded,
                         size: 20,
-                        color: isBest ? Colors.white70 : EteraTheme.teal,
+                        color: widget.isBest ? Colors.white70 : EteraTheme.teal,
                       ),
                     ),
                   ),
                 ),
-              if (isBest)
+              if (widget.isBest)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   margin: const EdgeInsets.only(left: 6),
@@ -372,19 +483,29 @@ class _InvoiceCard extends StatelessWidget {
                   DataColumn(label: Text('Unit Price'), numeric: true),
                   DataColumn(label: Text('Total'), numeric: true),
                 ],
-                rows: parts.asMap().entries.map((e) {
+                rows: widget.parts.asMap().entries.map((e) {
                   final part = e.value;
                   final pricing = application.partsPricing.cast<PartPricing?>().firstWhere(
                     (p) => p?.carPartId == part.id,
                     orElse: () => application.partsPricing.length > e.key ? application.partsPricing[e.key] : null,
                   );
+                  final partId = pricing?.proformaPartId ?? pricing?.carPartId ?? part.id;
+                  final isEnc = pricing?.priceIsEncrypted == true;
+                  final decUnit = _decryptedUnitPrices[partId];
+                  final unitStr = isEnc
+                      ? (decUnit != null ? '${decUnit.toStringAsFixed(2)} Br' : '🔒 Encrypted')
+                      : (pricing != null ? '${pricing.unitPrice.toStringAsFixed(2)} Br' : '—');
+                  final totalStr = isEnc
+                      ? (decUnit != null ? '${(decUnit * part.quantity).toStringAsFixed(2)} Br' : '🔒 Encrypted')
+                      : (pricing != null ? '${pricing.partTotal.toStringAsFixed(2)} Br' : '—');
                   return DataRow(cells: [
                     DataCell(Text('${e.key + 1}')),
                     DataCell(Text(part.number.isNotEmpty ? part.number : part.grade, overflow: TextOverflow.ellipsis)),
                     DataCell(Text('${part.quantity}')),
-                    DataCell(Text(pricing != null ? '${pricing.unitPrice.toStringAsFixed(2)} Br' : '—')),
-                    DataCell(Text(pricing != null ? '${pricing.partTotal.toStringAsFixed(2)} Br' : '—',
-                        style: const TextStyle(fontWeight: FontWeight.w500))),
+                    DataCell(Text(unitStr, style: isEnc && decUnit == null ? const TextStyle(color: Colors.orange) : null)),
+                    DataCell(Text(totalStr,
+                        style: TextStyle(fontWeight: FontWeight.w500,
+                            color: isEnc && decUnit == null ? Colors.orange : null))),
                   ]);
                 }).toList(),
               ),
@@ -396,16 +517,42 @@ class _InvoiceCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Column(children: [
-              _totalRow('Subtotal', '${application.subtotal.toStringAsFixed(2)} ETB'),
+              _totalRow('Subtotal', '${displaySubtotal.toStringAsFixed(2)} ETB'),
               if (application.discountPct > 0)
                 _totalRow('Discount (${application.discountPct.toStringAsFixed(0)}%)',
                     '- ${application.discountAmount.toStringAsFixed(2)} ETB', color: EteraTheme.teal),
               const Divider(height: 16),
-              _totalRow('GRAND TOTAL', '${application.netTotal.toStringAsFixed(2)} ETB',
+              _totalRow('GRAND TOTAL', '${displayNetTotal.toStringAsFixed(2)} ETB',
                   isBold: true, color: EteraTheme.green, fontSize: 15),
               const SizedBox(height: 4),
               const Text('* Prices exclude VAT',
                   style: TextStyle(fontSize: 10, color: EteraTheme.textMuted)),
+
+              // Decrypt button for encrypted quotes
+              if (_isEncrypted && !_decrypted) ...[
+                const SizedBox(height: 12),
+                if (_decryptError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(_decryptError!, style: const TextStyle(color: EteraTheme.error, fontSize: 12)),
+                  ),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _decrypting ? null : _decrypt,
+                    icon: _decrypting
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.lock_open_outlined, size: 16),
+                    label: Text(_decrypting ? 'Decrypting…' : 'Decrypt Prices'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: EteraTheme.green,
+                      side: const BorderSide(color: EteraTheme.green),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 12),
               // Print / Download button
               SizedBox(
@@ -424,9 +571,9 @@ class _InvoiceCard extends StatelessWidget {
                     MaterialPageRoute(
                       builder: (_) => ProformaInvoicePrintScreen(
                         application: application,
-                        parts: parts,
-                        fileNumber: fileNumber,
-                        vehicleInfo: vehicleInfo,
+                        parts: widget.parts,
+                        fileNumber: widget.fileNumber,
+                        vehicleInfo: widget.vehicleInfo,
                       ),
                     ),
                   ),

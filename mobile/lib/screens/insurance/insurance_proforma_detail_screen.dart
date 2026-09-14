@@ -276,6 +276,7 @@ class _ApplicationCard extends StatefulWidget {
 class _ApplicationCardState extends State<_ApplicationCard> {
   bool _decrypting = false;
   String? _decryptedAmount;
+  Map<int, double> _decryptedParts = {}; // proforma_part_id → decrypted unit_price
   String? _decryptError;
 
   bool get _isEncrypted => widget.application['amount_is_encrypted'] == true;
@@ -306,14 +307,47 @@ class _ApplicationCardState extends State<_ApplicationCard> {
         pin,
       );
 
-      // 4. Decrypt the amount
+      // 4. Decrypt individual part prices (shop path)
+      final parts = (widget.application['parts_pricing'] as List?) ?? [];
+      final decryptedParts = <int, double>{};
+
+      for (final p in parts) {
+        final part = p as Map;
+        final partId = int.tryParse(part['proforma_part_id']?.toString() ?? '') ?? 0;
+        final isPartEncrypted = part['price_is_encrypted'] == true;
+        if (isPartEncrypted) {
+          final encUnit = part['encrypted_unit_price'] as String? ?? '';
+          if (encUnit.isNotEmpty) {
+            decryptedParts[partId] = decryptAmount(encUnit, privateKeyPem);
+          }
+        }
+      }
+
+      // 5. Decrypt total amount (garage path) or compute from parts (shop path)
+      String? totalAmount;
       final encryptedAmount = widget.application['encrypted_amount'] as String? ?? '';
-      final amount = decryptAmount(encryptedAmount, privateKeyPem);
+      if (encryptedAmount.isNotEmpty) {
+        final amount = decryptAmount(encryptedAmount, privateKeyPem);
+        totalAmount = '${amount.toStringAsFixed(2)} Br';
+      } else if (decryptedParts.isNotEmpty) {
+        final discount = (widget.application['discount_pct'] as num?)?.toDouble() ?? 0;
+        double subtotal = 0;
+        for (final p in parts) {
+          final part = p as Map;
+          final partId = int.tryParse(part['proforma_part_id']?.toString() ?? '') ?? 0;
+          if (decryptedParts.containsKey(partId)) {
+            subtotal += decryptedParts[partId]!;
+          }
+        }
+        final net = subtotal - (subtotal * discount / 100);
+        totalAmount = '${net.toStringAsFixed(2)} Br';
+      }
 
       if (!mounted) return;
       setState(() {
-        _decrypting      = false;
-        _decryptedAmount = '${amount.toStringAsFixed(2)} Br';
+        _decrypting       = false;
+        _decryptedAmount  = totalAmount;
+        _decryptedParts   = decryptedParts;
       });
     } on FormatException {
       if (!mounted) return;
@@ -424,6 +458,14 @@ class _ApplicationCardState extends State<_ApplicationCard> {
             const SizedBox(height: 8),
             ...(app['parts_pricing'] as List).map((p) {
               final part = p as Map;
+              final partId = int.tryParse(part['proforma_part_id']?.toString() ?? '') ?? 0;
+              final isPartEncrypted = part['price_is_encrypted'] == true;
+              final decryptedUnit = _decryptedParts[partId];
+              final displayPrice = isPartEncrypted
+                  ? (decryptedUnit != null
+                      ? '${decryptedUnit.toStringAsFixed(2)} Br'
+                      : '🔒 Encrypted')
+                  : '${(part['part_total'] as num?)?.toStringAsFixed(2) ?? '—'} Br';
               return Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Row(children: [
@@ -432,8 +474,14 @@ class _ApplicationCardState extends State<_ApplicationCard> {
                   Text('Part #${part['car_part_id']}',
                       style: const TextStyle(fontSize: 12, color: EteraTheme.textMuted)),
                   const Spacer(),
-                  Text('${(part['part_total'] as num?)?.toStringAsFixed(2) ?? '—'} Br',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  Text(displayPrice,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isPartEncrypted && decryptedUnit == null
+                            ? Colors.orange
+                            : null,
+                      )),
                 ]),
               );
             }),

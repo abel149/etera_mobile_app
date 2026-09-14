@@ -31,13 +31,21 @@ class ProformaApplicant {
 
 class PartPricing {
   final int carPartId;
+  final int? proformaPartId;
   final double unitPrice;
   final double partTotal;
+  final bool priceIsEncrypted;
+  final String? encryptedUnitPrice;
+  final String? encryptedPartTotal;
 
   PartPricing({
     required this.carPartId,
+    this.proformaPartId,
     required this.unitPrice,
     required this.partTotal,
+    this.priceIsEncrypted = false,
+    this.encryptedUnitPrice,
+    this.encryptedPartTotal,
   });
 
   factory PartPricing.fromJson(Map<String, dynamic> json) {
@@ -50,8 +58,12 @@ class PartPricing {
     }
     return PartPricing(
       carPartId: carPartId,
+      proformaPartId: json['proforma_part_id'] as int?,
       unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
       partTotal: (json['part_total'] as num?)?.toDouble() ?? 0.0,
+      priceIsEncrypted: json['price_is_encrypted'] == true,
+      encryptedUnitPrice: json['encrypted_unit_price'] as String?,
+      encryptedPartTotal: json['encrypted_part_total'] as String?,
     );
   }
 }
@@ -65,6 +77,8 @@ class ProformaApplication {
   final double discountAmount;
   final double netTotal;
   final List<PartPricing> partsPricing;
+  final bool amountIsEncrypted;
+  final String? encryptedAmount;
 
   ProformaApplication({
     required this.id,
@@ -75,6 +89,8 @@ class ProformaApplication {
     required this.discountAmount,
     required this.netTotal,
     List<PartPricing>? partsPricing,
+    this.amountIsEncrypted = false,
+    this.encryptedAmount,
   }) : partsPricing = partsPricing ?? [];
 
   factory ProformaApplication.fromJson(Map<String, dynamic> json) {
@@ -89,6 +105,8 @@ class ProformaApplication {
       discountAmount: (json['discount_amount'] as num?)?.toDouble() ?? 0.0,
       netTotal: (json['net_total'] as num?)?.toDouble() ?? 0.0,
       partsPricing: pricingRaw.map((p) => PartPricing.fromJson(p as Map<String, dynamic>)).toList(),
+      amountIsEncrypted: json['amount_is_encrypted'] == true,
+      encryptedAmount: json['encrypted_amount'] as String?,
     );
   }
 }

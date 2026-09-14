@@ -251,7 +251,11 @@ class InsuranceController extends Controller
         }
 
         $applications = $proforma->applications->map(function ($app) {
-            if ($app->from === 'shop' && $app->prices->isNotEmpty()) {
+            if ($app->amount_is_encrypted) {
+                // Encrypted — actual price is hidden; use a sentinel so
+                // sorting doesn't place them at the top as "cheapest".
+                $app->final_price = PHP_FLOAT_MAX;
+            } elseif ($app->from === 'shop' && $app->prices->isNotEmpty()) {
                 $subtotal         = $app->prices->sum('part_total');
                 $discount         = (float) ($app->discount ?? 0);
                 $app->final_price = $subtotal - ($subtotal * $discount / 100);
