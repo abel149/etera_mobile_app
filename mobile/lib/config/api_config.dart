@@ -219,6 +219,19 @@ class ApiConfig {
   static const String insuranceBillingInvoices =
       '$baseUrl/insurance/billing/invoices';
 
+  // Insurance E2E Encryption
+  static const String insuranceEncryptionStatus  = '$baseUrl/insurance/encryption/status';
+  static const String insuranceEncryptionSetup   = '$baseUrl/insurance/encryption/setup';
+  static const String insuranceEncryptionPrivKey = '$baseUrl/insurance/encryption/private-key';
+  static const String insuranceEncryptionChgPin  = '$baseUrl/insurance/encryption/change-pin';
+  static const String insuranceEncryptionRecKey  = '$baseUrl/insurance/encryption/recovery-key';
+  static String insuranceEncryptedFile(int applicationId) =>
+      '$baseUrl/insurance/application/$applicationId/encrypted-file';
+
+  // Public key for a proforma (used by shop/garage before submitting encrypted prices)
+  static String proformaPublicKey(int proformaId) =>
+      '$baseUrl/proforma/$proformaId/public-key';
+
   // Proforma (role-based endpoints)
   static const String _createProformaOthers = '$baseUrl/others/create-file';
   static const String _createProformaBusinessOwner =

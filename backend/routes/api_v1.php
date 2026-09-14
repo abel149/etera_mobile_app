@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\AdminMobileController;
 use App\Http\Controllers\Api\UserBalanceController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminSettingsController;
+use App\Http\Controllers\Api\EncryptionController;
 use Illuminate\Http\Request;
 /*
 |--------------------------------------------------------------------------
@@ -190,6 +191,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // Send SMS notification via Afromessage
     Route::post('/send-sms', [\App\Http\Controllers\MessagingNotification::class, 'sendNotification']);
 
+    // -----------------------------------------------------------------------
+    // Encryption — shared (any authenticated role)
+    // GET /api/v1/proforma/{proforma}/public-key
+    //   Shop / garage calls this before submitting a price to get the insurance's
+    //   RSA public key so they can encrypt the amount client-side.
+    // -----------------------------------------------------------------------
+    Route::get('/proforma/{proforma}/public-key', [EncryptionController::class, 'getPublicKey']);
+
 });
 
 // -----------------------------------------------------------------------
@@ -303,10 +312,35 @@ Route::middleware(['auth:sanctum', 'role:insurance,employee'])->prefix('insuranc
     Route::get('/billing/statements/{sku}',           [BillingController::class, 'statementDetail']);
     Route::get('/billing/invoices',                   [BillingController::class, 'invoices']);
     
-    // Employee management
+    // Employee management (provided by HasEmployeeManagement trait)
     Route::get('/employees',                          [InsuranceController::class, 'listEmployees']);
     Route::post('/employees',                         [InsuranceController::class, 'createEmployee']);
     Route::delete('/employees/{id}',                  [InsuranceController::class, 'deleteEmployee']);
+
+    // -----------------------------------------------------------------------
+    // E2E Encryption management (insurance users only)
+    // The private key NEVER leaves the device — only the PIN-wrapped blob is stored.
+    // -----------------------------------------------------------------------
+    Route::prefix('encryption')->group(function () {
+        // Check whether encryption is configured
+        Route::get('/status',       [EncryptionController::class, 'status']);
+
+        // Initial setup: save public key + PIN-wrapped private key
+        Route::post('/setup',       [EncryptionController::class, 'saveKeys']);
+
+        // Retrieve PIN-wrapped private key blob (to unlock in-app)
+        Route::get('/private-key',  [EncryptionController::class, 'privateKey']);
+
+        // Re-wrap private key with a new PIN (public key unchanged)
+        Route::post('/change-pin',  [EncryptionController::class, 'changePin']);
+
+        // Retrieve recovery-key-wrapped private key blob (for forgotten PIN)
+        Route::get('/recovery-key', [EncryptionController::class, 'recoveryKey']);
+    });
+
+    // Serve encrypted PDF + AES key for a specific application
+    // Only the proforma poster (insurance) may access this
+    Route::get('/application/{application}/encrypted-file', [EncryptionController::class, 'encryptedFile']);
 
 });
 

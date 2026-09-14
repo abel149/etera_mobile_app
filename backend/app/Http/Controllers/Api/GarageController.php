@@ -152,26 +152,78 @@ class GarageController extends Controller
             return response()->json(['success' => false, 'message' => 'You have already applied to this proforma'], 422);
         }
 
-        $validated = $request->validate([
-            'amount'   => 'required|numeric|min:1',
-            'discount' => 'nullable|numeric|min:0|max:100',
-        ]);
+        // Determine whether this proforma requires encrypted submissions
+        $posterRequiresEncryption = $proforma->poster
+            && in_array(optional($proforma->poster)->role, ['insurance', 'insurance_agent'])
+            && $proforma->poster->has_encryption;
 
-        $discount    = $validated['discount'] ?? 0;
-        $finalAmount = max($validated['amount'] - ($validated['amount'] * $discount / 100), 1);
+        $isEncrypted = $request->boolean('prices_encrypted', false);
 
-        $owner = User::find($ownerId);
+        if ($posterRequiresEncryption && !$isEncrypted) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Encrypted price submission is required for this proforma. Fetch the insurance public key first.',
+            ], 422);
+        }
+
+        $owner    = User::find($ownerId);
         $fromRole = in_array($owner->role, ['shop']) ? 'shop' : 'garage';
 
         DB::beginTransaction();
         try {
-            $application = ProformaApplication::create([
-                'proforma_id'    => $proforma->id,
-                'application_by' => $ownerId,
-                'from'           => $fromRole,
-                'amount'         => $finalAmount,
-                'discount'       => $discount,
-            ]);
+            if ($isEncrypted) {
+                // Encrypted path
+                $request->validate([
+                    'encrypted_amount'  => ['required', 'string'],
+                    'encrypted_aes_key' => ['nullable', 'string'],
+                    'encrypted_pdf'     => ['nullable', 'string'],
+                    'discount'          => ['nullable', 'numeric', 'min:0', 'max:100'],
+                ]);
+
+                $discount    = (float) ($request->discount ?? 0);
+                $finalAmount = 0;
+
+                $application = ProformaApplication::create([
+                    'proforma_id'         => $proforma->id,
+                    'application_by'      => $ownerId,
+                    'from'                => $fromRole,
+                    'amount'              => $finalAmount,
+                    'discount'            => $discount,
+                    'encrypted_amount'    => $request->encrypted_amount,
+                    'amount_is_encrypted' => true,
+                ]);
+
+                if ($request->filled('encrypted_pdf')) {
+                    $encBytes = base64_decode($request->encrypted_pdf);
+                    $path     = 'encrypted-pdfs/' . $proforma->id . '-' . $ownerId . '-' . time() . '.enc';
+                    \Illuminate\Support\Facades\Storage::put($path, $encBytes);
+
+                    \App\Models\ApplicationPdf::create([
+                        'application_id'    => $application->id,
+                        'path'              => $path,
+                        'storage_type'      => 'encrypted',
+                        'encrypted_aes_key' => $request->encrypted_aes_key,
+                    ]);
+                }
+
+            } else {
+                // Plain path
+                $validated = $request->validate([
+                    'amount'   => ['required', 'numeric', 'min:1'],
+                    'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                ]);
+
+                $discount    = (float) ($validated['discount'] ?? 0);
+                $finalAmount = max($validated['amount'] - ($validated['amount'] * $discount / 100), 1);
+
+                $application = ProformaApplication::create([
+                    'proforma_id'    => $proforma->id,
+                    'application_by' => $ownerId,
+                    'from'           => $fromRole,
+                    'amount'         => $finalAmount,
+                    'discount'       => $discount,
+                ]);
+            }
 
             Inbox::where('user_id', $ownerId)->where('proforma_id', $proforma->id)->delete();
 
@@ -213,12 +265,13 @@ class GarageController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Price quote submitted successfully',
+                'message' => 'Price quote submitted successfully.',
                 'data'    => [
-                    'application_id'  => $application->id,
-                    'amount'          => (float) $application->amount,
-                    'discount'        => (float) $application->discount,
-                    'proforma_status' => $proforma->fresh()->status,
+                    'application_id'      => $application->id,
+                    'amount'              => $isEncrypted ? null : (float) $application->amount,
+                    'amount_is_encrypted' => $isEncrypted,
+                    'discount'            => (float) $application->discount,
+                    'proforma_status'     => $proforma->fresh()->status,
                 ],
             ], 201);
 
@@ -571,10 +624,6 @@ class GarageController extends Controller
         ]
        ]);
     }
-
-
-
-
 
     public function update(Request $request, $id)
 {

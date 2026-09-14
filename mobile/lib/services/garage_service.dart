@@ -58,6 +58,7 @@ class GarageService {
   }
 
   // ─── Apply / submit quote ─────────────────────────────────────
+  /// Plain submission. Pass the total [amount] and optional [discount] %.
   static Future<Map<String, dynamic>> applyProforma({
     required int proformaId,
     required double amount,
@@ -67,6 +68,23 @@ class GarageService {
       ApiConfig.garageApplyProforma(proformaId),
       {
         'amount': amount,
+        if (discount != null) 'discount': discount,
+      },
+      withAuth: true,
+    );
+  }
+
+  /// Encrypted submission. [encryptedAmount] is RSA-OAEP ciphertext (base64).
+  static Future<Map<String, dynamic>> applyProformaEncrypted({
+    required int proformaId,
+    required String encryptedAmount,
+    double? discount,
+  }) async {
+    return ApiService.post(
+      ApiConfig.garageApplyProforma(proformaId),
+      {
+        'prices_encrypted': true,
+        'encrypted_amount': encryptedAmount,
         if (discount != null) 'discount': discount,
       },
       withAuth: true,

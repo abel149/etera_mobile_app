@@ -32,10 +32,14 @@ class ApplicationResource extends JsonResource
                 'unit_price'  => (float) $p->unit_price,
                 'part_total'  => (float) $p->part_total,
             ]),
-            'subtotal'        => round($subtotal, 2),
-            'discount_pct'    => $discount,
-            'discount_amount' => round($discountAmt, 2),
-            'net_total'       => round($netTotal, 2),
+            'subtotal'            => round($subtotal, 2),
+            'discount_pct'        => $discount,
+            'discount_amount'     => round($discountAmt, 2),
+            'net_total'           => round($netTotal, 2),
+            // Encryption fields — present when shop/garage submitted an encrypted price
+            'amount_is_encrypted' => (bool) ($this->amount_is_encrypted ?? false),
+            'encrypted_amount'    => $this->amount_is_encrypted ? $this->encrypted_amount : null,
+            'has_encrypted_pdf'   => (bool) ($this->pdf && optional($this->pdf)->isEncrypted()),
         ];
     }
 }

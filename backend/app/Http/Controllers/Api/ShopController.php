@@ -221,59 +221,116 @@ class ShopController extends Controller
                     return response()->json(['success' => false, 'message' => 'You have already applied to this proforma.'], 422);
                 }
 
-                // Validation — shops always submit per-part unit prices
-                $validated = $request->validate([
-                    'parts'                    => ['required', 'array', 'min:1'],
-                    'parts.*.proforma_part_id' => ['required', 'integer', 'exists:proforma_part,id'],
-                    'parts.*.unit_price'       => ['required', 'numeric', 'min:0'],
-                    'discount'                 => ['nullable', 'numeric', 'min:0', 'max:100'],
-                ]);
+                // Determine whether this proforma requires encrypted submissions
+                $posterRequiresEncryption = $proforma->poster
+                    && in_array(optional($proforma->poster)->role, ['insurance', 'insurance_agent'])
+                    && $proforma->poster->has_encryption;
 
-                $discount = (float) ($validated['discount'] ?? 0);
+                $isEncrypted = $request->boolean('prices_encrypted', false);
 
-                // Build a lookup: proforma_part_id => unit_price
-                $priceMap = collect($validated['parts'])->keyBy('proforma_part_id');
-
-                // Calculate total using the proforma's own quantity per part
-                $totalAmount = 0;
-                foreach ($proforma->parts as $part) {
-                    $unitPrice = (float) ($priceMap[$part->id]['unit_price'] ?? 0);
-                    if ($unitPrice > 0) {
-                        $totalAmount += $unitPrice * ($part->quantity ?? 1);
-                    }
+                // If the poster has encryption enabled, encrypted submission is mandatory
+                if ($posterRequiresEncryption && !$isEncrypted) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Encrypted price submission is required for this proforma. Fetch the insurance public key first.',
+                    ], 422);
                 }
 
-                $discountAmount = ($totalAmount * $discount) / 100;
-                $finalAmount    = max($totalAmount - $discountAmount, 1);
+                if ($isEncrypted) {
+                    // Encrypted path — validate encrypted fields only
+                    $request->validate([
+                        'encrypted_amount'  => ['required', 'string'],
+                        'encrypted_aes_key' => ['nullable', 'string'],
+                        'encrypted_pdf'     => ['nullable', 'string'],
+                        'discount'          => ['nullable', 'numeric', 'min:0', 'max:100'],
+                    ]);
 
-                // Create the application record
-                $application = ProformaApplication::create([
-                    'proforma_id'    => $proforma->id,
-                    'application_by' => $ownerId,
-                    'from'           => 'shop',
-                    'amount'         => $finalAmount,
-                    'discount'       => $discount,
-                ]);
+                    $discount    = (float) ($request->discount ?? 0);
+                    $finalAmount = 0; // Hidden — actual amount is inside encrypted_amount
 
-                // Save per-part price rows (same as web controller)
-                $partsProcessed = 0;
-                foreach ($proforma->parts as $part) {
-                    $unitPrice = (float) ($priceMap[$part->id]['unit_price'] ?? 0);
-                    if ($unitPrice > 0) {
-                        $quantity   = $part->quantity ?? 1;
-                        $carPartId  = CarPart::firstOrCreate(
-                            ['name'      => $part->component ?: ($part->number ?: ('Part-' . $part->id))],
-                            ['component' => $part->component ?: 'Mechanical Parts']
-                        )->id;
+                    $appData = [
+                        'proforma_id'       => $proforma->id,
+                        'application_by'    => $ownerId,
+                        'from'              => 'shop',
+                        'amount'            => $finalAmount,
+                        'discount'          => $discount,
+                        'encrypted_amount'  => $request->encrypted_amount,
+                        'amount_is_encrypted' => true,
+                    ];
 
-                        $application->prices()->create([
-                            'car_part_id' => $carPartId,
-                            'quantity'    => $quantity,
-                            'unit_price'  => $unitPrice,
-                            'part_total'  => $unitPrice * $quantity,
+                    $application = ProformaApplication::create($appData);
+
+                    // Attach encrypted PDF if provided
+                    if ($request->filled('encrypted_pdf')) {
+                        $encBytes = base64_decode($request->encrypted_pdf);
+                        $path     = 'encrypted-pdfs/' . $proforma->id . '-' . $ownerId . '-' . time() . '.enc';
+                        \Illuminate\Support\Facades\Storage::put($path, $encBytes);
+
+                        \App\Models\ApplicationPdf::create([
+                            'application_id'    => $application->id,
+                            'path'              => $path,
+                            'storage_type'      => 'encrypted',
+                            'encrypted_aes_key' => $request->encrypted_aes_key,
                         ]);
+                    }
 
-                        $partsProcessed++;
+                    $partsProcessed = 0;
+
+                } else {
+                    // Plain path — validate per-part unit prices
+                    $validated = $request->validate([
+                        'parts'                    => ['required', 'array', 'min:1'],
+                        'parts.*.proforma_part_id' => ['required', 'integer', 'exists:proforma_part,id'],
+                        'parts.*.unit_price'       => ['required', 'numeric', 'min:0'],
+                        'discount'                 => ['nullable', 'numeric', 'min:0', 'max:100'],
+                    ]);
+
+                    $discount = (float) ($validated['discount'] ?? 0);
+
+                    // Build a lookup: proforma_part_id => unit_price
+                    $priceMap = collect($validated['parts'])->keyBy('proforma_part_id');
+
+                    // Calculate total using the proforma's own quantity per part
+                    $totalAmount = 0;
+                    foreach ($proforma->parts as $part) {
+                        $unitPrice = (float) ($priceMap[$part->id]['unit_price'] ?? 0);
+                        if ($unitPrice > 0) {
+                            $totalAmount += $unitPrice * ($part->quantity ?? 1);
+                        }
+                    }
+
+                    $discountAmount = ($totalAmount * $discount) / 100;
+                    $finalAmount    = max($totalAmount - $discountAmount, 1);
+
+                    $application = ProformaApplication::create([
+                        'proforma_id'    => $proforma->id,
+                        'application_by' => $ownerId,
+                        'from'           => 'shop',
+                        'amount'         => $finalAmount,
+                        'discount'       => $discount,
+                    ]);
+                }
+
+                // Save per-part price rows (plain path only — encrypted path has no individual prices)
+                if (!$isEncrypted) {
+                    foreach ($proforma->parts as $part) {
+                        $unitPrice = (float) ($priceMap[$part->id]['unit_price'] ?? 0);
+                        if ($unitPrice > 0) {
+                            $quantity  = $part->quantity ?? 1;
+                            $carPartId = CarPart::firstOrCreate(
+                                ['name'      => $part->component ?: ($part->number ?: ('Part-' . $part->id))],
+                                ['component' => $part->component ?: 'Mechanical Parts']
+                            )->id;
+
+                            $application->prices()->create([
+                                'car_part_id' => $carPartId,
+                                'quantity'    => $quantity,
+                                'unit_price'  => $unitPrice,
+                                'part_total'  => $unitPrice * $quantity,
+                            ]);
+
+                            $partsProcessed++;
+                        }
                     }
                 }
 
@@ -336,11 +393,12 @@ class ShopController extends Controller
                     'success' => true,
                     'message' => 'Price quote submitted successfully.',
                     'data'    => [
-                        'application_id'  => $application->id,
-                        'amount'          => round($finalAmount, 2),
-                        'discount'        => $discount,
-                        'parts_processed' => $partsProcessed,
-                        'proforma_status' => $proforma->fresh()->status,
+                        'application_id'      => $application->id,
+                        'amount'              => $isEncrypted ? null : round($finalAmount, 2),
+                        'amount_is_encrypted' => $isEncrypted,
+                        'discount'            => $discount,
+                        'parts_processed'     => $partsProcessed,
+                        'proforma_status'     => $proforma->fresh()->status,
                     ],
                 ], 201);
             });

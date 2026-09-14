@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../models/user.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/others_service.dart';
 import '../../widgets/notification_bell.dart';
@@ -8,6 +9,7 @@ import 'in_billing_tab.dart';
 import 'in_employees_tab.dart';
 import 'insurance_balance_tab.dart';
 import 'insurance_dashboard_tab.dart';
+import 'insurance_encryption_screen.dart';
 import 'insurance_partners_tab.dart';
 import 'insurance_proformas_tab.dart';
 
@@ -84,7 +86,7 @@ class _InsuranceHomeScreenState extends State<InsuranceHomeScreen> {
     );
   }
 
-  void _openEditProfileSheet(user) {
+  void _openEditProfileSheet(User? user) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -205,6 +207,9 @@ class _InsuranceHomeScreenState extends State<InsuranceHomeScreen> {
                 setState(() => _currentIndex = 5);
               } else if (value == 'profile') {
                 _showProfileDialog();
+              } else if (value == 'encryption') {
+                await Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const InsuranceEncryptionScreen()));
               } else if (value == 'logout') {
                 await context.read<AuthProvider>().logout();
                 if (context.mounted) {
@@ -227,6 +232,14 @@ class _InsuranceHomeScreenState extends State<InsuranceHomeScreen> {
                   Icon(Icons.people_outline, size: 18, color: EteraTheme.green),
                   const SizedBox(width: 10),
                   const Text('Employees', style: TextStyle(fontWeight: FontWeight.w600)),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'encryption',
+                child: Row(children: [
+                  Icon(Icons.lock_outlined, size: 18, color: EteraTheme.green),
+                  const SizedBox(width: 10),
+                  const Text('Encryption', style: TextStyle(fontWeight: FontWeight.w600)),
                 ]),
               ),
               PopupMenuItem(
