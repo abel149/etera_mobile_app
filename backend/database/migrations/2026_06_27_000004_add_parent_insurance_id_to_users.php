@@ -9,16 +9,20 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->unsignedBigInteger('parent_insurance_id')->nullable()->after('registered_by');
-            $table->foreign('parent_insurance_id')->references('id')->on('users')->onDelete('cascade');
+            if (!Schema::hasColumn('users', 'parent_insurance_id')) {
+                $table->unsignedBigInteger('parent_insurance_id')->nullable()->after('registered_by');
+                $table->foreign('parent_insurance_id')->references('id')->on('users')->onDelete('cascade');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropForeign(['parent_insurance_id']);
-            $table->dropColumn('parent_insurance_id');
+            if (Schema::hasColumn('users', 'parent_insurance_id')) {
+                try { $table->dropForeign(['parent_insurance_id']); } catch (\Throwable $e) {}
+                $table->dropColumn('parent_insurance_id');
+            }
         });
     }
 };

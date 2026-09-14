@@ -9,14 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('inboxes', function (Blueprint $table) {
-            $table->unsignedTinyInteger('inbox_group')->nullable()->after('source');
+            if (!Schema::hasColumn('inboxes', 'inbox_group')) {
+                $table->unsignedTinyInteger('inbox_group')->nullable()->after('source');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('inboxes', function (Blueprint $table) {
-            $table->dropColumn('inbox_group');
+            if (Schema::hasColumn('inboxes', 'inbox_group')) {
+                $table->dropColumn('inbox_group');
+            }
         });
     }
 };

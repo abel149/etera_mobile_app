@@ -9,14 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('telegram_chat_id')->nullable()->after('session_id');
+            if (!Schema::hasColumn('users', 'telegram_chat_id')) {
+                $table->string('telegram_chat_id')->nullable()->after('session_id');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('telegram_chat_id');
+            if (Schema::hasColumn('users', 'telegram_chat_id')) {
+                $table->dropColumn('telegram_chat_id');
+            }
         });
     }
 };

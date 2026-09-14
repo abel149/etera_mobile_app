@@ -8,28 +8,25 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Add dealers column
         Schema::table('users', function (Blueprint $table) {
-            $table->boolean('dealers')->default(0)->after('role');
-        });
-
-        // Add shop_garage column
-        Schema::table('users', function (Blueprint $table) {
-            $table->boolean('shop_garage')->default(0)->after('dealers');
+            if (!Schema::hasColumn('users', 'dealers')) {
+                $table->boolean('dealers')->default(0)->after('role');
+            }
+            if (!Schema::hasColumn('users', 'shop_garage')) {
+                $table->boolean('shop_garage')->default(0)->after('dealers');
+            }
         });
     }
 
     public function down(): void
     {
-        // Remove dealers column
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('dealers');
-        });
-
-        // Remove shop_garage column
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('shop_garage');
+            if (Schema::hasColumn('users', 'dealers')) {
+                $table->dropColumn('dealers');
+            }
+            if (Schema::hasColumn('users', 'shop_garage')) {
+                $table->dropColumn('shop_garage');
+            }
         });
     }
 };
- 

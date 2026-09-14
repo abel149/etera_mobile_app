@@ -6,26 +6,34 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            // Add operator-specific fields
-            $table->integer('file_quota')->nullable()->comment('Maximum number of files operator can process');
-            $table->decimal('commission_per_file', 10, 2)->nullable()->comment('Commission amount operator earns per processed file');
-            $table->enum('employee_type', ['operator', 'manager'])->nullable()->comment('Type of employee: operator or manager');
+            if (!Schema::hasColumn('users', 'file_quota')) {
+                $table->integer('file_quota')->nullable()
+                      ->comment('Maximum number of files operator can process');
+            }
+            if (!Schema::hasColumn('users', 'commission_per_file')) {
+                $table->decimal('commission_per_file', 10, 2)->nullable()
+                      ->comment('Commission amount operator earns per processed file');
+            }
+            if (!Schema::hasColumn('users', 'employee_type')) {
+                $table->enum('employee_type', ['operator', 'manager'])->nullable()
+                      ->comment('Type of employee: operator or manager');
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['file_quota', 'commission_per_file', 'employee_type']);
+            $cols = array_filter(
+                ['file_quota', 'commission_per_file', 'employee_type'],
+                fn($c) => Schema::hasColumn('users', $c)
+            );
+            if ($cols) {
+                $table->dropColumn(array_values($cols));
+            }
         });
     }
 };

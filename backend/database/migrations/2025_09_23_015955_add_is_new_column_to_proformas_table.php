@@ -6,24 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('proformas', function (Blueprint $table) {
-            // This column will be true for new proformas and false once viewed
-            $table->boolean('is_new')->default(true)->after('verified');
+            if (!Schema::hasColumn('proformas', 'is_new')) {
+                $table->boolean('is_new')->default(true)->after('verified');
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('proformas', function (Blueprint $table) {
-            $table->dropColumn('is_new');
+            if (Schema::hasColumn('proformas', 'is_new')) {
+                $table->dropColumn('is_new');
+            }
         });
     }
 };

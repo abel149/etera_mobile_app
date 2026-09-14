@@ -9,14 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('proforma_applications', function (Blueprint $table) {
-            $table->text('notes')->nullable()->after('amount');
+            if (!Schema::hasColumn('proforma_applications', 'notes')) {
+                $table->text('notes')->nullable()->after('amount');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('proforma_applications', function (Blueprint $table) {
-            $table->dropColumn('notes');
+            if (Schema::hasColumn('proforma_applications', 'notes')) {
+                $table->dropColumn('notes');
+            }
         });
     }
 };

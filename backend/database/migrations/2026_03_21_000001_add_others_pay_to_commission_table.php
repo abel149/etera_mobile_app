@@ -9,14 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('commission', function (Blueprint $table) {
-            $table->decimal('othersPay', 10, 2)->default(0)->after('operatorPay');
+            if (!Schema::hasColumn('commission', 'othersPay')) {
+                $table->decimal('othersPay', 10, 2)->default(0)->after('operatorPay');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('commission', function (Blueprint $table) {
-            $table->dropColumn('othersPay');
+            if (Schema::hasColumn('commission', 'othersPay')) {
+                $table->dropColumn('othersPay');
+            }
         });
     }
 };

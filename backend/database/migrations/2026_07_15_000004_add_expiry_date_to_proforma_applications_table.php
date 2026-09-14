@@ -9,14 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('proforma_applications', function (Blueprint $table) {
-            $table->date('expiry_date')->nullable()->after('amount');
+            if (!Schema::hasColumn('proforma_applications', 'expiry_date')) {
+                $table->date('expiry_date')->nullable()->after('amount');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('proforma_applications', function (Blueprint $table) {
-            $table->dropColumn('expiry_date');
+            if (Schema::hasColumn('proforma_applications', 'expiry_date')) {
+                $table->dropColumn('expiry_date');
+            }
         });
     }
 };

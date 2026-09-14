@@ -6,32 +6,45 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('commission', function (Blueprint $table) {
-            // Remove old columns
-            $table->dropColumn(['role', 'amount']);
-
-            // Add new columns
-            $table->decimal('shopPay', 10, 2)->default(0);
-            $table->decimal('garagePay', 10, 2)->default(0);
-            $table->decimal('insurancePay', 10, 2)->default(0);
+            if (Schema::hasColumn('commission', 'role')) {
+                $table->dropColumn('role');
+            }
+            if (Schema::hasColumn('commission', 'amount')) {
+                $table->dropColumn('amount');
+            }
+            if (!Schema::hasColumn('commission', 'shopPay')) {
+                $table->decimal('shopPay', 10, 2)->default(0);
+            }
+            if (!Schema::hasColumn('commission', 'garagePay')) {
+                $table->decimal('garagePay', 10, 2)->default(0);
+            }
+            if (!Schema::hasColumn('commission', 'insurancePay')) {
+                $table->decimal('insurancePay', 10, 2)->default(0);
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('commission', function (Blueprint $table) {
-            $table->dropColumn(['shopPay', 'garagePay', 'insurancePay']);
-
-            $table->string('role')->nullable();
-            $table->decimal('amount', 10, 2)->nullable();
+            if (Schema::hasColumn('commission', 'shopPay')) {
+                $table->dropColumn('shopPay');
+            }
+            if (Schema::hasColumn('commission', 'garagePay')) {
+                $table->dropColumn('garagePay');
+            }
+            if (Schema::hasColumn('commission', 'insurancePay')) {
+                $table->dropColumn('insurancePay');
+            }
+            if (!Schema::hasColumn('commission', 'role')) {
+                $table->string('role')->nullable();
+            }
+            if (!Schema::hasColumn('commission', 'amount')) {
+                $table->decimal('amount', 10, 2)->nullable();
+            }
         });
     }
 };

@@ -6,34 +6,47 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('paid_users', function (Blueprint $table) {
-            // Add operator and manager tracking
-            $table->foreignId('processed_by')->nullable()->constrained('users')->onDelete('set null')->comment('Operator who processed the file');
-            $table->foreignId('reviewed_by')->nullable()->constrained('users')->onDelete('set null')->comment('Manager who reviewed the file');
-            
-            // Add status tracking for manager review workflow
-            $table->enum('status', ['pending_review', 'approved', 'rejected', 'paid'])->default('pending_review')->comment('Payment status in review workflow');
-            
-            // Add review tracking
-            $table->timestamp('reviewed_at')->nullable()->comment('When manager reviewed the file');
-            $table->text('rejection_reason')->nullable()->comment('Reason if manager rejected the file');
+            if (!Schema::hasColumn('paid_users', 'processed_by')) {
+                $table->foreignId('processed_by')->nullable()
+                      ->constrained('users')->onDelete('set null')
+                      ->comment('Operator who processed the file');
+            }
+            if (!Schema::hasColumn('paid_users', 'reviewed_by')) {
+                $table->foreignId('reviewed_by')->nullable()
+                      ->constrained('users')->onDelete('set null')
+                      ->comment('Manager who reviewed the file');
+            }
+            if (!Schema::hasColumn('paid_users', 'status')) {
+                $table->enum('status', ['pending_review', 'approved', 'rejected', 'paid'])
+                      ->default('pending_review')
+                      ->comment('Payment status in review workflow');
+            }
+            if (!Schema::hasColumn('paid_users', 'reviewed_at')) {
+                $table->timestamp('reviewed_at')->nullable()
+                      ->comment('When manager reviewed the file');
+            }
+            if (!Schema::hasColumn('paid_users', 'rejection_reason')) {
+                $table->text('rejection_reason')->nullable()
+                      ->comment('Reason if manager rejected the file');
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('paid_users', function (Blueprint $table) {
-            $table->dropForeign(['processed_by']);
-            $table->dropForeign(['reviewed_by']);
-            $table->dropColumn(['processed_by', 'reviewed_by', 'status', 'reviewed_at', 'rejection_reason']);
+            try { $table->dropForeign(['processed_by']); } catch (\Throwable $e) {}
+            try { $table->dropForeign(['reviewed_by']); } catch (\Throwable $e) {}
+            $cols = array_filter(
+                ['processed_by', 'reviewed_by', 'status', 'reviewed_at', 'rejection_reason'],
+                fn($c) => Schema::hasColumn('paid_users', $c)
+            );
+            if ($cols) {
+                $table->dropColumn(array_values($cols));
+            }
         });
     }
 };

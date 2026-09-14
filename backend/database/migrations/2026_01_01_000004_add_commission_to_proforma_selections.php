@@ -6,25 +6,30 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('proforma_selections', function (Blueprint $table) {
-            // Add commission tracking for operators
-            $table->decimal('commission_earned', 10, 2)->default(0)->comment('Commission amount earned by operator for this file');
-            $table->timestamp('closed_at')->nullable()->comment('When the operator closed/completed this file');
+            if (!Schema::hasColumn('proforma_selections', 'commission_earned')) {
+                $table->decimal('commission_earned', 10, 2)->default(0)
+                      ->comment('Commission amount earned by operator for this file');
+            }
+            if (!Schema::hasColumn('proforma_selections', 'closed_at')) {
+                $table->timestamp('closed_at')->nullable()
+                      ->comment('When the operator closed/completed this file');
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('proforma_selections', function (Blueprint $table) {
-            $table->dropColumn(['commission_earned', 'closed_at']);
+            $cols = array_filter(
+                ['commission_earned', 'closed_at'],
+                fn($c) => Schema::hasColumn('proforma_selections', $c)
+            );
+            if ($cols) {
+                $table->dropColumn(array_values($cols));
+            }
         });
     }
 };

@@ -9,14 +9,19 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('proformas', function (Blueprint $table) {
-            $table->enum('damage_severity', ['minor', 'major', 'severe'])->nullable()->after('car_type');
+            if (!Schema::hasColumn('proformas', 'damage_severity')) {
+                $table->enum('damage_severity', ['minor', 'major', 'severe'])
+                      ->nullable()->after('car_type');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('proformas', function (Blueprint $table) {
-            $table->dropColumn('damage_severity');
+            if (Schema::hasColumn('proformas', 'damage_severity')) {
+                $table->dropColumn('damage_severity');
+            }
         });
     }
 };

@@ -6,23 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('proformas', function (Blueprint $table) {
-            $table->string('customer_email')->nullable()->after('customer_phone_number');
+            if (!Schema::hasColumn('proformas', 'customer_email')) {
+                $table->string('customer_email')->nullable()->after('customer_phone_number');
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('files', function (Blueprint $table) {
-            $table->dropColumn('customer_email');
+        Schema::table('proformas', function (Blueprint $table) {
+            if (Schema::hasColumn('proformas', 'customer_email')) {
+                $table->dropColumn('customer_email');
+            }
         });
     }
 };

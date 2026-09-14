@@ -6,25 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('proformas', function (Blueprint $table) {
-            // Use a safe default position to avoid relying on a non-existent 'is_new' column
-            // in fresh test databases.
-            $table->boolean('insured')->default(false)->after('verified');
+            if (!Schema::hasColumn('proformas', 'insured')) {
+                $table->boolean('insured')->default(false)->after('verified');
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('proformas', function (Blueprint $table) {
-            $table->dropColumn('insured');
+            if (Schema::hasColumn('proformas', 'insured')) {
+                $table->dropColumn('insured');
+            }
         });
     }
 };

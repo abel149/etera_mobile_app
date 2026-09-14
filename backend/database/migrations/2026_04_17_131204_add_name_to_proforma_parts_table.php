@@ -6,23 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('proforma_part', function (Blueprint $table) {
-            $table->string('name');
+            if (!Schema::hasColumn('proforma_part', 'name')) {
+                $table->string('name')->nullable();
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('proforma_parts', function (Blueprint $table) {
-            //
+        Schema::table('proforma_part', function (Blueprint $table) {
+            if (Schema::hasColumn('proforma_part', 'name')) {
+                $table->dropColumn('name');
+            }
         });
     }
 };

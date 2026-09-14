@@ -6,23 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('commission', function (Blueprint $table) {
-            $table->decimal('operatorPay', 10, 2)->default(0)->after('insurancePay');
+            if (!Schema::hasColumn('commission', 'operatorPay')) {
+                $table->decimal('operatorPay', 10, 2)->default(0)->after('insurancePay');
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('commission', function (Blueprint $table) {
-            $table->dropColumn('operatorPay');
+            if (Schema::hasColumn('commission', 'operatorPay')) {
+                $table->dropColumn('operatorPay');
+            }
         });
     }
 };

@@ -6,18 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
-{
-    Schema::table('proformas', function (Blueprint $table) {
-        $table->boolean('close_request')->default(false)->after('status');
-    });
-}
+    public function up(): void
+    {
+        Schema::table('proformas', function (Blueprint $table) {
+            if (!Schema::hasColumn('proformas', 'close_request')) {
+                $table->boolean('close_request')->default(false)->after('status');
+            }
+        });
+    }
 
-public function down()
-{
-    Schema::table('proformas', function (Blueprint $table) {
-        $table->dropColumn('close_request');
-    });
-}
-
+    public function down(): void
+    {
+        Schema::table('proformas', function (Blueprint $table) {
+            if (Schema::hasColumn('proformas', 'close_request')) {
+                $table->dropColumn('close_request');
+            }
+        });
+    }
 };
